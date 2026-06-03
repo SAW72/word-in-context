@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: word-in-context
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # XAI_API_KEY is intentionally omitted here for security.
+      # Add it manually in the Render dashboard as a secret (Environment > Add Environment Variable).
+      # Do the same for ELEVENLABS_API_KEY if you want to offer managed TTS.
