@@ -1,0 +1,2672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Word in Context</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      background: #f5e8d3;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex; min-height: 100vh; overflow: hidden;
+    }
+    .sidebar {
+      width: 260px;
+      background: #1a252f;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #2c3e50;
+      flex-shrink: 0;
+    }
+    .sidebar-header {
+      padding: 12px;
+      border-bottom: 1px solid #2c3e50;
+    }
+    .new-chat-btn {
+      width: 100%;
+      background: #c9a227;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .new-chat-btn:hover {
+      background: #b38a1f;
+    }
+    .sidebar-search {
+      margin: 8px 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #2c3e50;
+      background: #111a24;
+      color: #eee;
+      font-size: 13px;
+      outline: none;
+    }
+    .sidebar-search:focus {
+      border-color: #c9a227;
+    }
+    .sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .chat-list-item {
+      padding: 8px 12px;
+      margin: 2px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    .chat-list-item:hover {
+      background: #2c3e50;
+    }
+    .chat-list-item.active {
+      background: #3a4a5a;
+    }
+    .chat-list-item .title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+    }
+    .chat-list-item .delete {
+      opacity: 0;
+      font-size: 12px;
+      padding: 2px 4px;
+      background: none;
+      border: none;
+      color: #c94e4e;
+      cursor: pointer;
+    }
+    .chat-list-item:hover .delete {
+      opacity: 1;
+    }
+
+    /* Collapsible sidebar (Grok-like) */
+    .sidebar.collapsed {
+      width: 48px !important;
+      overflow: hidden;
+    }
+    .sidebar.collapsed .sidebar-search,
+    .sidebar.collapsed .sidebar-list {
+      display: none;
+    }
+    .sidebar.collapsed .new-chat-btn {
+      font-size: 16px;
+      padding: 6px;
+      width: 32px;
+      margin: 0 auto;
+    }
+    .chat-list-item .edit {
+      opacity: 0;
+      font-size: 11px;
+      padding: 1px 3px;
+      background: none;
+      border: none;
+      color: #aaa;
+      cursor: pointer;
+    }
+    .chat-list-item:hover .edit {
+      opacity: 1;
+    }
+    .main-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 10px;
+      min-width: 0;
+    }
+    .chat-container {
+      width: 100%; max-width: 760px; height: 96vh;
+      background: white; border-radius: 20px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #2c3e50, #1a252f);
+      color: white; padding: 12px 20px; display: flex; align-items: center; gap: 12px; position: relative;
+    }
+    .header .left {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .header .center {
+      flex: 1; text-align: center;
+    }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header .subtitle {
+      font-size: 11px; opacity: 0.75; margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+    .chats-btn {
+      background: rgba(255,255,255,0.15); border: none;
+      color: white; font-size: 12px; padding: 4px 10px; border-radius: 6px;
+      cursor: pointer; display: flex; align-items: center; gap: 4px;
+    }
+    .chats-btn:hover { background: rgba(255,255,255,0.25); }
+    .policy-note {
+      background: #f8f1e3; color: #5c4630; font-size: 12px;
+      padding: 6px 14px; text-align: center; border-bottom: 1px solid #e8d9c2;
+    }
+    .messages {
+      flex: 1; padding: 24px; overflow-y: auto;
+      background: #fdfaf3; display: flex; flex-direction: column; gap: 14px;
+    }
+    .message {
+      max-width: 82%; padding: 14px 18px; border-radius: 18px;
+      line-height: 1.5; font-size: 15.5px; position: relative;
+    }
+    .user {
+      background: #2c3e50; color: white;
+      align-self: flex-end; border-bottom-right-radius: 6px;
+    }
+    .ai {
+      background: #e8e0d5; color: #333;
+      align-self: flex-start; border-bottom-left-radius: 6px;
+    }
+    .scripture-sources {
+      font-size: 11px;
+      color: #8b5e3c;
+      margin-top: 6px;
+      opacity: 0.9;
+      cursor: pointer;
+      user-select: none;
+    }
+    .scripture-sources .label {
+      font-weight: 600;
+    }
+    .scripture-sources .ref {
+      font-family: ui-monospace, monospace;
+      background: rgba(139,94,60,0.1);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .scripture-sources:hover {
+      text-decoration: underline;
+    }
+    .sources-detail {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .speak-btn {
+      position: absolute; bottom: 8px; right: 12px;
+      background: none; border: none; font-size: 17px;
+      cursor: pointer; opacity: 0.55; padding: 2px;
+    }
+    .speak-btn:hover { opacity: 1; }
+    .input-area {
+      display: flex; padding: 14px 16px; background: white;
+      border-top: 1px solid #eee; gap: 10px; align-items: center;
+    }
+    #user-input {
+      flex: 1; padding: 14px 20px; border: 2px solid #d8d0c0;
+      border-radius: 30px; font-size: 16px; outline: none;
+    }
+    #user-input:focus { border-color: #c9a227; }
+    #send-btn {
+      background: #c9a227; color: white; border: none;
+      padding: 0 26px; border-radius: 30px; font-size: 15px; font-weight: 600;
+      cursor: pointer; height: 46px;
+    }
+    .mic-btn {
+      background: #e8e0d5; color: #2c3e50; border: none;
+      width: 50px; height: 50px; border-radius: 50%;
+      font-size: 22px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .mic-btn.listening {
+      background: #c94e4e; color: white;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(201, 78, 78, 0.5); }
+      70% { box-shadow: 0 0 0 12px rgba(201, 78, 78, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(201, 78, 78, 0); }
+    }
+    .stop-btn {
+      background: #8b5e3c; color: white; border: none;
+      padding: 0 14px; border-radius: 30px; font-size: 14px;
+      cursor: pointer; height: 46px;
+    }
+    .voice-btn {
+      background: rgba(255,255,255,0.15); border: none;
+      color: white; font-size: 13px; padding: 4px 9px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .sources-btn {
+      background: rgba(255,255,255,0.12); border: none;
+      color: #f5e8d3; font-size: 12px; padding: 4px 8px; border-radius: 6px;
+      cursor: pointer;
+    }
+    .sources-btn:hover {
+      background: rgba(255,255,255,0.22);
+    }
+    .chat-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+    }
+    .chat-item:last-child { border-bottom: none; }
+    .chat-item:hover { background: #f8f1e3; }
+    .chat-item .title { font-weight: 500; color: #2c3e50; flex:1; margin-right:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .chat-item .meta { font-size: 10px; color: #888; }
+    .chat-item .actions { display: flex; gap: 4px; }
+    .chat-item button { font-size: 10px; padding: 2px 6px; border: none; border-radius: 3px; cursor: pointer; }
+    .chat-item .load-btn { background: #2c3e50; color: white; }
+    .chat-item .del-btn { background: #c94e4e; color: white; }
+    .handsfree-toggle {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; color: #5c4630; margin-left: 8px;
+    }
+    .handsfree-toggle input {
+      accent-color: #c9a227;
+    }
+    .modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 16px; /* breathing room on small screens */
+      box-sizing: border-box;
+    }
+    .modal-content {
+      background: white; padding: 24px; border-radius: 16px;
+      width: 90%; max-width: 420px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .modal-content h3 { margin: 0 0 12px; }
+    .modal-content input {
+      width: 100%; padding: 12px; font-size: 15px;
+      border: 2px solid #ccc; border-radius: 8px; margin-bottom: 14px;
+    }
+    .modal-content button {
+      background: #2c3e50; color: white; border: none;
+      padding: 10px 18px; border-radius: 8px; cursor: pointer;
+    }
+    .status {
+      font-size: 11px;
+      color: #8b5e3c;
+      text-align: center;
+      padding: 4px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <!-- Grok-like left sidebar for conversations -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header" style="display:flex; align-items:center; gap:6px;">
+      <button class="new-chat-btn" id="sidebar-new-chat-btn" style="flex:1;">＋ New chat</button>
+      <button id="sidebar-toggle" title="Collapse/expand sidebar" aria-label="Collapse or expand sidebar" style="background:#2c3e50; color:#eee; border:none; width:24px; height:24px; border-radius:4px; cursor:pointer; font-size:12px;">«</button>
+    </div>
+    <input type="text" class="sidebar-search" id="sidebar-search" placeholder="Search chats..." aria-label="Search conversations">
+    <div class="sidebar-list" id="sidebar-chats-list">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <div class="main-area">
+    <div class="chat-container">
+      <div class="header">
+        <div class="center">
+          <h1>📖 Word in Context</h1>
+          <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
+          <div id="current-chat-title" style="font-size:11px; opacity:0.85; margin-top:1px; color:#ddd;"></div>
+        </div>
+        <div class="left">
+          <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
+          <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3; margin-left:6px;">📚 Sources</button>
+          <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; margin-left:6px; font-size:12px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer;">Upgrade / Beta</button>
+        </div>
+      </div>
+      
+      <div class="policy-note">
+        Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
+        <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
+        <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="input-area">
+        <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in the Scriptures..." autocomplete="off" aria-label="Type your question or Bible reference">
+        <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
+        <button id="send-btn">Send</button>
+        <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
+
+        <label for="handsfree-toggle" class="handsfree-toggle">
+          <input type="checkbox" id="handsfree-toggle">
+          Hands-free
+        </label>
+      </div>
+      <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
+    </div>
+  </div>
+
+  <!-- Voice Settings Modal -->
+  <div class="modal" id="voice-modal">
+    <div class="modal-content" style="max-width: 380px;">
+      <h3 style="margin-bottom:4px;">Voice Settings</h3>
+      <p style="font-size:12px; color:#666; margin:0 0 8px;">
+        All system voices (default, free). Install more downloadable/paid voices via macOS System Settings → Accessibility → Spoken Content → System voice → Customize (or third-party packs). Premium ElevenLabs optional via key (for advanced use).
+      </p>
+      <p id="elevenlabs-quota-warning" style="font-size:11px; color:#c94e4e; margin:0 0 8px; font-weight:500; display:none;">ElevenLabs quota exceeded (your key) — using free local/system voices. Add credits to your ElevenLabs account or switch back to a system voice.</p>
+      
+      <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
+        <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;"></select>
+      </label>
+
+      <label for="rate-slider" style="font-size:13px;display:block;margin-bottom:4px;">Speed: <span id="rate-value">0.95</span>
+        <input type="range" id="rate-slider" min="0.6" max="1.4" step="0.05" value="0.95" style="width:100%;margin-top:4px;margin-bottom:10px;">
+      </label>
+
+      <label for="pitch-slider" style="font-size:13px;display:block;margin-bottom:4px;">Pitch: <span id="pitch-value">1.0</span>
+        <input type="range" id="pitch-slider" min="0.8" max="1.3" step="0.05" value="1.0" style="width:100%;margin-top:4px;margin-bottom:10px;">
+      </label>
+
+      <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+        <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
+        Auto-speak AI replies (full text for local/system voices and ElevenLabs)
+      </label>
+
+      <hr style="margin: 12px 0; border-color: #ddd;">
+
+      <!-- Wake word customization -->
+      <div style="margin-bottom:12px;">
+        <label for="wake-enabled" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+          <input type="checkbox" id="wake-enabled" style="accent-color:#c9a227;" checked>
+          Require wake word for hands-free (recommended to reduce noise)
+        </label>
+        <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Custom wake word (e.g. "hey assistant" or "computer")
+          <input type="text" id="wake-word-input" value="holy grok" placeholder="holy grok" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
+        </label>
+        <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "holy grok". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
+      </div>
+
+      <!-- ElevenLabs is now bring-your-own-key only (no more shared "managed" credits in the default UI
+           to avoid confusion and reverting issues). Paste a key to unlock premium voices in the dropdown.
+           For a different/low-cost service, local system voices (including any you buy/install) are recommended
+           and fully supported. -->
+      <label for="elevenlabs-key-input" style="font-size:13px;display:block;margin-bottom:4px;">ElevenLabs API Key (optional — paste your own key for premium voices)
+        <input type="password" id="elevenlabs-key-input" placeholder="sk_..." style="width:100%;padding:8px;margin-top:4px;margin-bottom:8px;font-size:14px;">
+      </label>
+      <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+        <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
+        <button id="close-voice-btn" style="background:#777" aria-label="Close voice settings">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sources & Attribution Modal -->
+  <div class="modal" id="sources-modal">
+    <div class="modal-content" style="max-width: 520px; text-align: left; max-height: 80vh; overflow-y: auto;">
+      <h3 style="margin:0 0 8px;">📚 Sources &amp; Data Attribution</h3>
+
+      <div style="font-size:13px; line-height:1.45; color:#333;">
+        <p style="margin:0 0 10px;"><strong>All scripture citations in this app are traceable and verifiable.</strong></p>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">Bible Scripture Text (English + Original Languages)</h4>
+        <ul style="margin:0 0 10px 16px; padding:0;">
+          <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
+          <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
+          <li><strong>English grounding</strong>: Primarily Berean Standard Bible (BSB) and other literal translations (ESV, NASB, etc.).</li>
+          <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
+          <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
+          <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
+          <li>The model is instructed to quote or reference the original Greek/Hebrew text (with transliteration when helpful) when discussing specific words, grammar, or key terms, and to cite the exact source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").</li>
+        </ul>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">What "Context" Means in This App</h4>
+        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting Scripture interpret Scripture by examining a passage within its proper setting rather than in isolation. It includes:</p>
+        <ul style="margin:0 0 10px 16px; padding:0;">
+          <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
+          <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
+          <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, or in the broader literature of the period.</li>
+          <li><strong>Historical &amp; cultural context</strong>: The world of the original audience (ancient Near East for the Old Testament; 1st-century Greco-Roman world for the New Testament).</li>
+          <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story.</li>
+        </ul>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">How to Understand Greek &amp; Hebrew in Context (the Process)</h4>
+        <ol style="margin:0 0 10px 16px; padding:0; font-size:13px;">
+          <li>Begin with the literal text supplied by the app (SBL Greek New Testament for the NT; Westminster Leningrad Codex for the Hebrew OT).</li>
+          <li>Read the surrounding verses and chapters to grasp the author's immediate purpose.</li>
+          <li>Identify significant words or constructions and study their usage in the original language (the app surfaces these when you ask about a specific term).</li>
+          <li>Analyze the grammar: Who is acting? What is the tense, aspect, or emphasis? How does the sentence structure shape meaning?</li>
+          <li>Consider genre (narrative, poetry, epistle, prophecy, etc.) because different genres use language differently.</li>
+          <li>Compare the same words, themes, or constructions elsewhere in the author's writings and the wider canon.</li>
+          <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew guide us.</li>
+        </ol>
+        <p style="margin:0 0 8px; font-size:12px; color:#555;">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every scripture reference.</p>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">Citations You Hear When It Speaks</h4>
+        <p style="margin:0 0 8px;">The system prompt requires the model to include explicit, natural-sounding citations — including original languages — in every response that discusses scripture:</p>
+        <p style="margin:0 0 8px; font-style:italic; background:#f8f1e3; padding:6px 8px; border-radius:4px;">
+          “John 1:1 (SBL Greek New Testament) reads: ‘Ἐν ἀρχῇ ἦν ὁ λόγος...’ (En archē ēn ho logos...)”<br>
+          “The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) is: ‘בְּרֵאשִׁית בָּרָא אֱלֹהִים’ (Bereshit bara Elohim...)”
+        </p>
+        <p style="margin:0 0 10px;">Because the spoken text contains the citations, you hear the English translation source and the original Greek/Hebrew every time the voice reads the answer.</p>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">AI Model</h4>
+        <ul style="margin:0 0 10px 16px; padding:0;">
+          <li>Responses generated by <strong>Grok 4.3</strong> (model: grok-4.3).</li>
+          <li>Calls go through a secure server-side proxy — your xAI API key never leaves the server and is never exposed to the browser.</li>
+        </ul>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
+        <ul style="margin:0 0 10px 16px; padding:0;">
+          <li><strong>Free &amp; unlimited</strong>: Your device’s built-in system voices (including any Siri-quality or other packs you have purchased and installed via macOS System Settings → Accessibility → Spoken Content).</li>
+          <li><strong>Optional premium</strong>: ElevenLabs — you must paste your own API key in Voice Settings. You are billed directly by ElevenLabs; this app does not provide or share any ElevenLabs credits.</li>
+        </ul>
+
+        <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
+        <p style="margin:0 0 10px;">Your chats are stored only in your browser’s localStorage (they survive refresh but stay on this device).</p>
+
+        <p style="margin:8px 0 0; font-size:11px; color:#666;">
+          This design lets you verify every scripture reference against the actual source. The Bible data comes from the open public API at bible.helloao.org.
+        </p>
+      </div>
+
+      <div style="margin-top:14px; text-align:right;">
+        <button onclick="document.getElementById('sources-modal').style.display='none'" style="background:#777">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simple Subscription / Beta Activation Modal -->
+  <div class="modal" id="subscribe-modal">
+    <div class="modal-content" style="max-width: 420px; text-align: left;">
+      <h3 style="margin-bottom:4px;">Upgrade to Beta Pro</h3>
+      <p style="font-size:13px; margin:0 0 12px;">$4.99/mo after 3-month free beta. Unlimited + full original language sources.</p>
+
+      <div id="subscribe-form">
+        <p style="font-size:12px;">Already signed up on the landing page? Enter the same email to activate beta access now (local only for testing).</p>
+        <input type="email" id="subscribe-email" placeholder="your@email.com" style="width:100%; padding:10px; margin-bottom:10px; border:1px solid #ccc; border-radius:6px;">
+        <button id="activate-beta-btn" style="width:100%; background:#c9a227; color:#1a252f; padding:10px; border:none; border-radius:6px; font-weight:600;">Activate Beta Access (Free for 3 months)</button>
+        <p style="font-size:11px; margin-top:8px; opacity:0.7;">Or <a href="/" target="_blank">go to the public landing page</a> to sign up for the waitlist.</p>
+      </div>
+
+      <div id="subscribe-success" style="display:none; text-align:center;">
+        <p style="color:#2c3e50; font-weight:600;">✅ Beta Pro activated!</p>
+        <p style="font-size:13px;">You now have unlimited access and full Greek/Hebrew sources. Refresh to see the Pro badge.</p>
+        <button onclick="document.getElementById('subscribe-modal').style.display='none'" style="margin-top:10px; background:#777; color:white; border:none; padding:8px 16px; border-radius:6px;">Close</button>
+      </div>
+
+      <div style="margin-top:16px; font-size:11px; opacity:0.6;">
+        Real subscriptions will use Stripe. For now this is local beta simulation. Your data stays private.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ====================== SUPPRESS EXTENSION NOISE ======================
+    // These warnings come from browser extensions (especially MetaMask and other
+    // wallet extensions) that inject content scripts (contentscript.js, csNotification,
+    // etc.) into every page, including localhost. Common ones:
+    //   - MaxListenersExceededWarning / ObjectMultiplex / orphaned / malformed chunk
+    //   - "The Shared Storage API is deprecated..." (Chrome deprecation for extension storage features)
+    //   - "Content Security Policy of your site blocks the use of 'eval' in JavaScript"
+    //     (extensions trying dynamic code execution; harmless, not our code)
+    //   - Various CSP / no-speech / csNotification spam
+    // They are completely harmless to this app. We filter at the console level so
+    // your dev console stays usable. For a perfectly clean console, use Incognito
+    // (extensions disabled) or disable the offending extension(s) during development.
+    (function suppressExtensionConsoleSpam() {
+      try {
+        const originalWarn = console.warn.bind(console);
+        const originalError = console.error.bind(console);
+        const originalInfo = console.info ? console.info.bind(console) : null;
+
+        const noisy = [
+          'MaxListenersExceededWarning',
+          'ObjectMultiplex',
+          'orphaned data for stream',
+          'malformed chunk without name',
+          'Possible EventEmitter memory leak',
+          'Shared Storage API is deprecated',
+          'Shared Storage',
+          'csNotification',
+          'Content Security Policy of your site blocks the use of',
+          "blocks the use of 'eval'",
+          'unsafe-eval',
+          'Refused to evaluate'
+        ];
+
+        function isNoisy(args) {
+          const str = args.map(a => {
+            try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+            catch { return String(a); }
+          }).join(' ');
+          return noisy.some(p => str.includes(p));
+        }
+
+        console.warn = function(...args) {
+          if (isNoisy(args)) return;
+          originalWarn(...args);
+        };
+
+        console.error = function(...args) {
+          if (isNoisy(args)) return;
+          originalError(...args);
+        };
+
+        if (originalInfo) {
+          console.info = function(...args) {
+            if (isNoisy(args)) return;
+            originalInfo(...args);
+          };
+        }
+      } catch (e) { /* never break the app over console filtering */ }
+    })();
+
+    // ====================== CONFIG ======================
+    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages.
+
+STRICT RULES — FOLLOW THESE ALWAYS:
+
+1. Translation Policy (non-negotiable):
+   - ONLY use literal, word-for-word, formal-equivalence translations: NASB, NKJV, ESV, LSB (Legacy Standard Bible), Young's Literal Translation, Berean Standard Bible, or similar.
+   - NEVER use or recommend the NIV, NLT, The Message, Passion Translation, CEV, GNT, or any dynamic/paraphrase translations.
+   - When discussing meaning, first quote the verse from a literal translation, then explain from the original language.
+
+2. Original Languages Priority:
+   - Always reference the Greek, Hebrew, or Aramaic when it clarifies meaning.
+   - Give the actual word(s), transliteration, and the range of meaning or grammatical significance.
+   - Distinguish what the text itself says from later theological interpretation.
+
+3. Voice-Friendly Responses:
+   - Keep answers clear and natural when read aloud.
+   - Use complete sentences. Avoid walls of text.
+
+4. Tone:
+   - Humble, careful, and evidence-based. Say "the text indicates..." or "a more literal rendering is..." rather than overconfident claims.
+   - Always cite the specific reference clearly (book, chapter, verse).`;
+
+    // ====================== STATE ======================
+    const messagesContainer = document.getElementById('messages');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const micBtn = document.getElementById('mic-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const voiceBtn = document.getElementById('voice-btn');
+    const sourcesBtn = document.getElementById('sources-btn');
+
+    let conversation = []; // messages sent to backend (without system)
+    let recognition = null;
+    let isListening = false;
+    let startingRecognition = false; // prevents re-entrant start() calls that cause "already started" InvalidStateError
+    let currentUtterance = null;
+
+    // Voice settings - cleaned up persistence
+    let selectedVoice = null;
+    let voiceSettings = {
+      voiceSource: localStorage.getItem('voice_source') || 'local', // default local for zero cost
+      voiceId: localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '',
+      rate: parseFloat(localStorage.getItem('voice_rate')) || 0.95,
+      pitch: parseFloat(localStorage.getItem('voice_pitch')) || 1.0
+    };
+
+    let handsFreeEnabled = localStorage.getItem('handsfree_enabled') === 'true';
+    let continuousMode = false;
+
+    let pendingTranscript = null;
+    let commitTimeout = null;
+    let restartTimer = null;
+    let isAwaitingResponse = false; // prevents auto-restart of mic while Grok is thinking or about to speak (reduces noise pickup + state thrashing)
+    let wakeWordActiveUntil = 0; // timestamp until which we accept the next utterance as a command (after hearing the name with no command yet)
+    let longPauseUntil = 0; // if user says "[wake] pause" or similar (or just pause words), we allow very long silence before auto-committing (up to this time)
+
+    // === Multi-conversation persistence (Grok-like history) ===
+    let chats = [];
+    let currentChatId = null;
+
+    const synth = window.speechSynthesis;
+
+    // ElevenLabs
+    let elevenLabsApiKey = localStorage.getItem('elevenlabs_api_key') || '';
+    let elevenLabsVoices = [];
+    let elevenLabsAudio = null;
+    let elevenLabsFailedOnce = false;
+    let currentElevenLabsController = null;
+    let pendingElevenLabsText = null;
+    let elevenLabsNextAllowedTime = 0;
+    let elevenLabsQuotaExceeded = localStorage.getItem('elevenlabs_quota_exceeded') === 'true';
+    let lastSpokenText = '';
+    let currentTranscript = '';
+    let lastTranscriptConfidence = 0;
+    let elevenLabsCurrentRequestId = 0;
+    let elevenLabsTTSLock = false;
+    let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
+    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
+
+    // Wake word customization (default "holy grok", can turn off or change name)
+    let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
+    let wakeWord = (localStorage.getItem('wake_word') || 'holy grok').toLowerCase().trim();
+    let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
+    const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
+    const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
+
+    // On startup we no longer forcibly revert elevenlabs source to local here.
+    // Selection persistence is handled in loadVoices + applySavedVoiceSelection so the dropdown
+    // doesn't "revert" visually. speak() will still safely use local if premium/key not usable.
+    // if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
+    //   voiceSettings.voiceSource = 'local';
+    //   voiceSettings.voiceId = '';
+    // }
+
+    // ====================== HELPERS ======================
+    function addMessage(text, isUser, isLoading = false) {
+      const div = document.createElement('div');
+      div.className = `message ${isUser ? 'user' : 'ai'}`;
+      div.textContent = text;
+      if (isLoading) div.dataset.loading = 'true';
+
+      messagesContainer.appendChild(div);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      return div;
+    }
+
+    function removeLoadingMessage() {
+      const loading = messagesContainer.querySelector('[data-loading="true"]');
+      if (loading) loading.remove();
+    }
+
+    // Attach a clickable "Sources (live...)" line under AI messages.
+    // Shows the references; click reveals the exact live-fetched verse text + a speak button for the verses.
+    function attachSourcesUI(msgEl, sources, fullReplyForSpeak) {
+      if (!sources || !sources.length) return;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'scripture-sources';
+      wrap.innerHTML = `<span class="label">Sources (live from bible.helloao.org):</span> ` +
+        sources.map(s => {
+          const ref = (s.reference || '').trim();
+          const trans = (s.translation || '').trim();
+          return `<span class="ref">${ref} (${trans})</span>`;
+        }).join(' · ');
+
+      wrap.title = 'Click to view exact verse text fetched live for this answer';
+
+      wrap.addEventListener('click', (e) => {
+        e.stopImmediatePropagation();
+
+        // Toggle a detail box with the exact sourced text
+        let box = msgEl.querySelector('.sources-detail');
+        if (box) {
+          box.remove();
+          return;
+        }
+
+        box = document.createElement('div');
+        box.className = 'sources-detail';
+        box.style.cssText = 'margin-top:6px; font-size:11.5px; line-height:1.4; background:#f8f1e3; padding:8px; border-radius:6px; white-space:pre-wrap; border:1px solid #e8d9c2;';
+
+        const detailText = sources.map(s =>
+          `${s.reference} (${s.translation}):\n${s.text}`
+        ).join('\n\n');
+
+        box.textContent = detailText;
+
+        // Speak the exact verses button (useful for study / memorization)
+        const spk = document.createElement('button');
+        spk.textContent = '🔊 Speak these verses';
+        spk.style.cssText = 'margin-top:6px; font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #c9a227; background:#fff; color:#5c4630; cursor:pointer;';
+        spk.onclick = (ev) => {
+          ev.stopImmediatePropagation();
+          speak(detailText);
+        };
+        box.appendChild(document.createElement('br'));
+        box.appendChild(spk);
+
+        wrap.after(box);
+      });
+
+      msgEl.appendChild(wrap);
+    }
+
+    function speak(text) {
+      stopSpeaking();
+
+      // Make sure we're not listening while the AI is speaking its reply.
+      // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
+      stopListeningUI();
+
+      // For hands-free + wake word, we LEAVE the recognition object running (even though
+      // our isListening flag is false). This lets onresult still fire so we can detect
+      // "holy grok" as a barge-in / interrupt while the AI is speaking.
+      if (!handsFreeEnabled && recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+
+      // Determine which voice to use. Prefer the live dropdown selection if the
+      // Voice Settings modal is currently open (lets user test a voice without saving first).
+      let currentVoiceSource = voiceSettings.voiceSource;
+      let currentVoiceId = voiceSettings.voiceId;
+
+      const voiceModalEl = document.getElementById('voice-modal');
+      const voiceSelectEl = document.getElementById('voice-select');
+      if (voiceModalEl && voiceModalEl.style.display === 'flex' && voiceSelectEl && voiceSelectEl.value) {
+        const selVal = voiceSelectEl.value;
+        if (selVal.startsWith('elevenlabs:')) {
+          const canEleven = !elevenLabsQuotaExceeded && ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
+          if (!canEleven) {
+            // keep the visual selection on the EL voice (don't revert dropdown), but speak will fallback
+            currentVoiceSource = 'elevenlabs';
+            currentVoiceId = selVal.replace('elevenlabs:', '');
+          } else {
+            currentVoiceSource = 'elevenlabs';
+            currentVoiceId = selVal.replace('elevenlabs:', '');
+          }
+        } else if (selVal.startsWith('local:')) {
+          currentVoiceSource = 'local';
+          currentVoiceId = selVal.replace('local:', '');
+        }
+      }
+
+      if (elevenLabsQuotaExceeded && currentVoiceSource === 'elevenlabs') {
+        currentVoiceSource = 'local';
+      }
+
+      // Support BOTH: user-provided key (direct, they pay EL) OR app-managed proxy (no key needed, owner pays via sub model).
+      // Gate: explicitly chose elevenlabs voice + not quota + (own key OR (premium toggle + server actually has managed key from health))
+      const canUseEleven = currentVoiceSource === 'elevenlabs' && currentVoiceId && !elevenLabsQuotaExceeded &&
+                           ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
+      const useElevenLabs = canUseEleven;
+
+      if (currentVoiceSource === 'elevenlabs' && !canUseEleven) {
+        // Selection is for ElevenLabs but we can't use it right now (no key, premium disabled, or no server key).
+        // Keep the dropdown selection as-is (prevents visual revert to Karen etc.) but safely fallback here.
+        // User can paste their own ElevenLabs key in Voice Settings for premium.
+        console.warn('[Voice] ElevenLabs selected but not usable now - falling back to local system voice');
+      }
+
+      let textToUse = text;
+      // Always use full text (local voices free + unlimited; EL uses caller's own key so they pay directly).
+
+      if (useElevenLabs) {
+        // Set the most recent text. This ensures we only ever generate audio for the latest requested utterance.
+        pendingElevenLabsText = textToUse;
+
+        // If lock or controller, abort current (if any) and return; the completion will start the latest pending.
+        if (elevenLabsTTSLock || currentElevenLabsController) {
+          if (currentElevenLabsController) {
+            currentElevenLabsController.abort();
+          }
+          return;
+        }
+
+        // Start
+        if (!elevenLabsQuotaExceeded) {
+          startElevenLabsRequest(pendingElevenLabsText, currentVoiceId);
+          pendingElevenLabsText = null;
+        } else {
+          pendingElevenLabsText = null;
+        }
+        return;
+      }
+
+      fallbackToBrowserSpeech(text);  // local voices always get the full original text
+    }
+
+    function startElevenLabsRequest(textToSpeak, voiceIdToUse) {
+      const now = Date.now();
+      if (now < elevenLabsNextAllowedTime) {
+        elevenLabsTTSLock = true; // keep locked during backoff wait
+        const delay = elevenLabsNextAllowedTime - now + 100;
+        setTimeout(() => startElevenLabsRequest(textToSpeak, voiceIdToUse), delay);
+        return;
+      }
+
+      // Check client cache first -- free replay, no API cost/credit burn
+      if (elevenLabsTTSCache.has(textToSpeak)) {
+        const entry = elevenLabsTTSCache.get(textToSpeak);
+        entry.lastUsed = Date.now();
+        elevenLabsAudio = new Audio();
+        elevenLabsAudio.src = entry.url;
+        elevenLabsAudio.preload = 'auto';
+
+        elevenLabsAudio.onerror = (e) => {
+          console.error('ElevenLabs (cached) audio playback error', e);
+          elevenLabsAudio = null;
+          fallbackToBrowserSpeech(textToSpeak);
+        };
+
+        elevenLabsAudio.onended = () => {
+          elevenLabsAudio = null;
+          if (handsFreeEnabled && !isListening) {
+            scheduleHandsFreeRestart(700);
+          }
+        };
+        elevenLabsAudio.play().catch((e) => {
+          console.warn('ElevenLabs (cached) audio play failed, falling back', e);
+          fallbackToBrowserSpeech(textToSpeak);
+        });
+        elevenLabsTTSLock = false;
+        // still check pending for any newer
+        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+          const nextText = pendingElevenLabsText;
+          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+          pendingElevenLabsText = null;
+          startElevenLabsRequest(nextText, nextVoiceId);
+        }
+        return;
+      }
+
+      elevenLabsTTSLock = true;
+      lastSpokenText = textToSpeak;
+      const thisRequestId = ++elevenLabsCurrentRequestId;
+      currentElevenLabsController = new AbortController();
+
+      console.log('[ElevenLabs] starting TTS request for text length', textToSpeak.length, 'id', thisRequestId, 'lock', elevenLabsTTSLock);
+
+      // Decide endpoint: user's own key (they pay ElevenLabs directly) vs app-managed proxy (our key, cost covered by low monthly sub model; defaults to local free voices)
+      const useUserKey = !!elevenLabsApiKey && !elevenLabsQuotaExceeded;
+      let fetchUrl, fetchHeaders, fetchBody;
+      if (useUserKey) {
+        fetchUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceIdToUse}`;
+        fetchHeaders = {
+          'Accept': 'audio/mpeg',
+          'xi-api-key': elevenLabsApiKey,
+          'Content-Type': 'application/json'
+        };
+        fetchBody = JSON.stringify({
+          text: textToSpeak,
+          model_id: 'eleven_turbo_v2_5', // cheapest low-latency, excellent for the price (same as Flash v2.5)
+          voice_settings: { stability: 0.55, similarity_boost: 0.8 }
+        });
+      } else {
+        // proxy uses server-side ELEVENLABS_API_KEY + turbo model. Perfect for low-fee subs with included minutes.
+        fetchUrl = '/api/tts';
+        fetchHeaders = { 'Content-Type': 'application/json' };
+        fetchBody = JSON.stringify({ text: textToSpeak, voiceId: voiceIdToUse });
+      }
+
+      currentElevenLabsController = new AbortController();
+
+      fetch(fetchUrl, {
+        method: 'POST',
+        headers: fetchHeaders,
+        body: fetchBody,
+        signal: currentElevenLabsController.signal
+      })
+      .then(async response => {
+        if (!response.ok) {
+          let detail = '';
+          try {
+            const errJson = await response.json();
+            detail = errJson?.detail || JSON.stringify(errJson);
+          } catch (_) {
+            detail = await response.text().catch(() => '');
+          }
+          const quotaCode = (typeof detail === 'object' && detail.code) || (typeof detail === 'string' && detail.includes('quota_exceeded') ? 'quota_exceeded' : null);
+          if (quotaCode === 'quota_exceeded') {
+            console.warn('ElevenLabs quota exceeded:', typeof detail === 'object' ? detail.message : detail);
+            elevenLabsQuotaExceeded = true;
+            try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
+            voiceSettings.voiceSource = 'local';
+          } else if (response.status === 429) {
+            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
+            elevenLabsNextAllowedTime = Date.now() + 5000;
+          } else {
+            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
+          }
+          const e = new Error(`ElevenLabs error: ${response.status}`);
+          e.detail = detail;
+          throw e;
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          currentElevenLabsController = null;
+          elevenLabsTTSLock = false;
+          elevenLabsFailedOnce = false; // reset on success so future errors can notify
+          console.log('[ElevenLabs] TTS request completed successfully id', thisRequestId);
+        }
+
+        if (thisRequestId !== elevenLabsCurrentRequestId) {
+          // This request was superseded by a newer speak() call; discard the audio.
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        // cache for free future replays of exact same text (saves credits)
+        elevenLabsTTSCache.set(textToSpeak, { url, lastUsed: Date.now() });
+        // prune cache
+        if (elevenLabsTTSCache.size > 20) {
+          let oldest = null, oldestTime = Infinity;
+          for (const [k, v] of elevenLabsTTSCache.entries()) {
+            if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldest = k; }
+          }
+          if (oldest) {
+            const oldEntry = elevenLabsTTSCache.get(oldest);
+            URL.revokeObjectURL(oldEntry.url);
+            elevenLabsTTSCache.delete(oldest);
+          }
+        }
+        elevenLabsAudio = new Audio();
+        elevenLabsAudio.src = url;
+        elevenLabsAudio.preload = 'auto';
+
+        elevenLabsAudio.onerror = (e) => {
+          console.error('ElevenLabs audio playback error', e);
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            elevenLabsAudio = null;
+          }
+          fallbackToBrowserSpeech(textToSpeak);
+        };
+
+        elevenLabsAudio.onended = () => {
+          // do not revoke here -- urls for cached items are managed in prune (or on key change)
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            elevenLabsAudio = null;
+          }
+          if (thisRequestId === elevenLabsCurrentRequestId && handsFreeEnabled && !isListening) {
+            // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
+            scheduleHandsFreeRestart(700);
+          }
+        };
+
+        elevenLabsAudio.play().catch((e) => {
+          console.warn('ElevenLabs audio play failed, falling back', e);
+          fallbackToBrowserSpeech(textToSpeak);
+        });
+
+        // After this one is done (request + play started), check if a newer one was requested
+        // Only for requests that are still the current one.
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+            const nextText = pendingElevenLabsText;
+            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false; // release before starting next (next will set true)
+            // start the next (this will set new controller etc.)
+            startElevenLabsRequest(nextText, nextVoiceId);
+          } else if (elevenLabsQuotaExceeded) {
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') {
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            currentElevenLabsController = null;
+            elevenLabsTTSLock = false;
+          }
+          // A newer speak() aborted us - check for pending text and start it.
+          // Even old aborts can start the *latest* pending.
+          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+            const nextText = pendingElevenLabsText;
+            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+            startElevenLabsRequest(nextText, nextVoiceId);
+          } else if (elevenLabsQuotaExceeded) {
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+          }
+          return;
+        }
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          currentElevenLabsController = null;
+          elevenLabsTTSLock = false;
+          console.log('[ElevenLabs] TTS request ended (error/abort) id', thisRequestId);
+        }
+
+        if (thisRequestId !== elevenLabsCurrentRequestId) {
+          return;  // ignore errors from superseded requests
+        }
+
+        const detail = err.detail;
+        const isQuota = elevenLabsQuotaExceeded || (detail && detail.code === 'quota_exceeded') || (err.message && err.message.includes('quota_exceeded'));
+        const isRate = err.message && (err.message.includes('429') || (detail && detail.code === 'rate_limit_error'));
+
+        if (!isQuota && !isRate) {
+          console.error('ElevenLabs TTS error (falling back to browser voice):', err);
+        } else if (isQuota) {
+          console.warn('ElevenLabs quota exceeded, falling back to browser voice.');
+        } else {
+          console.warn('ElevenLabs rate limit, falling back to browser voice.');
+        }
+
+        let userMessage = 'ElevenLabs TTS failed (check browser console for the exact error). Falling back to browser voice for now.';
+        if (isRate) {
+          elevenLabsNextAllowedTime = Date.now() + 5000;
+          userMessage = 'ElevenLabs rate limit hit (too many requests). Please wait a few seconds before clicking more 🔊 buttons. Falling back to browser voice.';
+        }
+        if (isQuota) {
+          elevenLabsQuotaExceeded = true;
+          try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
+          voiceSettings.voiceSource = 'local';
+          userMessage = 'ElevenLabs quota exceeded (managed or your key). Top up at elevenlabs.io, enable your own key, or use free local Mac voices (recommended for low-cost plans). Falling back to local voice.';
+        }
+        if (!elevenLabsFailedOnce) {
+          elevenLabsFailedOnce = true;
+          addMessage(userMessage, false);
+        }
+        fallbackToBrowserSpeech(textToSpeak);
+
+        // Even on error, check if there's a pending newer request (will respect backoff inside start)
+        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+          const nextText = pendingElevenLabsText;
+          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+          pendingElevenLabsText = null;
+          elevenLabsTTSLock = false;
+          startElevenLabsRequest(nextText, nextVoiceId);
+        } else if (elevenLabsQuotaExceeded) {
+          pendingElevenLabsText = null;
+          elevenLabsTTSLock = false;
+        }
+      });
+    }
+
+    // Also clear controller if stopSpeaking is called externally while a request is pending
+    // (already handled inside stopSpeaking)
+
+    function fallbackToBrowserSpeech(text) {
+      currentUtterance = new SpeechSynthesisUtterance(text);
+      lastSpokenText = text;
+      currentUtterance.rate = voiceSettings.rate || 0.95;
+      currentUtterance.pitch = voiceSettings.pitch || 1.0;
+
+      if (selectedVoice && selectedVoice.voiceURI) {
+        currentUtterance.voice = selectedVoice;
+      } else {
+        const voices = synth.getVoices();
+        const fallback = voices.find(v =>
+          v.name.includes('Samantha') || v.name.includes('Karen') ||
+          v.name.includes('Daniel') || v.name.includes('Serena') ||
+          (v.lang.includes('en') && v.localService)
+        ) || voices.find(v => v.lang.includes('en'));
+
+        if (fallback) {
+          currentUtterance.voice = fallback;
+          selectedVoice = fallback;
+        }
+      }
+
+      currentUtterance.onend = () => {
+        currentUtterance = null;
+        if (handsFreeEnabled && !isListening) {
+          // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
+          scheduleHandsFreeRestart(1200);
+        }
+      };
+
+      try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
+    }
+
+    function stopSpeaking() {
+      if (synth.speaking) synth.cancel();
+      currentUtterance = null;
+
+      if (elevenLabsAudio) {
+        elevenLabsAudio.pause();
+        elevenLabsAudio.currentTime = 0;
+        elevenLabsAudio = null;
+      }
+
+      if (currentElevenLabsController) {
+        currentElevenLabsController.abort();
+        currentElevenLabsController = null;
+      }
+
+      // User manually stopped output; clear awaiting so hands-free can restart promptly if desired
+      isAwaitingResponse = false;
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+    }
+
+    function updateStopButton() {
+      const isSpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
+      stopBtn.style.display = isSpeaking ? 'inline-block' : 'none';
+    }
+    setInterval(updateStopButton, 400);
+
+    // ====================== VOICE SETTINGS (unchanged, excellent) ======================
+    function formatVoiceName(fullName) {
+      if (fullName.includes("Siri Voice")) {
+        const match = fullName.match(/Siri Voice \d+/);
+        return match ? match[0] : fullName;
+      }
+      if (fullName.includes("(Enhanced)")) return fullName;
+      return fullName;
+    }
+
+    function loadVoices() {
+      const voiceSelect = document.getElementById('voice-select');
+      if (!voiceSelect) return;
+
+      const voices = synth.getVoices();
+      voiceSelect.innerHTML = '';
+
+      // Show ALL system voices so users can see and use any downloadable/purchased voices
+      // they install via macOS (System Settings > Accessibility > Spoken Content > Customize)
+      // or third-party voice packs (e.g. Cepstral, Acapela, etc.). These appear as "Mac" / system voices.
+      let voicesToShow = voices; // was filtered before; now all for flexibility
+
+      // Add local voices
+      voicesToShow.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = `local:${voice.name}`;
+        option.textContent = formatVoiceName(voice.name) + " (System)";
+        voiceSelect.appendChild(option);
+
+        if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
+          option.selected = true;
+          selectedVoice = voice;
+        }
+      });
+
+      // Add ElevenLabs voices (async) — only if user opted into premium (for cost control) OR provided their own key (they pay directly).
+      // This is the main lever for making a low-monthly-fee subscription viable: premium off by default = zero TTS spend.
+      // Also require serverHasManagedTTS (from health) so we don't show options or burn when owner has no ELEVENLABS_API_KEY configured.
+      // Force load even if !premium if a ElevenLabs voice was previously saved, so the selection doesn't visually revert.
+      let shouldLoadEleven = (premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey;
+      if (!shouldLoadEleven && voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        shouldLoadEleven = true;
+      }
+      if (shouldLoadEleven) {
+        const voicesUrl = elevenLabsApiKey
+          ? 'https://api.elevenlabs.io/v1/voices'
+          : '/api/voices';
+        const voicesHeaders = elevenLabsApiKey
+          ? { 'xi-api-key': elevenLabsApiKey }
+          : {};
+        fetch(voicesUrl, { headers: voicesHeaders })
+          .then(r => r.json())
+          .then(data => {
+            const voices = data?.voices || data; // proxy returns {voices: [...] } or direct
+            if (Array.isArray(voices)) {
+              elevenLabsVoices = voices;
+              voices.forEach(v => {
+                const option = document.createElement('option');
+                option.value = `elevenlabs:${v.voice_id}`;
+                option.textContent = `${v.name} (ElevenLabs)`;
+                voiceSelect.appendChild(option);
+              });
+              // Re-apply saved selection now that ElevenLabs options exist
+              applySavedVoiceSelection();
+            }
+          })
+          .catch((e) => {
+            console.error('Failed to load ElevenLabs voices list:', e);
+          });
+      }
+
+      // Fallback default selection if nothing was restored
+      if (!voiceSelect.value && voicesToShow.length > 0) {
+        const preferred = voicesToShow.find(v => v.name.includes("Enhanced")) ||
+                          voicesToShow.find(v => v.name.includes('Samantha')) ||
+                          voicesToShow.find(v => v.name.includes('Daniel') || v.name.includes('Alex'));
+        let defaultVoice = preferred;
+        if (!defaultVoice) {
+          // avoid Karen as primary default if better options exist
+          defaultVoice = voicesToShow.find(v => !v.name.toLowerCase().includes('karen')) || voicesToShow[0];
+        }
+        const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
+        if (defaultOption) defaultOption.selected = true;
+
+        selectedVoice = defaultVoice;
+        voiceSettings.voiceId = defaultVoice.name;
+        voiceSettings.voiceSource = 'local';
+      }
+    }
+
+    // Helper to apply the saved voice selection after voices (especially ElevenLabs) have loaded
+    function applySavedVoiceSelection() {
+      const voiceSelect = document.getElementById('voice-select');
+      if (!voiceSelect || !voiceSettings.voiceId) return;
+
+      const hasPersonalKey = !!elevenLabsApiKey;
+      const canUseElevenSaved = voiceSettings.voiceSource === 'elevenlabs' && !elevenLabsQuotaExceeded &&
+                                ((premiumVoicesEnabled && serverHasManagedTTS) || hasPersonalKey);
+
+      let targetValue;
+      if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        targetValue = `elevenlabs:${voiceSettings.voiceId}`;
+      } else {
+        targetValue = `local:${voiceSettings.voiceId}`;
+      }
+
+      const option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
+      if (option) {
+        option.selected = true;
+
+        // Also sync the selectedVoice variable for local voices
+        if (voiceSettings.voiceSource === 'local') {
+          const voices = synth.getVoices();
+          selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+        }
+        // IMPORTANT: do NOT force voiceSettings.voiceSource to 'local' here even if !canUseElevenSaved.
+        // This prevents the dropdown from "reverting" the saved ElevenLabs selection.
+        // The speak() function will still safely fallback to local voice if !canUseEleven.
+      } else if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        // Saved eleven but no matching option (e.g. voices not loaded yet) - keep the settings as-is
+        // so selection doesn't revert. loadVoices should have forced the fetch above.
+      } else {
+        // fallback to a good local (prefer Samantha etc, avoid Karen as primary)
+        const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
+          const n = o.value.toLowerCase();
+          return n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
+        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:') && !o.value.toLowerCase().includes('karen'));
+        if (firstGoodLocal) firstGoodLocal.selected = true;
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
+      }
+    }
+
+    function openVoiceSettings() {
+      const voiceModal = document.getElementById('voice-modal');
+      const voiceSelect = document.getElementById('voice-select');
+      const rateSlider = document.getElementById('rate-slider');
+      const pitchSlider = document.getElementById('pitch-slider');
+      const rateValue = document.getElementById('rate-value');
+      const pitchValue = document.getElementById('pitch-value');
+
+      const voices = synth.getVoices();
+      if (voices.length === 0) synth.onvoiceschanged = loadVoices;
+
+      // Pre-fill the ElevenLabs key input BEFORE loading voices
+      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
+      if (elevenLabsInput) elevenLabsInput.value = elevenLabsApiKey || '';
+
+      const quotaWarning = document.getElementById('elevenlabs-quota-warning');
+      if (quotaWarning) quotaWarning.style.display = elevenLabsQuotaExceeded ? 'block' : 'none';
+
+      if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
+        // do not force source change here - keeps the saved EL selection visible in dropdown
+        // speak() will fallback to local automatically
+      }
+
+      const autoSpeakToggle = document.getElementById('auto-speak-toggle');
+      if (autoSpeakToggle) {
+        autoSpeakToggle.checked = !!autoSpeakEnabled;
+        autoSpeakToggle.onchange = () => {
+          autoSpeakEnabled = !!autoSpeakToggle.checked;
+          localStorage.setItem('auto_speak_enabled', autoSpeakEnabled ? 'true' : 'false');
+        };
+      }
+
+      // Wake word settings
+      const wakeEnabledToggle = document.getElementById('wake-enabled');
+      if (wakeEnabledToggle) {
+        wakeEnabledToggle.checked = !!wakeWordEnabled;
+        wakeEnabledToggle.onchange = () => {
+          wakeWordEnabled = !!wakeEnabledToggle.checked;
+          localStorage.setItem('wake_word_enabled', wakeWordEnabled ? 'true' : 'false');
+          if (typeof updateHandsFreeLabel === 'function') updateHandsFreeLabel();
+        };
+      }
+      const wakeInput = document.getElementById('wake-word-input');
+      if (wakeInput) {
+        wakeInput.value = wakeWord || 'holy grok';
+        wakeInput.onchange = () => {
+          // live update? but we'll save on button
+        };
+      }
+
+      // Premium toggle removed (ElevenLabs is now key-only). We still keep the variable for backward compat with saved state.
+      loadVoices();
+
+      // Ensure the saved voice (local or ElevenLabs) is selected in the dropdown
+      // We call it a couple times to cover async ElevenLabs population
+      setTimeout(() => {
+        applySavedVoiceSelection();
+      }, 80);
+      setTimeout(() => {
+        applySavedVoiceSelection();
+      }, 300);  // give async ElevenLabs fetch time to complete and add options
+
+      rateSlider.value = voiceSettings.rate;
+      pitchSlider.value = voiceSettings.pitch;
+      rateValue.textContent = voiceSettings.rate;
+      pitchValue.textContent = voiceSettings.pitch;
+
+      rateSlider.oninput = () => rateValue.textContent = rateSlider.value;
+      pitchSlider.oninput = () => pitchValue.textContent = pitchSlider.value;
+
+      voiceModal.style.display = 'flex';
+    }
+
+    function saveVoiceSettings() {
+      const voiceSelect = document.getElementById('voice-select');
+      const rateSlider = document.getElementById('rate-slider');
+      const pitchSlider = document.getElementById('pitch-slider');
+      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
+
+      const selectedValue = voiceSelect.value; // e.g. "local:Daniel (Enhanced)" or "elevenlabs:abc123"
+
+      // Parse the selection into clean source + id
+      if (selectedValue.startsWith('elevenlabs:')) {
+        voiceSettings.voiceSource = 'elevenlabs';
+        voiceSettings.voiceId = selectedValue.replace('elevenlabs:', '');
+        // Auto-enable premium when user picks an ElevenLabs voice (so it doesn't stay disabled and cause "revert")
+        if (!premiumVoicesEnabled) {
+          premiumVoicesEnabled = true;
+          localStorage.setItem('premium_voices_enabled', 'true');
+        }
+      } else if (selectedValue.startsWith('local:')) {
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = selectedValue.replace('local:', '');
+      } else {
+        // Fallback
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = selectedValue;
+      }
+
+      voiceSettings.rate = parseFloat(rateSlider.value);
+      voiceSettings.pitch = parseFloat(pitchSlider.value);
+
+      // Premium toggle removed from UI. We keep premiumVoicesEnabled for any legacy saved state,
+      // but ElevenLabs now requires an explicit key (see key input + auto-enable on EL selection).
+
+      // Save ElevenLabs key if the user entered one (personal unlimited, billed to them)
+      if (elevenLabsInput && elevenLabsInput.value.trim()) {
+        const newKey = elevenLabsInput.value.trim();
+        // Reset quota state on any key save (user may have topped up)
+        elevenLabsFailedOnce = false;
+        elevenLabsQuotaExceeded = false;
+        elevenLabsNextAllowedTime = 0;
+        try { localStorage.removeItem('elevenlabs_quota_exceeded'); } catch (e) {}
+        // free cached audio blobs
+        for (const [k, v] of elevenLabsTTSCache) {
+          try { URL.revokeObjectURL(v.url); } catch (e) {}
+        }
+        elevenLabsTTSCache.clear();
+        elevenLabsApiKey = newKey;
+        localStorage.setItem('elevenlabs_api_key', elevenLabsApiKey);
+      }
+
+      // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
+      // This prevents accidental burn of owner's managed credits.
+      if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = '';
+        // pick a reasonable local default if possible
+        const voices = synth.getVoices();
+        const pref = voices.find(v => v.name.includes('Enhanced') || v.name.includes('Samantha')) || voices.find(v => v.lang.includes('en') && v.localService);
+        if (pref) {
+          voiceSettings.voiceId = pref.name;
+          selectedVoice = pref;
+        }
+        // gentle note
+        const note = document.createElement('div');
+        note.style.cssText = 'font-size:11px;color:#c94e4e;margin-top:4px;';
+        note.textContent = 'Premium was off — switched to free local voice to avoid using app credits.';
+        // append temporarily? for now just console; user sees in dropdown after close
+        console.warn('Forced local voice on save because premium toggle off + no personal key.');
+      }
+
+      // Persist the clean voice choice
+      localStorage.setItem('voice_source', voiceSettings.voiceSource);
+      localStorage.setItem('voice_id', voiceSettings.voiceId);
+      localStorage.setItem('voice_rate', voiceSettings.rate);
+      localStorage.setItem('voice_pitch', voiceSettings.pitch);
+      localStorage.setItem('auto_speak_enabled', autoSpeakEnabled ? 'true' : 'false');
+      localStorage.setItem('premium_voices_enabled', premiumVoicesEnabled ? 'true' : 'false');
+
+      // Wake word
+      const wakeEnabledToggle = document.getElementById('wake-enabled');
+      if (wakeEnabledToggle) {
+        wakeWordEnabled = !!wakeEnabledToggle.checked;
+        localStorage.setItem('wake_word_enabled', wakeWordEnabled ? 'true' : 'false');
+      }
+      const wakeInput = document.getElementById('wake-word-input');
+      if (wakeInput) {
+        const newWake = (wakeInput.value || 'holy grok').trim().toLowerCase();
+        wakeWord = newWake || 'holy grok';
+        localStorage.setItem('wake_word', wakeWord);
+      }
+
+      if (typeof updateHandsFreeLabel === 'function') {
+        updateHandsFreeLabel();
+      }
+
+      // Update selectedVoice for local Mac voices
+      const voices = synth.getVoices();
+      if (voiceSettings.voiceSource === 'local') {
+        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+      } else {
+        selectedVoice = null; // ElevenLabs uses its own path in speak()
+      }
+
+      // If we have a key, make sure ElevenLabs voices are loaded for next open
+      if (elevenLabsApiKey) {
+        loadVoices();
+      }
+
+      // Visual feedback on the button
+      const saveBtn = document.getElementById('save-voice-btn');
+      if (saveBtn) {
+        const old = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        setTimeout(() => {
+          if (saveBtn) saveBtn.textContent = old;
+        }, 900);
+      }
+
+      // Try to select the newly saved voice in the dropdown (for immediate feedback if modal re-opened quickly)
+      setTimeout(() => {
+        const sel = document.getElementById('voice-select');
+        if (sel) {
+          const target = voiceSettings.voiceSource === 'elevenlabs'
+            ? `elevenlabs:${voiceSettings.voiceId}`
+            : `local:${voiceSettings.voiceId}`;
+          const opt = Array.from(sel.options).find(o => o.value === target);
+          if (opt) opt.selected = true;
+        }
+      }, 50);
+
+      document.getElementById('voice-modal').style.display = 'none';
+    }
+
+    // ====================== SECURE API CALL (the big fix) ======================
+    async function sendToGrok(userText) {
+      if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+      pendingTranscript = null;
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      isAwaitingResponse = true;
+      wakeWordActiveUntil = 0;
+      longPauseUntil = 0;
+
+      // If user typed/sent while voice was listening (hands-free), stop the recognizer cleanly.
+      if (handsFreeEnabled && isListening && recognition) {
+        try { recognition.stop(); } catch (e) {}
+        stopListeningUI();
+      }
+
+      addMessage(userText, true);
+      conversation.push({ role: "user", content: userText });
+      autoSaveCurrentChat();
+      updateHeaderForCurrentChat();
+      renderSidebarChats(currentSearchTerm || '');
+
+      const loadingMsg = addMessage("Thinking...", false, true);
+      userInput.value = "";
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: conversation })
+        });
+
+        const data = await response.json();
+        removeLoadingMessage();
+
+        if (!response.ok) {
+          const errMsg = data?.error || `Error: ${response.status}`;
+          addMessage(errMsg, false);
+          conversation.pop();
+          autoSaveCurrentChat();
+      updateHeaderForCurrentChat();
+      renderSidebarChats(currentSearchTerm || '');
+          return;
+        }
+
+        const reply = data.reply || "No response received.";
+        const sources = Array.isArray(data.sources) ? data.sources : [];
+
+        const msgEl = addMessage(reply, false);
+
+        const speakBtn = document.createElement('button');
+        speakBtn.className = 'speak-btn';
+        speakBtn.textContent = '🔊';
+        speakBtn.onclick = () => speak(reply);
+        msgEl.appendChild(speakBtn);
+
+        if (sources.length > 0) {
+          attachSourcesUI(msgEl, sources, reply);
+        }
+
+        conversation.push({ role: "assistant", content: reply, sources: sources.length ? sources : undefined });
+
+        autoSaveCurrentChat();
+      updateHeaderForCurrentChat();
+      renderSidebarChats(currentSearchTerm || '');
+        isAwaitingResponse = false;
+
+        if (handsFreeEnabled && autoSpeakEnabled) {
+          // Always speak the full reply now, even for ElevenLabs voices.
+          // (Previously truncated for cost, but that caused "stops after 30s" with EL.
+          //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
+          //  Manual 🔊 on messages also full.)
+          speak(reply);
+          // After speak() the audio onended handlers will schedule the next listen (after echo delay)
+        } else if (handsFreeEnabled) {
+          // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
+          scheduleHandsFreeRestart(650);
+        }
+      } catch (err) {
+        removeLoadingMessage();
+        isAwaitingResponse = false;
+        addMessage("Connection error: " + err.message, false);
+        conversation.pop();
+        if (handsFreeEnabled) {
+          scheduleHandsFreeRestart(900);
+        }
+      }
+    }
+
+    // ====================== SPEECH RECOGNITION (preserved & excellent) ======================
+    function setupSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        micBtn.style.opacity = "0.4";
+        micBtn.title = "Voice input not supported in this browser";
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        // With interimResults=true and continuous=true, we get progressive results.
+        // Use the latest transcript (interim or final) to capture full sentences without cutting off.
+        const result = event.results[event.results.length - 1];
+        const transcript = result[0].transcript.trim();
+        const confidence = result[0].confidence || 0;
+        const isFinal = result.isFinal;
+
+        currentTranscript = transcript;  // for non-handsfree stop handlers etc.
+
+        if (handsFreeEnabled) {
+          const isCurrentlySpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
+          const hasWake = containsWakeWord(transcript);
+          const cmd = hasWake ? getCommandAfterWake(transcript) : '';
+
+          if (hasWake) {
+            // If we are in a long-pause mode (user said wake+pause etc.) and this is a new wake,
+            // it means the user is ready to submit the previous long thought (they may have taken a breath or thought).
+            if (longPauseUntil > Date.now() && pendingTranscript) {
+              const previousThought = pendingTranscript;
+              const prevConf = lastTranscriptConfidence || 0;
+              pendingTranscript = null;
+              longPauseUntil = 0;
+              // Commit the accumulated thought from the long pause
+              setTimeout(() => {
+                commitHandsFreeTranscript(previousThought, prevConf);
+              }, 0);
+              // If they also gave a new command after this "holy grok", queue it as follow-up
+              if (cmd && cmd.length > 1) {
+                pendingTranscript = cmd;
+                lastTranscriptConfidence = confidence;
+                wakeWordActiveUntil = Date.now() + 9000;
+                commitTimeout = setTimeout(() => {
+                  if (pendingTranscript) {
+                    const ft = pendingTranscript;
+                    const c = lastTranscriptConfidence || 0;
+                    pendingTranscript = null;
+                    commitTimeout = null;
+                    commitHandsFreeTranscript(ft, c);
+                  }
+                }, 850);
+              } else {
+                wakeWordActiveUntil = Date.now() + 9000;
+              }
+              return;
+            }
+
+            if (isCurrentlySpeaking) {
+              // Barge-in: stop speaking immediately when name is heard.
+              stopSpeaking();
+
+              if (cmd && cmd.length > 1) {
+                // User interrupted with a new command. Set pending and use a shorter
+                // commit timer so it feels responsive after interrupt, but still waits
+                // a moment for the user to finish the new sentence.
+                pendingTranscript = cmd;
+                lastTranscriptConfidence = confidence;
+                if (commitTimeout) clearTimeout(commitTimeout);
+                commitTimeout = setTimeout(() => {
+                  if (pendingTranscript) {
+                    const ft = pendingTranscript;
+                    const c = lastTranscriptConfidence || 0;
+                    pendingTranscript = null;
+                    commitTimeout = null;
+                    commitHandsFreeTranscript(ft, c);
+                  }
+                }, 650);
+                return;
+              } else {
+                // Just the name to interrupt. Open window for follow-up command.
+                wakeWordActiveUntil = Date.now() + 9000;
+                return;
+              }
+            } else {
+              // Normal activation (not speaking): do NOT send on interim.
+              // Prime/accumulate the pending with the cleaned command (across segments if needed)
+              // and reset the silence timer. This prevents "responding too fast" on partials
+              // and makes long commands after "holy grok" work reliably.
+
+              // Check if user wants a much longer pause (breathing, thinking, etc.)
+              const lower = (cmd || transcript).toLowerCase();
+              const wantsLongPause = /pause|hold|wait|longer|thinking|breath|one sec|sec/.test(lower);
+              if (wantsLongPause) {
+                longPauseUntil = Date.now() + 180000; // allow up to 3 minutes of silence for this turn
+                // Keep whatever was said before the pause command in pending
+                if (commitTimeout) clearTimeout(commitTimeout);
+                // Safety net: auto-commit after 60s of silence even in long-pause mode
+                commitTimeout = setTimeout(() => {
+                  if (pendingTranscript) {
+                    const ft = pendingTranscript;
+                    pendingTranscript = null;
+                    commitTimeout = null;
+                    longPauseUntil = 0;
+                    commitHandsFreeTranscript(ft, lastTranscriptConfidence || 0);
+                  }
+                }, 60000);
+                wakeWordActiveUntil = longPauseUntil;
+                return;
+              }
+
+              const thisCmd = cmd || transcript;
+              if (pendingTranscript && pendingTranscript.length > 0) {
+                if (thisCmd.length > pendingTranscript.length * 0.6) {
+                  pendingTranscript = pendingTranscript + ' ' + thisCmd;
+                } else {
+                  pendingTranscript = thisCmd;
+                }
+              } else {
+                pendingTranscript = thisCmd;
+              }
+              lastTranscriptConfidence = confidence;
+              wakeWordActiveUntil = Date.now() + 9000; // keep window open for continuation segments without repeating the name
+              if (longPauseUntil > Date.now()) {
+                longPauseUntil = Date.now() + 180000;
+              }
+              if (commitTimeout) clearTimeout(commitTimeout);
+              commitTimeout = setTimeout(() => {
+                if (pendingTranscript) {
+                  const ft = pendingTranscript;
+                  const c = lastTranscriptConfidence || 0;
+                  pendingTranscript = null;
+                  commitTimeout = null;
+                  commitHandsFreeTranscript(ft, c);
+                }
+              }, 3000); // longer default silence timer so user can breathe or collect thoughts
+              return;
+            }
+          }
+
+          // If AI is speaking, ignore non-wake input (prevents noise from affecting output).
+          if (isCurrentlySpeaking) {
+            return;
+          }
+
+          // Handle the case where user said just the name earlier (wakeWordActiveUntil window)
+          // and this utterance has no "holy grok" in it but is within the window.
+          const recentlyWoke = Date.now() < wakeWordActiveUntil;
+          if (recentlyWoke) {
+            // Continuation after hearing the name earlier: append to build full command
+            // (later segments often don't repeat "holy grok" in the current transcript)
+            if (pendingTranscript && pendingTranscript.length > 0) {
+              pendingTranscript = pendingTranscript + ' ' + transcript;
+            } else {
+              pendingTranscript = transcript;
+            }
+            lastTranscriptConfidence = confidence;
+            wakeWordActiveUntil = Date.now() + 9000; // extend window while user is speaking
+            if (longPauseUntil > Date.now()) {
+              longPauseUntil = Date.now() + 180000;
+            }
+            if (commitTimeout) clearTimeout(commitTimeout);
+            const useLong = longPauseUntil > Date.now();
+            const silenceMs = useLong ? 60000 : 3000;
+            commitTimeout = setTimeout(() => {
+              if (pendingTranscript) {
+                const ft = pendingTranscript;
+                const c = lastTranscriptConfidence || 0;
+                pendingTranscript = null;
+                commitTimeout = null;
+                if (useLong) longPauseUntil = 0;
+                commitHandsFreeTranscript(ft, c);
+              }
+            }, silenceMs);
+            return;
+          }
+
+          // No wake word and not in active window: for hands-free we ignore to avoid noise commits.
+          // (Non-handsfree branch below handles explicit mic use.)
+          return;
+        }
+
+        // Non-handsfree (hold/click to talk): send on final result.
+        // With interim we still get building text, but only send the finalized full utterance.
+        if (isFinal) {
+          stopListeningUI();
+          if (transcript && transcript.length > 1) {
+            const t = transcript;
+            currentTranscript = '';
+            sendToGrok(t);
+          }
+        }
+      };
+
+      recognition.onerror = (event) => {
+        // Suppress the extremely common "no-speech" spam in hands-free mode.
+        // Only log actual problems.
+        if (event.error !== 'no-speech') {
+          console.warn("Speech recognition error:", event);
+        }
+
+        stopListeningUI();
+
+        if (event.error === "no-speech") {
+          if (handsFreeEnabled && !startingRecognition) {
+            // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
+            scheduleHandsFreeRestart(1400);
+          }
+          return;
+        }
+
+        // Handle real problems
+        if (event.error === 'network' || event.error === 'audio-capture' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          const isNetwork = event.error === 'network';
+          if (handsFreeEnabled) {
+            // Tell the user once (avoid spam)
+            const key = 'sr-' + event.error;
+            if (!window._srErrorShown || !window._srErrorShown[key]) {
+              window._srErrorShown = window._srErrorShown || {};
+              window._srErrorShown[key] = true;
+              let userMsg = "Speech recognition problem (" + event.error + "). ";
+              if (isNetwork) {
+                userMsg += "This is usually Chrome's cloud speech service having a temporary issue (internet/VPN/firewall). Hands-free is paused. You can still type messages or use the mic button manually. Toggle Hands-free off and back on to retry.";
+              } else {
+                userMsg += "Check your microphone permissions or try a different browser. Hands-free paused for now.";
+              }
+              addMessage(userMsg, false);
+            }
+            // Long cooldown — don't auto-restart the loop aggressively
+            // User can manually click the mic or toggle hands-free to resume.
+          }
+
+          // For network errors, recreate the recognizer after a short delay to get a clean state
+          if (isNetwork) {
+            setTimeout(() => {
+              if (handsFreeEnabled && recognition) {
+                try {
+                  resetSpeechRecognition();
+                } catch (e) {}
+              }
+            }, 2500);
+          }
+          return;
+        }
+
+        // For other errors (aborted, etc.), just let the onend handler decide whether to restart.
+      };
+
+      recognition.onend = () => {
+        stopListeningUI();
+        const isOutputting = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
+        if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
+          // Slightly longer delay on natural end to reduce thrashing when there's silence.
+          // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
+          scheduleHandsFreeRestart(600);
+        }
+      };
+    }
+
+    function startListening() {
+      if (!recognition) {
+        alert("Voice input is not supported in this browser. Use Chrome, Edge, or Safari.");
+        return;
+      }
+      if (isListening || startingRecognition) return;
+
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+
+      currentTranscript = '';
+
+      // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
+      if (synth.speaking) synth.cancel();
+      if (elevenLabsAudio) {
+        elevenLabsAudio.pause();
+        elevenLabsAudio.currentTime = 0;
+        elevenLabsAudio = null;
+      }
+
+      // Always attempt a clean stop first. The Web Speech API state machine is picky;
+      // calling start() too soon after end/error or without stopping often throws InvalidStateError.
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+
+      startingRecognition = true;
+
+      // Small grace delay after stop() dramatically reduces "already started" races.
+      // We do NOT schedule another start on InvalidStateError here; we let the 'onend' event
+      // fire (which it will) and let the onend handler decide whether to restart. This prevents
+      // thundering herds of overlapping start attempts.
+      setTimeout(() => {
+        if (isListening) {
+          startingRecognition = false;
+          return;
+        }
+        // For auto hands-free restarts, don't start if we're still in the middle of an AI response.
+        if (handsFreeEnabled && isAwaitingResponse) {
+          startingRecognition = false;
+          return;
+        }
+
+        try {
+          recognition.start();
+          isListening = true;
+          micBtn.classList.add("listening");
+          micBtn.textContent = "●";
+          startingRecognition = false;
+        } catch (e) {
+          startingRecognition = false;
+          if (e.name === 'InvalidStateError') {
+            console.warn("Recognition already started, will retry on end");
+            // Do not schedule here. onend (or a future manual trigger) will handle restart.
+          } else {
+            console.error(e);
+          }
+          stopListeningUI();
+        }
+      }, 120);  // slightly longer grace to give the recognizer time to settle after stop()
+    }
+
+    function stopListeningUI() {
+      isListening = false;
+      startingRecognition = false;
+      currentTranscript = '';
+      micBtn.classList.remove("listening");
+      micBtn.textContent = "🎙️";
+    }
+
+    // Helper to completely recreate the SpeechRecognition instance after bad errors (network etc).
+    // The Web Speech API can get into a bad state after certain errors; fresh instance helps.
+    function resetSpeechRecognition() {
+      startingRecognition = false;
+      if (recognition) {
+        try {
+          recognition.onresult = null;
+          recognition.onerror = null;
+          recognition.onend = null;
+          try { recognition.stop(); } catch (e) {}
+        } catch (e) {}
+        recognition = null;
+      }
+      // Re-attach everything
+      setupSpeechRecognition();
+    }
+
+    // Centralized restart scheduler for hands-free to avoid overlapping timers that cause
+    // "Recognition already started" + laggy / noisy behavior.
+    function scheduleHandsFreeRestart(delayMs = 900) {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+      }
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        if (handsFreeEnabled && !isListening && !isAwaitingResponse && !startingRecognition) {
+          startListening();
+        }
+      }, delayMs);
+    }
+
+    // === Wake word support (customizable, default "holy grok") ===
+    // Only process commands when the user addresses it by name (unless turned off).
+    // This greatly reduces false triggers from background noise.
+    // Also allows saying the name while the AI is speaking to interrupt ("barge in").
+    function getCurrentWakePhrases() {
+      if (!wakeWordEnabled) return [];
+      const base = (wakeWord || 'holy grok').toLowerCase().trim();
+      if (!base) return [];
+      return [
+        base,
+        base.replace(/\s+/g, ''),
+        'hey ' + base,
+        'hey ' + base.replace(/\s+/g, '')
+      ];
+    }
+
+    function containsWakeWord(text) {
+      if (!text) return false;
+      if (!wakeWordEnabled) return true; // wake word turned off: treat all speech as addressed
+      const t = text.toLowerCase();
+      return getCurrentWakePhrases().some(phrase => t.includes(phrase));
+    }
+
+    function getCommandAfterWake(fullText) {
+      if (!fullText) return '';
+      const lower = fullText.toLowerCase();
+      let startIdx = -1;
+      let wakeLen = 0;
+
+      const phrases = getCurrentWakePhrases();
+      for (const phrase of phrases) {
+        const i = lower.indexOf(phrase);
+        if (i !== -1) {
+          startIdx = i;
+          wakeLen = phrase.length;
+          break;
+        }
+      }
+      if (startIdx === -1) return '';
+
+      let remainder = fullText.substring(startIdx + wakeLen).trim();
+
+      // Strip common leading filler words/punctuation so "[name], let's talk about..."
+      // becomes "let's talk about..."
+      remainder = remainder.replace(/^[\s,.;:!?]+/, '').trim();
+      remainder = remainder.replace(/^(hey|ok|okay|please|now|um|uh|so|well|lets|let us|can you|could you|would you|go ahead|talk about|tell me about)\s+/i, '').trim();
+
+      return remainder;
+    }
+
+    // Extracted commit logic for hands-free wake-word gated turns.
+    // Centralized so we can call it from the silence timer and from barge-in short timers.
+    function commitHandsFreeTranscript(finalText, conf) {
+      stopListeningUI();
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+
+      // === Wake-word gated commit ===
+      let cmd = getCommandAfterWake(finalText);
+      const recentlyWoke = Date.now() < wakeWordActiveUntil;
+
+      if ((!cmd || cmd.length < 2) && recentlyWoke) {
+        cmd = finalText.trim();
+        wakeWordActiveUntil = 0;
+      longPauseUntil = 0;
+      }
+
+      if (!cmd || cmd.length < 2) {
+        if (recentlyWoke) wakeWordActiveUntil = 0;
+        scheduleHandsFreeRestart(650);
+        return;
+      }
+
+      if (cmd.length < 3 || conf < 0.48) {
+        scheduleHandsFreeRestart(650);
+        return;
+      }
+
+      if (lastSpokenText) {
+        const spoken = lastSpokenText.toLowerCase();
+        const heard = cmd.toLowerCase();
+        const isEcho = heard.length < 40 && (
+          heard.includes(spoken.slice(0, 30)) ||
+          spoken.includes(heard.slice(0, 20))
+        );
+        if (isEcho) {
+          scheduleHandsFreeRestart(900);
+          return;
+        }
+      }
+
+      wakeWordActiveUntil = 0;
+      longPauseUntil = 0;
+      isAwaitingResponse = true;
+      sendToGrok(cmd);
+    }
+
+    // Mic button behavior
+    micBtn.addEventListener("click", () => {
+      if (handsFreeEnabled) {
+        if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        pendingTranscript = null;
+        currentTranscript = '';
+        wakeWordActiveUntil = 0;
+      longPauseUntil = 0;
+        window._srErrorShown = {}; // allow error messages again after user manually intervened
+
+        if (isListening) {
+          recognition.stop();
+        } else if (synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused)) {
+          stopSpeaking();
+        } else {
+          startListening();
+        }
+      } else {
+        if (isListening) {
+          recognition.stop();
+        } else {
+          startListening();
+        }
+      }
+    });
+
+    // Hold-to-talk for non-hands-free
+    function enableHoldToTalk() {
+      micBtn.addEventListener("mousedown", () => { if (!handsFreeEnabled && !isListening) startListening(); });
+      micBtn.addEventListener("mouseup", () => { if (!handsFreeEnabled && isListening && recognition) recognition.stop(); });
+      micBtn.addEventListener("mouseleave", () => { if (!handsFreeEnabled && isListening && recognition) recognition.stop(); });
+      micBtn.addEventListener("touchstart", (e) => { e.preventDefault(); if (!handsFreeEnabled && !isListening) startListening(); });
+      micBtn.addEventListener("touchend", (e) => { e.preventDefault(); if (!handsFreeEnabled && isListening && recognition) recognition.stop(); });
+    }
+
+    // ====================== UI EVENTS ======================
+    sendBtn.addEventListener("click", () => {
+      const text = userInput.value.trim();
+      if (text) sendToGrok(text);
+    });
+
+    userInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const text = userInput.value.trim();
+        if (text) sendToGrok(text);
+      }
+    });
+
+    stopBtn.addEventListener("click", stopSpeaking);
+    voiceBtn.addEventListener('click', openVoiceSettings);
+
+    if (sourcesBtn) {
+      sourcesBtn.addEventListener('click', () => {
+        const modal = document.getElementById('sources-modal');
+        if (modal) modal.style.display = 'flex';
+      });
+    }
+
+    const upgradeBtn = document.getElementById('upgrade-btn');
+    if (upgradeBtn) {
+      upgradeBtn.addEventListener('click', () => {
+        const modal = document.getElementById('subscribe-modal');
+        if (modal) modal.style.display = 'flex';
+      });
+    }
+
+    // Beta activation (local simulation)
+    const activateBtn = document.getElementById('activate-beta-btn');
+    if (activateBtn) {
+      activateBtn.addEventListener('click', () => {
+        const email = document.getElementById('subscribe-email').value.trim();
+        if (!email || !email.includes('@')) {
+          alert('Please enter a valid email');
+          return;
+        }
+        localStorage.setItem('beta_subscribed', 'true');
+        localStorage.setItem('beta_email', email);
+        document.getElementById('subscribe-form').style.display = 'none';
+        document.getElementById('subscribe-success').style.display = 'block';
+        updateSubscriptionUI();
+      });
+    }
+
+    function updateSubscriptionUI() {
+      const isSub = localStorage.getItem('beta_subscribed') === 'true';
+      const upgradeBtnEl = document.getElementById('upgrade-btn');
+      if (upgradeBtnEl) {
+        upgradeBtnEl.textContent = isSub ? '✓ Pro' : 'Upgrade / Beta';
+        upgradeBtnEl.style.background = isSub ? '#2c3e50' : '#c9a227';
+        upgradeBtnEl.style.color = isSub ? '#c9a227' : '#1a252f';
+      }
+      const statusEl = document.getElementById('status');
+      if (statusEl && isSub) {
+        statusEl.textContent = 'Beta Pro • Unlimited • Full Greek/Hebrew sources';
+      }
+    }
+    // Call on load
+    setTimeout(updateSubscriptionUI, 100);
+
+    const policyLink = document.getElementById('policy-sources-link');
+    if (policyLink) {
+      policyLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modal = document.getElementById('sources-modal');
+        if (modal) modal.style.display = 'flex';
+      });
+    }
+
+    // Sidebar Grok-like controls (New chat + live search)
+    const sidebarNewBtn = document.getElementById('sidebar-new-chat-btn');
+    if (sidebarNewBtn) {
+      sidebarNewBtn.addEventListener('click', () => {
+        createNewChat();
+        renderSidebarChats(currentSearchTerm || '');
+      });
+    }
+
+    const sidebarSearch = document.getElementById('sidebar-search');
+    if (sidebarSearch) {
+      sidebarSearch.addEventListener('input', (e) => {
+        renderSidebarChats(e.target.value);
+      });
+    }
+
+    // Hands-free toggle
+    const handsFreeCheckbox = document.getElementById('handsfree-toggle');
+    handsFreeCheckbox.checked = handsFreeEnabled;
+
+    // Update label to show current wake word setting (preserve the checkbox element)
+    function updateHandsFreeLabel() {
+      const label = document.querySelector('label[for="handsfree-toggle"]');
+      if (label) {
+        let extra = '';
+        if (handsFreeEnabled && wakeWordEnabled && wakeWord) {
+          extra = ` (wake: ${wakeWord})`;
+        } else if (handsFreeEnabled && !wakeWordEnabled) {
+          extra = ' (always listening)';
+        }
+        let textSpan = label.querySelector('.hf-text');
+        if (!textSpan) {
+          textSpan = document.createElement('span');
+          textSpan.className = 'hf-text';
+          label.appendChild(textSpan);
+        }
+        textSpan.textContent = ' Hands-free' + extra;
+      }
+    }
+    updateHandsFreeLabel();
+
+    handsFreeCheckbox.addEventListener('change', () => {
+      handsFreeEnabled = handsFreeCheckbox.checked;
+      localStorage.setItem('handsfree_enabled', handsFreeEnabled);
+
+      if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      pendingTranscript = null;
+
+      if (handsFreeEnabled) {
+        continuousMode = true;
+        micBtn.style.background = '#c9a227';
+        micBtn.style.color = 'white';
+        micBtn.title = "Click to interrupt (Hands-free active)";
+        if (!isListening) scheduleHandsFreeRestart(400);
+      } else {
+        continuousMode = false;
+        micBtn.style.background = '#e8e0d5';
+        micBtn.style.color = '#2c3e50';
+        micBtn.title = "Click or hold to speak";
+        if (isListening) recognition.stop();
+        isAwaitingResponse = false;
+        wakeWordActiveUntil = 0;
+      longPauseUntil = 0;
+        window._srErrorShown = {}; // reset so helpful error messages can appear again next time
+      }
+      if (typeof updateHandsFreeLabel === 'function') {
+        updateHandsFreeLabel();
+      }
+    });
+
+    // ====================== CHAT HISTORY (multi-conversation persistence) ======================
+    function loadChats() {
+      try {
+        chats = JSON.parse(localStorage.getItem('winc_chats') || '[]');
+        // simple migration from very old single-conversation storage
+        if (chats.length === 0) {
+          const old = localStorage.getItem('winc_conversation');
+          if (old) {
+            try {
+              const msgs = JSON.parse(old);
+              if (Array.isArray(msgs) && msgs.length > 0) {
+                const id = Date.now();
+                chats.push({ id, title: 'Previous session', messages: msgs, updated: Date.now() });
+                localStorage.removeItem('winc_conversation');
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) { chats = []; }
+    }
+
+    function saveChats() {
+      try { localStorage.setItem('winc_chats', JSON.stringify(chats)); } catch (e) {}
+    }
+
+    function getCurrentChat() {
+      return chats.find(c => c.id === currentChatId);
+    }
+
+    function updateChatTitleIfNeeded(chat) {
+      if (!chat || chat.title !== 'New conversation') return;
+      const firstUser = (chat.messages || []).find(m => m.role === 'user');
+      if (firstUser) {
+        let t = firstUser.content.trim().slice(0, 60);
+        if (t.length === 60) t += '...';
+        chat.title = t || 'Conversation';
+        saveChats();
+      }
+    }
+
+    // (removed old modal renderChatsList - now using sidebar)
+    // function renderChatsList() {
+    //   ... (old code removed to clean up dead references to removed #chats-modal)
+
+    // (old dead renderChatsList body removed - was referencing removed #chats-modal)
+
+    // Sidebar renderer for Grok-like experience (always visible list)
+    let currentSearchTerm = '';
+    function renderSidebarChats(filter = '') {
+      const container = document.getElementById('sidebar-chats-list');
+      if (!container) return;
+      container.innerHTML = '';
+      currentSearchTerm = filter.toLowerCase();
+
+      const sorted = chats.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+      const filtered = sorted.filter(chat => {
+        const title = (chat.title || '').toLowerCase();
+        const snippet = (chat.messages && chat.messages[0] ? chat.messages[0].content : '').toLowerCase();
+        return !currentSearchTerm || title.includes(currentSearchTerm) || snippet.includes(currentSearchTerm);
+      });
+
+      if (filtered.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'padding:12px 16px; color:#888; font-size:12px;';
+        empty.textContent = currentSearchTerm ? 'No matches' : 'No conversations yet';
+        container.appendChild(empty);
+        return;
+      }
+
+      // Group like Grok: Today / Yesterday / Previous 7 days / Older
+      function getGroupKey(ts) {
+        if (!ts) return 'older';
+        const d = new Date(ts);
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+        if (diff < 1) return 'today';
+        if (diff < 2) return 'yesterday';
+        if (diff <= 7) return 'week';
+        return 'older';
+      }
+      const groups = { today: [], yesterday: [], week: [], older: [] };
+      filtered.forEach(chat => {
+        const key = getGroupKey(chat.updated);
+        groups[key].push(chat);
+      });
+
+      const groupOrder = ['today', 'yesterday', 'week', 'older'];
+      const groupLabels = {
+        today: 'Today',
+        yesterday: 'Yesterday',
+        week: 'Previous 7 days',
+        older: 'Older'
+      };
+
+      groupOrder.forEach(key => {
+        const groupChats = groups[key];
+        if (!groupChats || groupChats.length === 0) return;
+
+        // group header
+        const header = document.createElement('div');
+        header.style.cssText = 'padding: 6px 12px 4px; font-size: 10px; font-weight: 600; color: #888; background: #111a24; border-bottom: 1px solid #2c3e50;';
+        header.textContent = groupLabels[key];
+        container.appendChild(header);
+
+        groupChats.forEach(chat => {
+          const item = document.createElement('div');
+          item.className = 'chat-list-item' + (chat.id === currentChatId ? ' active' : '');
+          item.dataset.chatId = chat.id;
+
+          const dateStr = chat.updated ? new Date(chat.updated).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : '';
+          const title = chat.title || 'Untitled';
+
+          item.innerHTML = `
+            <div class="title" title="${title}">${title}</div>
+            <div style="display:flex; align-items:center; gap:4px; font-size:10px; color:#888;">
+              <span>${dateStr}</span>
+              <button class="edit" title="Rename">✎</button>
+              <button class="delete" title="Delete">×</button>
+            </div>
+          `;
+
+          // Click to load (but not on buttons)
+          item.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            switchToChat(chat.id);
+          });
+
+          // Rename
+          const editBtn = item.querySelector('.edit');
+          editBtn.addEventListener('click', (e) => {
+            e.stopImmediatePropagation();
+            const titleDiv = item.querySelector('.title');
+            const original = chat.title || '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = original;
+            input.style.cssText = 'flex:1; background:#1a252f; color:#eee; border:1px solid #c9a227; border-radius:4px; padding:2px 4px; font-size:13px;';
+            titleDiv.replaceWith(input);
+            input.focus();
+            input.select();
+
+            const save = () => {
+              const newTitle = input.value.trim() || 'Untitled';
+              chat.title = newTitle;
+              saveChats();
+              renderSidebarChats(currentSearchTerm);
+              if (chat.id === currentChatId) {
+                updateHeaderForCurrentChat();
+              }
+            };
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (ev) => {
+              if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+              if (ev.key === 'Escape') { renderSidebarChats(currentSearchTerm); }
+            });
+          });
+
+          // Delete
+          const delBtn = item.querySelector('.delete');
+          delBtn.addEventListener('click', (e) => {
+            e.stopImmediatePropagation();
+            if (confirm(`Delete "${chat.title || 'this chat'}"?`)) {
+              chats = chats.filter(c => c.id !== chat.id);
+              saveChats();
+              if (currentChatId === chat.id) {
+                if (chats.length > 0) {
+                  switchToChat(chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id);
+                } else {
+                  createNewChat();
+                }
+              } else {
+                renderSidebarChats(currentSearchTerm);
+              }
+            }
+          });
+
+          container.appendChild(item);
+        });
+      });
+    }
+
+    // Sidebar collapse (Grok-like)
+    function initSidebarCollapse() {
+      const sidebar = document.getElementById('sidebar');
+      const toggle = document.getElementById('sidebar-toggle');
+      if (!sidebar || !toggle) return;
+
+      const saved = localStorage.getItem('winc_sidebar_collapsed') === 'true';
+      if (saved) {
+        sidebar.classList.add('collapsed');
+        toggle.textContent = '»';
+      }
+
+      toggle.addEventListener('click', (e) => {
+        e.stopImmediatePropagation();
+        sidebar.classList.toggle('collapsed');
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        toggle.textContent = isCollapsed ? '»' : '«';
+        localStorage.setItem('winc_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+      });
+
+      // clicking the narrow bar expands it
+      sidebar.addEventListener('click', () => {
+        if (sidebar.classList.contains('collapsed')) {
+          sidebar.classList.remove('collapsed');
+          toggle.textContent = '«';
+          localStorage.setItem('winc_sidebar_collapsed', 'false');
+        }
+      });
+    }
+
+    function createNewChat() {
+      const id = Date.now();
+      const chat = {
+        id,
+        title: 'New conversation',
+        messages: [],
+        updated: Date.now()
+      };
+      chats.unshift(chat);
+      currentChatId = id;
+      saveChats();
+
+      // reset any pending voice state
+      if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+      pendingTranscript = null;
+      restartTimer = null;
+      isAwaitingResponse = false;
+      longPauseUntil = 0;
+      wakeWordActiveUntil = 0;
+
+      // clear UI and conversation
+      document.getElementById('messages').innerHTML = '';
+      conversation = [];
+
+      // show welcome only for brand new empty chats
+      showWelcomeMessage();
+
+      updateHeaderForCurrentChat();
+      renderSidebarChats(currentSearchTerm || '');
+      return chat;
+    }
+
+    function switchToChat(id) {
+      const chat = chats.find(c => c.id === id);
+      if (!chat) return;
+      currentChatId = id;
+
+      // reset pending voice state when switching chats
+      if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+      pendingTranscript = null;
+      restartTimer = null;
+      isAwaitingResponse = false;
+      longPauseUntil = 0;
+      wakeWordActiveUntil = 0;
+
+      const msgsEl = document.getElementById('messages');
+      msgsEl.innerHTML = '';
+      conversation = (chat.messages || []).slice();
+
+      // re-render with speak buttons + sources when available
+      conversation.forEach(msg => {
+        const el = addMessage(msg.content, msg.role === 'user');
+        if (msg.role === 'assistant') {
+          const btn = document.createElement('button');
+          btn.className = 'speak-btn';
+          btn.textContent = '🔊';
+          btn.onclick = () => speak(msg.content);
+          el.appendChild(btn);
+
+          if (msg.sources && msg.sources.length) {
+            attachSourcesUI(el, msg.sources, msg.content);
+          }
+        }
+      });
+
+      updateHeaderForCurrentChat();
+      saveChats(); // mark as recently used
+      renderSidebarChats(currentSearchTerm || '');
+    }
+
+    function updateHeaderForCurrentChat() {
+      const el = document.getElementById('current-chat-title');
+      if (!el) return;
+      const chat = getCurrentChat();
+      if (chat) {
+        el.textContent = chat.title || 'Conversation';
+        el.title = 'Click to rename • ' + new Date(chat.updated || Date.now()).toLocaleString();
+        // make title clickable for rename (Grok-like)
+        el.onclick = () => {
+          const original = chat.title || '';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = original;
+          input.style.cssText = 'font-size:11px; background:#1a252f; color:#ddd; border:1px solid #c9a227; border-radius:3px; padding:1px 4px; width:140px;';
+          el.replaceWith(input);
+          input.focus();
+          input.select();
+          const save = () => {
+            const newT = input.value.trim() || 'Untitled';
+            chat.title = newT;
+            saveChats();
+            updateHeaderForCurrentChat();
+            renderSidebarChats(currentSearchTerm || '');
+          };
+          input.onblur = save;
+          input.onkeydown = (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+            if (ev.key === 'Escape') { updateHeaderForCurrentChat(); renderSidebarChats(currentSearchTerm || ''); }
+          };
+        };
+      } else {
+        el.textContent = '';
+        el.onclick = null;
+      }
+    }
+
+    function showWelcomeMessage() {
+      const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
+
+Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
+
+Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
+
+Hands-free mode uses a wake word by default ("holy grok", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "holy grok let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+
+      const welcomeEl = addMessage(welcome, false);
+      const speakWelcome = document.createElement("button");
+      speakWelcome.className = "speak-btn";
+      speakWelcome.textContent = "🔊";
+      speakWelcome.onclick = () => speak(welcome);
+      welcomeEl.appendChild(speakWelcome);
+    }
+
+    function autoSaveCurrentChat() {
+      if (!currentChatId) return;
+      const chat = getCurrentChat();
+      if (!chat) return;
+      chat.messages = conversation.slice();
+      chat.updated = Date.now();
+      updateChatTitleIfNeeded(chat);
+      saveChats();
+    }
+
+    // ====================== INITIALIZATION ======================
+    function init() {
+      loadChats();
+
+      // ensure we have a current chat
+      if (!currentChatId || !getCurrentChat()) {
+        if (chats.length > 0) {
+          // load most recent
+          currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
+        } else {
+          createNewChat();
+        }
+      }
+
+      // load messages for current chat into memory
+      const chat = getCurrentChat();
+      if (chat) {
+        conversation = (chat.messages || []).slice();
+      }
+
+      setupSpeechRecognition();
+
+      updateHeaderForCurrentChat();
+      renderSidebarChats(''); // render Grok-like sidebar on init
+      initSidebarCollapse();
+
+      if (handsFreeEnabled) {
+        micBtn.style.background = '#c9a227';
+        micBtn.style.color = 'white';
+        micBtn.title = "Click to interrupt (Hands-free active)";
+        scheduleHandsFreeRestart(800);
+      }
+
+      // Learn if server has ELEVENLABS_API_KEY so we can safely gate premium voices (prevents offering options or errors when owner hasn't enabled managed TTS for the sub model)
+      fetch('/api/health').then(r => r.json()).then(data => {
+        serverHasManagedTTS = !!data.hasTTSKey;
+        // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
+        if (serverHasManagedTTS && premiumVoicesEnabled) {
+          setTimeout(loadVoices, 50);
+        }
+      }).catch(() => { serverHasManagedTTS = false; });
+
+      synth.onvoiceschanged = loadVoices;
+      setTimeout(loadVoices, 300);
+
+      // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
+      const saveVoiceBtn = document.getElementById('save-voice-btn');
+      if (saveVoiceBtn) {
+        saveVoiceBtn.addEventListener('click', saveVoiceSettings);
+      }
+
+      const closeVoiceBtn = document.getElementById('close-voice-btn');
+      if (closeVoiceBtn) {
+        closeVoiceBtn.addEventListener('click', () => {
+          document.getElementById('voice-modal').style.display = 'none';
+        });
+      }
+
+      // Welcome only for brand new empty chats
+      const currentChat = getCurrentChat();
+      const isEmptyNew = !currentChat || (currentChat.messages || []).length === 0;
+      if (isEmptyNew) {
+        const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
+
+Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
+
+Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
+
+Hands-free mode uses a wake word by default ("holy grok", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "holy grok let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+
+        const welcomeEl = addMessage(welcome, false);
+        const speakWelcome = document.createElement("button");
+        speakWelcome.className = "speak-btn";
+        speakWelcome.textContent = "🔊";
+        speakWelcome.onclick = () => speak(welcome);
+        welcomeEl.appendChild(speakWelcome);
+      } else {
+        // re-render the loaded chat's messages (with speak buttons)
+        const msgsEl = document.getElementById('messages');
+        msgsEl.innerHTML = '';
+        conversation.forEach(msg => {
+          const el = addMessage(msg.content, msg.role === 'user');
+          if (msg.role === 'assistant') {
+            const btn = document.createElement('button');
+            btn.className = 'speak-btn';
+            btn.textContent = '🔊';
+            btn.onclick = () => speak(msg.content);
+            el.appendChild(btn);
+
+            if (msg.sources && msg.sources.length) {
+              attachSourcesUI(el, msg.sources, msg.content);
+            }
+          }
+        });
+      }
+
+      // Optional: show connection status
+      fetch('/api/health').then(r => r.json()).then(d => {
+        if (!d.hasKey) {
+          addMessage("Server warning: No XAI_API_KEY configured in .env", false);
+        }
+      }).catch(() => {});
+    }
+
+    init();
+  </script>
+</body>
+</html>

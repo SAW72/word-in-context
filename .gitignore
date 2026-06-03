@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Environment secrets (never commit your keys)
+.env
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Optional: betas collected at runtime (for beta phase; replace with real DB/CRM later to persist across deploys)
+# betas.json
+# (currently tracked so test entries are in repo; runtime appends on a deployed instance live in that container's fs only)

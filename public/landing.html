@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Word in Context • Voice-First Bible Study with Grok</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f5e8d3; color: #2c3e50; line-height: 1.6; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+    header { background: #1a252f; color: white; padding: 20px 0; }
+    nav { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 24px; font-weight: 700; color: #c9a227; text-decoration: none; }
+    .hero { text-align: center; padding: 80px 20px; background: linear-gradient(135deg, #1a252f 0%, #2c3e50 100%); color: white; }
+    .hero h1 { font-size: 48px; margin: 0 0 16px; }
+    .hero p { font-size: 22px; max-width: 600px; margin: 0 auto 32px; opacity: 0.9; }
+    .btn { display: inline-block; background: #c9a227; color: #1a252f; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 18px; margin: 8px; transition: transform 0.2s; }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-outline { background: transparent; border: 2px solid #c9a227; color: #c9a227; }
+    section { padding: 60px 0; }
+    h2 { font-size: 36px; text-align: center; margin-bottom: 40px; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
+    .feature { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .feature h3 { color: #c9a227; }
+    .pricing { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+    .plan { background: white; border-radius: 16px; padding: 32px; width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); text-align: center; }
+    .plan.popular { border: 3px solid #c9a227; position: relative; }
+    .plan.popular::before { content: "BEST VALUE"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #c9a227; color: #1a252f; padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .price { font-size: 48px; font-weight: 700; margin: 16px 0; }
+    .price span { font-size: 18px; opacity: 0.7; }
+    .signup-form { max-width: 480px; margin: 40px auto; background: white; padding: 32px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+    .signup-form input { width: 100%; padding: 14px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+    .signup-form button { width: 100%; }
+    .social-proof { text-align: center; margin: 40px 0; font-size: 14px; opacity: 0.8; }
+    footer { background: #1a252f; color: #eee; text-align: center; padding: 40px 20px; font-size: 14px; }
+    .sources-note { background: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; max-width: 700px; margin: 20px auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <nav>
+        <a href="/" class="logo">📖 Word in Context</a>
+        <div>
+          <a href="#features" style="color:white; margin-right:20px; text-decoration:none;">Features</a>
+          <a href="#pricing" style="color:white; margin-right:20px; text-decoration:none;">Pricing</a>
+          <a href="/app" class="btn" style="padding:8px 20px; font-size:14px;">Try the App</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="container">
+      <h1>Voice-first Bible study<br>powered by Grok + live originals</h1>
+      <p>Speak naturally with "holy grok". Get precise citations from Greek New Testament (SBL) and Hebrew Old Testament (WLC) — all live, spoken back to you. Low monthly fee. Free excellent local voices.</p>
+      <a href="#signup" class="btn">Join the Beta — First 3 Months Free</a>
+      <a href="/app" class="btn btn-outline">Open the Chat App</a>
+      <div class="social-proof">Trusted by Bible students, pastors, and scholars • 100% private chats • No data sold</div>
+    </div>
+  </div>
+
+  <section id="features" class="container">
+    <h2>Why Word in Context is different</h2>
+    <div class="features">
+      <div class="feature">
+        <h3>🗣️ "Holy Grok" Hands-Free</h3>
+        <p>Say the wake word and have natural conversations. Long pauses supported. It only listens when addressed. Perfect for driving, walking, or study time.</p>
+      </div>
+      <div class="feature">
+        <h3>📜 Live Greek &amp; Hebrew Sources</h3>
+        <p>Every scripture reference pulls live from the public API. Greek NT (SBLGNT, Byzantine, TR) and Hebrew OT (Westminster Leningrad Codex) shown and spoken with transliteration.</p>
+      </div>
+      <div class="feature">
+        <h3>🔊 Free High-Quality Voices</h3>
+        <p>All your Mac system voices (including paid packs) work perfectly — unlimited and free. Optional ElevenLabs with your own key (you pay them directly).</p>
+      </div>
+      <div class="feature">
+        <h3>💬 Grok-like Conversations</h3>
+        <p>Full history sidebar (Today / Yesterday / Older), rename, delete, search. Persistent across refreshes. Exactly like using Grok but grounded in Scripture.</p>
+      </div>
+      <div class="feature">
+        <h3>✅ Verifiable Citations</h3>
+        <p>Every quote includes exact source + translation. Click Sources under any reply to see the live-fetched text. Speak the exact verses with one tap.</p>
+      </div>
+      <div class="feature">
+        <h3>🔒 Private &amp; Low Cost</h3>
+        <p>Your chats stay on your device. Server only proxies Grok (your key never exposed). Designed for sustainable low monthly subscription ($4–7 range).</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="container">
+    <h2>Simple, affordable pricing</h2>
+    <div class="pricing">
+      <div class="plan">
+        <h3>Free</h3>
+        <div class="price">$0<span>/mo</span></div>
+        <ul style="text-align:left; font-size:14px; line-height:1.8;">
+          <li>Full access to local voices</li>
+          <li>Basic chat with Grok</li>
+          <li>Limited daily messages</li>
+          <li>Public Bible sources</li>
+        </ul>
+        <a href="/app" class="btn" style="width:100%; box-sizing:border-box;">Start Free</a>
+      </div>
+      <div class="plan popular">
+        <h3>Beta Pro</h3>
+        <div class="price">$4.99<span>/mo</span></div>
+        <ul style="text-align:left; font-size:14px; line-height:1.8;">
+          <li>Unlimited messages</li>
+          <li>Full hands-free + wake word</li>
+          <li>Original Greek + Hebrew sources</li>
+          <li>Conversation history &amp; sidebar</li>
+          <li>Priority support</li>
+          <li>Bring your own ElevenLabs key</li>
+        </ul>
+        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box;">Join Beta — 3 Months Free</a>
+        <small style="display:block; margin-top:8px; opacity:0.7;">Then $4.99/mo. Cancel anytime.</small>
+      </div>
+    </div>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">No credit card for beta. We’re looking for 50–100 serious testers to shape v1.</p>
+  </section>
+
+  <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
+    <h2 style="margin-top:0;">Web App First — Mobile Coming Later</h2>
+    <p style="max-width:700px; margin:0 auto 16px;">We're starting with this powerful web experience (works great on desktop for serious study and mobile browsers). This lets us iterate fast based on your feedback.</p>
+    <p style="max-width:700px; margin:0 auto;">Later we'll build dedicated iOS and Android apps (likely React Native) for push notifications, better offline support, and App Store presence. The core will always stay excellent on the web.</p>
+    <p style="font-size:12px; opacity:0.7; margin-top:12px;">PWA support coming soon — you'll be able to "install" it like an app from your browser.</p>
+  </section>
+
+  <section id="signup" class="container">
+    <h2 style="text-align:center;">Be one of the first testers</h2>
+    <div class="signup-form">
+      <form id="beta-form">
+        <input type="text" id="name" placeholder="Your name" required>
+        <input type="email" id="email" placeholder="Your email" required>
+        <input type="text" id="church" placeholder="Church / Bible study group (optional)">
+        <button type="submit" class="btn" style="width:100%;">Claim my Beta Spot (Free for 3 months)</button>
+        <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">We’ll email you a unique link + early access. Limited spots. Early testers may be asked to sign a simple NDA for feedback on unreleased features.</p>
+      </form>
+      <div id="beta-success" style="display:none; text-align:center; color:#2c3e50;">
+        <h3>Thank you! 🎉</h3>
+        <p>Check your email for your beta invite. We’re launching the first wave soon.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container" style="text-align:center;">
+    <div class="sources-note">
+      <strong>100% transparent sources:</strong> All scripture (including SBL Greek NT and WLC Hebrew) is fetched live from the public bible.helloao.org API. Nothing is hardcoded. Full citations always provided and spoken.
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/app" style="color:#c9a227;">Open the app</a><br>
+      <small>© 2026 • Private by design • No ads • Your data stays yours</small><br>
+      <small style="opacity:0.6;">Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.</small>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('beta-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        name: form.name.value,
+        email: form.email.value,
+        church: form.church.value
+      };
+      try {
+        const res = await fetch('/api/beta-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          form.style.display = 'none';
+          document.getElementById('beta-success').style.display = 'block';
+        } else {
+          alert('Something went wrong. Please try again or email us directly.');
+        }
+      } catch (err) {
+        alert('Network error. Please try again later.');
+      }
+    });
+  </script>
+</body>
+</html>

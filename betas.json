@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Test User",
+    "email": "tester@example.com",
+    "church": "Test Church",
+    "signedUp": "2026-06-02T15:08:02.804Z",
+    "source": "landing"
+  },
+  {
+    "name": "Second Tester",
+    "email": "tester2@example.com",
+    "church": "",
+    "signedUp": "2026-06-02T15:08:07.113Z",
+    "source": "landing"
+  },
+  {
+    "name": "Anonymous",
+    "email": "finaltester@church.org",
+    "church": "",
+    "signedUp": "2026-06-02T15:08:38.812Z",
+    "source": "landing"
+  },
+  {
+    "name": "Anonymous",
+    "email": "deploy-test@example.com",
+    "church": "",
+    "signedUp": "2026-06-02T21:55:15.406Z",
+    "source": "landing"
+  }
+]
