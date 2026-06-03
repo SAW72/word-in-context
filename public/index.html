@@ -1294,6 +1294,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         selectedVoice = defaultVoice;
         voiceSettings.voiceId = defaultVoice.name;
         voiceSettings.voiceSource = 'local';
+
+        // Force the select to the preferred value (helps with timing/order issues in some browsers)
+        voiceSelect.value = `local:${defaultVoice.name}`;
       }
     }
 
