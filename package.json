@@ -1,7 +1,7 @@
 {
   "name": "word-in-context",
   "version": "2.0.0",
-  "description": "Secure, voice-first Bible word and passage study app focused on original Hebrew, Aramaic, and Greek using only literal translations.",
+  "description": "Secure, voice-first application for deep study of the Hebrew, Aramaic, and Greek Scriptures using only literal, formal-equivalence translations. Powered by Grok with live SBL Greek + WLC Hebrew sources.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
