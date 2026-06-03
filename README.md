@@ -62,8 +62,11 @@ word-in-context/
 ├── server.js          # Secure proxy (Grok + optional managed ElevenLabs TTS) + Bible API
 ├── package.json
 ├── .env.example
+├── .gitignore
+├── betas.json         # Beta tester signups (from landing form)
 ├── public/
-│   └── index.html     # The entire frontend (voice, UI, etc.)
+│   ├── landing.html   # Marketing landing + beta signup form (served at /)
+│   └── index.html     # The full chat app UI + voice (served at /app)
 └── README.md
 ```
 
