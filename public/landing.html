@@ -129,18 +129,29 @@
   </section>
 
   <section id="signup" class="container">
-    <h2 style="text-align:center;">Be one of the first testers</h2>
+    <h2 style="text-align:center;">Start your 3-day free trial</h2>
     <div class="signup-form">
-      <form id="beta-form">
-        <input type="text" id="name" placeholder="Your name" required>
-        <input type="email" id="email" placeholder="Your email" required>
-        <input type="text" id="church" placeholder="Church / Bible study group (optional)">
-        <button type="submit" class="btn" style="width:100%;">Claim my Beta Spot (Free for 3 months)</button>
-        <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">We’ll email you a unique link + early access. Limited spots. Early testers may be asked to sign a simple NDA for feedback on unreleased features.</p>
+      <form id="trial-form">
+        <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <button type="submit" class="btn" style="width:100%;">Start 3-Day Free Trial (then $4.99/mo)</button>
+        <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">
+          No card required to start trial. We’ll send a secure login link after checkout.<br>
+          <strong>We will never sell your information.</strong> Payment details handled securely by Stripe. Your chats stay private in your browser only. Full account control — we can grant free access or cut off access at any time.
+        </p>
       </form>
-      <div id="beta-success" style="display:none; text-align:center; color:#2c3e50;">
-        <h3>Thank you! 🎉</h3>
-        <p>Check your email for your beta invite. We’re launching the first wave soon.</p>
+      <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
+        <h3>Check your email!</h3>
+        <p>Complete payment to activate your 3-day trial. Then use the login link we send.</p>
+      </div>
+
+      <hr style="margin:30px 0;">
+      <p style="text-align:center;"><strong>Already have an account?</strong></p>
+      <form id="login-form" style="max-width:400px;margin:0 auto;">
+        <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <button type="submit" class="btn" style="width:100%; background:#555;">Send me a login link</button>
+      </form>
+      <div id="login-success" style="display:none; text-align:center; color:#2c3e50; margin-top:10px;">
+        <p>Check your email for the secure login link.</p>
       </div>
     </div>
   </section>
@@ -160,25 +171,43 @@
   </footer>
 
   <script>
-    document.getElementById('beta-form').addEventListener('submit', async function(e) {
+    // New 3-day trial + Stripe flow
+    document.getElementById('trial-form').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const form = e.target;
-      const data = {
-        name: form.name.value,
-        email: form.email.value,
-        church: form.church.value
-      };
+      const email = document.getElementById('trial-email').value;
       try {
-        const res = await fetch('/api/beta-signup', {
+        const res = await fetch('/api/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify({ email })
         });
-        if (res.ok) {
-          form.style.display = 'none';
-          document.getElementById('beta-success').style.display = 'block';
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url; // go to Stripe Checkout
         } else {
-          alert('Something went wrong. Please try again or email us directly.');
+          alert(data.error || 'Something went wrong.');
+        }
+      } catch (err) {
+        alert('Network error. Please try again later.');
+      }
+    });
+
+    // Magic link login request
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      try {
+        const res = await fetch('/api/request-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('login-form').style.display = 'none';
+          document.getElementById('login-success').style.display = 'block';
+        } else {
+          alert(data.error || 'No account found with that email. Start a trial first.');
         }
       } catch (err) {
         alert('Network error. Please try again later.');

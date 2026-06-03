@@ -2,9 +2,47 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const OpenAI = require('openai');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const Database = require('better-sqlite3');
+const jwt = require('jsonwebtoken');
+const { Resend } = require('resend');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
+
+// === Simple SQLite DB for users (persistent on Render disk for beta; migrate to Postgres later) ===
+const db = new Database(path.join(__dirname, 'users.db'));
+db.pragma('journal_mode = WAL');
+
+// Users table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
+    status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
+    trial_end TEXT,
+    access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
+    manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// Magic tokens table (short lived)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS magic_tokens (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
+
+// === Email (Resend) ===
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 
 // Production note: When deploying (Render, Railway, etc.), set NODE_ENV=production
 // and provide XAI_API_KEY + any future keys via the platform's environment variables.
@@ -213,6 +251,41 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
 
 app.use(express.json({ limit: '1mb' }));
 
+// Raw body for Stripe webhook
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { email, id? }
+
+    // Check DB status
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    if (!user.access_granted) {
+      return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
+    }
+    const now = new Date();
+    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
+    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
+    if (!isTrialing && !isActive && user.status !== 'trialing') {
+      return res.status(403).json({ error: 'Subscription required or trial expired.' });
+    }
+    req.userRecord = user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // Production security note for beta/public launch:
 // npm install express-rate-limit helmet
 // Then uncomment:
@@ -305,8 +378,248 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   }
 });
 
-// === Main chat endpoint (secure proxy) ===
-app.post('/api/chat', async (req, res) => {
+// === NEW: User login / account system with 3-day trial + Stripe ===
+
+// Helper: send magic link email (or log in dev)
+async function sendMagicLink(email, token) {
+  const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
+  const html = `
+    <p>Click to log in to Word in Context:</p>
+    <p><a href="${loginUrl}">Log in to your account</a></p>
+    <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. Payment info is handled securely by Stripe.</small></p>
+  `;
+  if (resend) {
+    await resend.emails.send({
+      from: 'Word in Context <no-reply@word-in-context.com>',
+      to: email,
+      subject: 'Log in to Word in Context',
+      html
+    });
+  } else {
+    console.log(`[MAGIC LINK for ${email}] ${loginUrl}`);
+  }
+}
+
+// Create or get user + start 3-day trial via Stripe Checkout
+app.post('/api/create-checkout', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      // Create Stripe customer
+      const customer = await stripe.customers.create({ email });
+      db.prepare(`
+        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
+        VALUES (?, ?, 'trialing', datetime('now', '+3 days'), 1)
+      `).run(email, customer.id);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    }
+
+    // Create Checkout for subscription with 3-day trial
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: user.stripe_customer_id,
+      line_items: [{
+        price: process.env.STRIPE_PRICE_ID,
+        quantity: 1,
+      }],
+      subscription_data: {
+        trial_period_days: 3,
+      },
+      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
+      metadata: { email }
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('create-checkout error:', err);
+    res.status(500).json({ error: 'Could not start checkout' });
+  }
+});
+
+// Magic link login request
+app.post('/api/request-login', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) return res.status(404).json({ error: 'No account with that email. Start a trial first.' });
+
+    // Create short-lived token
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+    await sendMagicLink(email, token);
+    res.json({ success: true, message: 'Check your email for a login link.' });
+  } catch (err) {
+    console.error('request-login error:', err);
+    res.status(500).json({ error: 'Could not send login link' });
+  }
+});
+
+// Verify magic token and issue JWT
+app.get('/api/verify-magic', (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token required' });
+
+    const record = db.prepare('SELECT * FROM magic_tokens WHERE token = ?').get(token);
+    if (!record || new Date(record.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(record.email);
+    if (!user || !user.access_granted) {
+      return res.status(403).json({ error: 'Account access revoked' });
+    }
+
+    // Issue JWT (7 days)
+    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+
+    // Clean token
+    db.prepare('DELETE FROM magic_tokens WHERE token = ?').run(token);
+
+    // Return token for frontend to store
+    res.json({ token: jwtToken, email: user.email, status: user.status });
+  } catch (err) {
+    console.error('verify-magic error:', err);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Get current user status
+app.get('/api/me', requireAuth, (req, res) => {
+  const u = req.userRecord;
+  res.json({
+    email: u.email,
+    status: u.status,
+    trial_end: u.trial_end,
+    access_granted: !!u.access_granted,
+    manual_free: !!u.manual_free
+  });
+});
+
+// Simple admin (password protected, for your full control)
+app.post('/api/admin/login', (req, res) => {
+  if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Bad password' });
+  const adminToken = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '4h' });
+  res.json({ token: adminToken });
+});
+
+app.get('/api/admin/users', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    if (payload.role !== 'admin') throw new Error();
+  } catch { return res.status(401).json({ error: 'Admin required' }); }
+
+  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, created_at FROM users ORDER BY created_at DESC').all();
+  res.json(users);
+});
+
+app.post('/api/admin/set-access', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    if (payload.role !== 'admin') throw new Error();
+  } catch { return res.status(401).json({ error: 'Admin required' }); }
+
+  const { email, access_granted, manual_free } = req.body;
+  db.prepare(`
+    UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
+  `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+  res.json({ success: true });
+});
+
+// Stripe webhook (for subscription updates)
+app.post('/api/stripe-webhook', (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Webhook signature error:', err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const email = session.metadata?.email || session.customer_email;
+    if (email) {
+      db.prepare(`
+        UPDATE users SET status = 'trialing', access_granted = 1 WHERE email = ?
+      `).run(email);
+    }
+  }
+
+  if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    const customerId = sub.customer;
+    const user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId);
+    if (user) {
+      let newStatus = sub.status;
+      if (sub.status === 'trialing' && sub.trial_end) {
+        db.prepare('UPDATE users SET trial_end = ? WHERE id = ?').run(new Date(sub.trial_end * 1000).toISOString(), user.id);
+      }
+      if (sub.status === 'canceled' || sub.status === 'past_due') {
+        // keep access until trial_end or manual
+      }
+      db.prepare('UPDATE users SET status = ? WHERE id = ?').run(newStatus, user.id);
+    }
+  }
+
+  res.json({ received: true });
+});
+
+// Simple success page after Stripe Checkout
+app.get('/success', (req, res) => {
+  res.send(`
+    <html><head><title>Success - Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
+    <h1>🎉 Payment successful!</h1>
+    <p>Your 3-day trial has started (or subscription activated).</p>
+    <p>Check your email for a secure login link.</p>
+    <p><a href="/app">Open the App</a> (you may need to log in first)</p>
+    <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
+    </body></html>
+  `);
+});
+
+// Login page that handles magic token and stores it for the app
+app.get('/login', (req, res) => {
+  const token = req.query.token;
+  if (!token) {
+    return res.send('<p>No token provided. <a href="/">Go home</a></p>');
+  }
+  // Redirect to verify which will return JSON; frontend will handle in practice
+  res.send(`
+    <html><body style="font-family:sans-serif;padding:40px;">
+    <p>Verifying login...</p>
+    <script>
+      fetch('/api/verify-magic?token=${token}')
+        .then(r => r.json())
+        .then(data => {
+          if (data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('user_email', data.email);
+            window.location.href = '/app';
+          } else {
+            document.body.innerHTML = '<p>Login failed: ' + (data.error || 'unknown') + '</p>';
+          }
+        })
+        .catch(() => document.body.innerHTML = '<p>Login error. Try the link again.</p>');
+    </script>
+    </body></html>
+  `);
+});
+
+// === Main chat endpoint (secure proxy) - now requires login ===
+app.post('/api/chat', requireAuth, async (req, res) => {
   try {
     const { messages } = req.body;
 
