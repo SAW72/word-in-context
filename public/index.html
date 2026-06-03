@@ -369,7 +369,7 @@
     <div class="modal-content" style="max-width: 380px;">
       <h3 style="margin-bottom:4px;">Voice Settings</h3>
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All system voices (default, free). Install more downloadable/paid voices via macOS System Settings → Accessibility → Spoken Content → System voice → Customize (or third-party packs). Premium ElevenLabs optional via key (for advanced use).
+        Higher quality system voices are shown by default (we hide many older/novelty macOS voices like Karen, Alex, etc. that sound poor). Install better ones via macOS System Settings → Accessibility → Spoken Content → System voice → Customize (or third-party packs). "Google UK English Male" is preferred when available. Premium ElevenLabs optional via key (for advanced use).
       </p>
       <p id="elevenlabs-quota-warning" style="font-size:11px; color:#c94e4e; margin:0 0 8px; font-weight:500; display:none;">ElevenLabs quota exceeded (your key) — using free local/system voices. Add credits to your ElevenLabs account or switch back to a system voice.</p>
       
@@ -477,7 +477,7 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>Free &amp; unlimited</strong>: Your device’s built-in system voices (including any Siri-quality or other packs you have purchased and installed via macOS System Settings → Accessibility → Spoken Content).</li>
+          <li><strong>Free &amp; unlimited</strong>: Higher-quality system voices (we hide many older ones). Includes any good Siri-quality or purchased packs you install via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default when available in the browser.</li>
           <li><strong>Optional premium</strong>: ElevenLabs — you must paste your own API key in Voice Settings. You are billed directly by ElevenLabs; this app does not provide or share any ElevenLabs credits.</li>
         </ul>
 
@@ -1165,10 +1165,21 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voices = synth.getVoices();
       voiceSelect.innerHTML = '';
 
-      // Show ALL system voices so users can see and use any downloadable/purchased voices
-      // they install via macOS (System Settings > Accessibility > Spoken Content > Customize)
-      // or third-party voice packs (e.g. Cepstral, Acapela, etc.). These appear as "Mac" / system voices.
-      let voicesToShow = voices; // was filtered before; now all for flexibility
+      // Filter to higher quality voices. We exclude known low-quality, novelty, or older
+      // macOS voices (Karen, Alex, Bruce, Fred, etc. are often robotic or unpleasant).
+      // Google voices (especially "Google UK English Male") are usually excellent when
+      // available in the browser. Users who install better Mac voices via System Settings
+      // will still see the good ones (Enhanced, Samantha, Daniel, or their packs).
+      const badVoiceSubstrings = [
+        'karen', 'alex', 'bruce', 'fred', 'agnes', 'albert', 'vicki', 'ralph',
+        'princess', 'junior', 'organ', 'cellos', 'bells', 'boing', 'bubbles',
+        'whisper', 'hysterical', 'deranged', 'trinoids', 'zarvox', 'bad news', 'badnews'
+      ];
+      let voicesToShow = voices.filter(v => {
+        const n = v.name.toLowerCase();
+        return !badVoiceSubstrings.some(bad => n.includes(bad));
+      });
+      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback if filter removes everything
 
       // Add local voices
       voicesToShow.forEach(voice => {
@@ -1221,12 +1232,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        const preferred = voicesToShow.find(v => v.name.includes("Enhanced")) ||
+        // Strongly prefer Google UK English Male (user-requested high quality default).
+        // Then other Google UK, Enhanced, Samantha, Daniel.
+        const preferred = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+                          voicesToShow.find(v => v.name.includes("Enhanced")) ||
                           voicesToShow.find(v => v.name.includes('Samantha')) ||
-                          voicesToShow.find(v => v.name.includes('Daniel') || v.name.includes('Alex'));
+                          voicesToShow.find(v => v.name.includes('Daniel'));
         let defaultVoice = preferred;
         if (!defaultVoice) {
-          // avoid Karen as primary default if better options exist
           defaultVoice = voicesToShow.find(v => !v.name.toLowerCase().includes('karen')) || voicesToShow[0];
         }
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
@@ -1270,10 +1284,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Saved eleven but no matching option (e.g. voices not loaded yet) - keep the settings as-is
         // so selection doesn't revert. loadVoices should have forced the fetch above.
       } else {
-        // fallback to a good local (prefer Samantha etc, avoid Karen as primary)
+        // fallback to a good local (prefer Google UK English Male, then Samantha/Enhanced/Daniel)
         const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
           const n = o.value.toLowerCase();
-          return n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
+          return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
         }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:') && !o.value.toLowerCase().includes('karen'));
         if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
@@ -1408,9 +1422,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = '';
-        // pick a reasonable local default if possible
+        // pick a reasonable local default if possible (prefer Google UK English Male)
         const voices = synth.getVoices();
-        const pref = voices.find(v => v.name.includes('Enhanced') || v.name.includes('Samantha')) || voices.find(v => v.lang.includes('en') && v.localService);
+        const pref = voices.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+                     voices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+                     voices.find(v => v.name.includes('Enhanced') || v.name.includes('Samantha')) ||
+                     voices.find(v => v.lang.includes('en') && v.localService);
         if (pref) {
           voiceSettings.voiceId = pref.name;
           selectedVoice = pref;
