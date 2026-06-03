@@ -1177,10 +1177,53 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let voicesToShow = voices.filter(v => {
         if (!isEnglishVoice(v)) return true; // keep every non-English voice
         const n = v.name.toLowerCase();
-        if (n.includes('karen')) return false; // user specifically dislikes the Karen voice
+        if (n.includes('karen') || n.includes('allison')) return false; // user dislikes Karen and Allison as defaults
         return goodEnglishKeywords.some(kw => n.includes(kw));
       });
       if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
+
+      // Sort for better user experience:
+      // - Good English voices first, with "Google UK English Male" on top, then other Google UK, Enhanced, etc.
+      // - Then non-English voices in alphabetical order by name.
+      // This avoids pure alphabetical mess and puts quality English defaults first while keeping all other languages.
+      voicesToShow.sort((a, b) => {
+        const na = a.name.toLowerCase();
+        const nb = b.name.toLowerCase();
+        const aIsEng = isEnglishVoice(a);
+        const bIsEng = isEnglishVoice(b);
+
+        if (aIsEng && bIsEng) {
+          // Prioritize Google UK English Male
+          const aUKMale = na.includes('google uk english male') ? 0 : (na.includes('google') && na.includes('uk') ? 1 : 2);
+          const bUKMale = nb.includes('google uk english male') ? 0 : (nb.includes('google') && nb.includes('uk') ? 1 : 2);
+          if (aUKMale !== bUKMale) return aUKMale - bUKMale;
+
+          // Other Google UK
+          const aGoogleUK = (na.includes('google') && na.includes('uk')) ? 0 : 1;
+          const bGoogleUK = (nb.includes('google') && nb.includes('uk')) ? 0 : 1;
+          if (aGoogleUK !== bGoogleUK) return aGoogleUK - bGoogleUK;
+
+          // Enhanced
+          const aEnh = na.includes('enhanced') ? 0 : 1;
+          const bEnh = nb.includes('enhanced') ? 0 : 1;
+          if (aEnh !== bEnh) return aEnh - bEnh;
+
+          // Then other good English keywords
+          const aGood = goodEnglishKeywords.some(kw => na.includes(kw)) ? 0 : 1;
+          const bGood = goodEnglishKeywords.some(kw => nb.includes(kw)) ? 0 : 1;
+          if (aGood !== bGood) return aGood - bGood;
+
+          // Alpha for rest of English
+          return na.localeCompare(nb);
+        } else if (aIsEng && !bIsEng) {
+          return -1; // English before non-English
+        } else if (!aIsEng && bIsEng) {
+          return 1;
+        } else {
+          // Both non-English: alphabetical by name
+          return na.localeCompare(nb);
+        }
+      });
 
       // Add local voices
       voicesToShow.forEach(voice => {
@@ -1242,7 +1285,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                           voicesToShow.find(v => v.name.includes('Daniel'));
         let defaultVoice = preferred;
         if (!defaultVoice) {
-          defaultVoice = voicesToShow.find(v => !v.name.toLowerCase().includes('karen')) || voicesToShow[0];
+          // Prefer any remaining English voice (after sort, this will be the best one like Google UK)
+          defaultVoice = voicesToShow.find(v => isEnglishVoice(v)) || voicesToShow[0];
         }
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
@@ -1285,11 +1329,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Saved eleven but no matching option (e.g. voices not loaded yet) - keep the settings as-is
         // so selection doesn't revert. loadVoices should have forced the fetch above.
       } else {
-        // fallback to a good local (prefer Google UK English Male, then Samantha/Enhanced/Daniel)
+        // fallback to a good local (prefer Google UK English Male etc, or first English after our filter)
         const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
           const n = o.value.toLowerCase();
           return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
-        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:') && !o.value.toLowerCase().includes('karen'));
+        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));  // first local (will be best English after our sort/filter)
         if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
