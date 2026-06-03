@@ -369,7 +369,7 @@
     <div class="modal-content" style="max-width: 380px;">
       <h3 style="margin-bottom:4px;">Voice Settings</h3>
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        Higher quality system voices are shown by default (we hide many older/novelty macOS voices like Karen, Alex, etc. that sound poor). Install better ones via macOS System Settings → Accessibility → Spoken Content → System voice → Customize (or third-party packs). "Google UK English Male" is preferred when available. Premium ElevenLabs optional via key (for advanced use).
+        We show all voices in other languages, but for English we only include the better/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc.). Older English voices like Karen/Alex are hidden. Install more via macOS System Settings → Accessibility → Spoken Content → System voice → Customize (or third-party packs). "Google UK English Male" is the preferred default when available. Premium ElevenLabs optional via key.
       </p>
       <p id="elevenlabs-quota-warning" style="font-size:11px; color:#c94e4e; margin:0 0 8px; font-weight:500; display:none;">ElevenLabs quota exceeded (your key) — using free local/system voices. Add credits to your ElevenLabs account or switch back to a system voice.</p>
       
@@ -477,7 +477,7 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>Free &amp; unlimited</strong>: Higher-quality system voices (we hide many older ones). Includes any good Siri-quality or purchased packs you install via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default when available in the browser.</li>
+          <li><strong>Free &amp; unlimited</strong>: All voices in non-English languages + only the better English voices (Google, Enhanced, Samantha, Daniel, etc.). We hide older low-quality English voices like Karen/Alex. "Google UK English Male" is preferred when available.</li>
           <li><strong>Optional premium</strong>: ElevenLabs — you must paste your own API key in Voice Settings. You are billed directly by ElevenLabs; this app does not provide or share any ElevenLabs credits.</li>
         </ul>
 
@@ -1165,21 +1165,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voices = synth.getVoices();
       voiceSelect.innerHTML = '';
 
-      // Filter to higher quality voices. We exclude known low-quality, novelty, or older
-      // macOS voices (Karen, Alex, Bruce, Fred, etc. are often robotic or unpleasant).
-      // Google voices (especially "Google UK English Male") are usually excellent when
-      // available in the browser. Users who install better Mac voices via System Settings
-      // will still see the good ones (Enhanced, Samantha, Daniel, or their packs).
-      const badVoiceSubstrings = [
-        'karen', 'alex', 'bruce', 'fred', 'agnes', 'albert', 'vicki', 'ralph',
-        'princess', 'junior', 'organ', 'cellos', 'bells', 'boing', 'bubbles',
-        'whisper', 'hysterical', 'deranged', 'trinoids', 'zarvox', 'bad news', 'badnews'
-      ];
+      // Keep ALL voices in non-English languages (users may want Spanish, French, German, Japanese, etc.).
+      // For English voices only: keep the good/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc.).
+      // This removes the old low-quality English Mac voices (Karen, Alex, Bruce, Fred, etc.) while preserving full language variety.
+      const isEnglishVoice = (v) => {
+        const lang = (v.lang || '').toLowerCase();
+        const name = v.name.toLowerCase();
+        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
+      };
+      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
       let voicesToShow = voices.filter(v => {
+        if (!isEnglishVoice(v)) return true; // keep every non-English voice
         const n = v.name.toLowerCase();
-        return !badVoiceSubstrings.some(bad => n.includes(bad));
+        if (n.includes('karen')) return false; // user specifically dislikes the Karen voice
+        return goodEnglishKeywords.some(kw => n.includes(kw));
       });
-      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback if filter removes everything
+      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
 
       // Add local voices
       voicesToShow.forEach(voice => {
