@@ -428,6 +428,7 @@
 
       <div style="font-size:13px; line-height:1.45; color:#333;">
         <p style="margin:0 0 10px;"><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
+        <p style="font-size:12px; color:#666; margin:0 0 8px;">In demo mode (no login) limited to 5 responses before sign-up prompt for full trial.</p>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Bible Scripture Text (English + Original Languages)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
@@ -1615,8 +1616,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           addMessage(errMsg, false);
           conversation.pop();
           autoSaveCurrentChat();
-      updateHeaderForCurrentChat();
-      renderSidebarChats(currentSearchTerm || '');
+          updateHeaderForCurrentChat();
+          renderSidebarChats(currentSearchTerm || '');
+          if (response.status === 401 || response.status === 403) {
+            const modal = document.getElementById('subscribe-modal');
+            if (modal) modal.style.display = 'flex';
+          }
           return;
         }
 
