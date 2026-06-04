@@ -399,9 +399,9 @@
           Require wake word for hands-free (recommended to reduce noise)
         </label>
         <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Custom wake word (e.g. "hey assistant" or "computer")
-          <input type="text" id="wake-word-input" value="holy grok" placeholder="holy grok" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
+          <input type="text" id="wake-word-input" value="John" placeholder="John" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
         </label>
-        <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "holy grok". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
+        <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "John". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
       </div>
 
       <!-- ElevenLabs is now bring-your-own-key only (no more shared "managed" credits in the default UI
@@ -659,9 +659,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
     let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
 
-    // Wake word customization (default "holy grok", can turn off or change name)
+    // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
-    let wakeWord = (localStorage.getItem('wake_word') || 'holy grok').toLowerCase().trim();
+    let wakeWord = (localStorage.getItem('wake_word') || 'John').toLowerCase().trim();
     let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
     const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
     const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
@@ -753,7 +753,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // For hands-free + wake word, we LEAVE the recognition object running (even though
       // our isListening flag is false). This lets onresult still fire so we can detect
-      // "holy grok" as a barge-in / interrupt while the AI is speaking.
+      // "John" as a barge-in / interrupt while the AI is speaking.
       if (!handsFreeEnabled && recognition) {
         try { recognition.stop(); } catch (e) {}
       }
@@ -1385,7 +1385,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       const wakeInput = document.getElementById('wake-word-input');
       if (wakeInput) {
-        wakeInput.value = wakeWord || 'holy grok';
+        wakeInput.value = wakeWord || 'John';
         wakeInput.onchange = () => {
           // live update? but we'll save on button
         };
@@ -1502,8 +1502,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       const wakeInput = document.getElementById('wake-word-input');
       if (wakeInput) {
-        const newWake = (wakeInput.value || 'holy grok').trim().toLowerCase();
-        wakeWord = newWake || 'holy grok';
+        const newWake = (wakeInput.value || 'John').trim().toLowerCase();
+        wakeWord = newWake || 'John';
         localStorage.setItem('wake_word', wakeWord);
       }
 
@@ -1682,7 +1682,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               setTimeout(() => {
                 commitHandsFreeTranscript(previousThought, prevConf);
               }, 0);
-              // If they also gave a new command after this "holy grok", queue it as follow-up
+              // If they also gave a new command after this "John", queue it as follow-up
               if (cmd && cmd.length > 1) {
                 pendingTranscript = cmd;
                 lastTranscriptConfidence = confidence;
@@ -1732,7 +1732,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               // Normal activation (not speaking): do NOT send on interim.
               // Prime/accumulate the pending with the cleaned command (across segments if needed)
               // and reset the silence timer. This prevents "responding too fast" on partials
-              // and makes long commands after "holy grok" work reliably.
+              // and makes long commands after "John" work reliably.
 
               // Check if user wants a much longer pause (breathing, thinking, etc.)
               const lower = (cmd || transcript).toLowerCase();
@@ -1790,11 +1790,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           }
 
           // Handle the case where user said just the name earlier (wakeWordActiveUntil window)
-          // and this utterance has no "holy grok" in it but is within the window.
+          // and this utterance has no "John" in it but is within the window.
           const recentlyWoke = Date.now() < wakeWordActiveUntil;
           if (recentlyWoke) {
             // Continuation after hearing the name earlier: append to build full command
-            // (later segments often don't repeat "holy grok" in the current transcript)
+            // (later segments often don't repeat "John" in the current transcript)
             if (pendingTranscript && pendingTranscript.length > 0) {
               pendingTranscript = pendingTranscript + ' ' + transcript;
             } else {
@@ -2006,13 +2006,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }, delayMs);
     }
 
-    // === Wake word support (customizable, default "holy grok") ===
+    // === Wake word support (customizable, default "John") ===
     // Only process commands when the user addresses it by name (unless turned off).
     // This greatly reduces false triggers from background noise.
     // Also allows saying the name while the AI is speaking to interrupt ("barge in").
     function getCurrentWakePhrases() {
       if (!wakeWordEnabled) return [];
-      const base = (wakeWord || 'holy grok').toLowerCase().trim();
+      const base = (wakeWord || 'John').toLowerCase().trim();
       if (!base) return [];
       return [
         base,
@@ -2619,7 +2619,7 @@ Ask about any passage, word, grammatical detail, or literary context. Every refe
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
-Hands-free mode uses a wake word by default ("holy grok", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "holy grok let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
 
       const welcomeEl = addMessage(welcome, false);
       const speakWelcome = document.createElement("button");
@@ -2707,7 +2707,7 @@ Ask about any passage, word, grammatical detail, or literary context. Every scri
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
-Hands-free mode uses a wake word by default ("holy grok", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "holy grok let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
 
         const welcomeEl = addMessage(welcome, false);
         const speakWelcome = document.createElement("button");
