@@ -137,7 +137,7 @@ Built for careful, reverent study of the original text of Scripture.
 - After beta: Add real Stripe (see below).
 - Use the landing page + email list you collect.
 - In-app: There's now an "Upgrade / Beta" button that lets people activate with the email they signed up with (sets local flag for now).
-- Keep the unique value front and center: **spoken original Greek/Hebrew citations + "holy grok" hands-free + free local voices** = hard to copy cheaply.
+- Keep the unique value front and center: **spoken original Greek/Hebrew citations + "John" hands-free + free local voices** = hard to copy cheaply.
 - Low price point ($4.99–$6.99/mo) + "free voices forever" makes conversion easy.
 
 ### 3. Do You Need a Patent?
@@ -150,7 +150,7 @@ Built for careful, reverent study of the original text of Scripture.
   - **Trademark** the name + logo ("The Word in Context" + the book icon). Do this early via USPTO or a service like LegalZoom. Prevents others from using a confusingly similar brand.
   - **Trade secrets**: Keep your best system prompts, any custom ranking/grounding logic, and customer data secret. Use NDAs when sharing code with contractors or testers.
   - **Contracts**: Have beta testers sign a simple NDA + feedback agreement. Add strong Terms of Service + Privacy Policy (use Termly or similar generators).
-- The real moat is **execution + data network effects + brand** (the specific "holy grok" wake word + live original language grounding + low-cost voice model is hard to replicate perfectly while keeping costs low).
+- The real moat is **execution + data network effects + brand** (the specific "John" wake word + live original language grounding + low-cost voice model is hard to replicate perfectly while keeping costs low).
 - Focus on shipping fast, getting real users, and building community. Most "copied" apps fail because they miss the details and the trust.
 
 **Recommendation**: Talk to a lawyer who understands software/SaaS (1-hour consult is cheap insurance). File a trademark for the name soon. Copyright your code (you already own it). Don't spend on patents unless you invent a truly novel technical method you want to license.
@@ -240,7 +240,7 @@ You already have a great web experience (desktop for deep study + mobile browser
 Don't build native until the web version proves people love it and will pay. Most successful SaaS (even consumer) validate on web first.
 
 ### 7. How to Market It (Practical Playbook)
-Focus on **value-first content + targeted communities** in the Christian/Bible study space. Your unique hooks (spoken original Greek/Hebrew + "holy grok" hands-free + live verifiable sources + free high-quality local voices) are very marketable.
+Focus on **value-first content + targeted communities** in the Christian/Bible study space. Your unique hooks (spoken original Greek/Hebrew + "John" hands-free + live verifiable sources + free high-quality local voices) are very marketable.
 
 **Immediate low-cost channels (start here for beta testers):**
 - **Reddit** (very high ROI for this niche):

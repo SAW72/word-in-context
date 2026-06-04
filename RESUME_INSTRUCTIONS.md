@@ -52,7 +52,7 @@ The full conversation history, all tool results, file edits, TODO state, etc. ar
   - New section: "Web App First — Mobile Coming Later"
   - Mentions NDAs for early testers
 - **Main chat app**: `public/index.html` — served at `http://localhost:8787/app`
-  - Full features: Grok chat, voice (local + ElevenLabs BYOK), hands-free with customizable wake word ("holy grok" default, can turn off or change name), live sources with Greek (SBL etc.) + Hebrew (WLC), per-message sources UI, etc.
+  - Full features: Grok chat, voice (local + ElevenLabs BYOK), hands-free with customizable wake word ("John" default, can turn off or change name), live sources with Greek (SBL etc.) + Hebrew (WLC), per-message sources UI, etc.
 - **Server**: `server.js`
   - Routes: `/` = landing, `/app` = chat
   - `/api/beta-signup` endpoint (saves to `betas.json`)
