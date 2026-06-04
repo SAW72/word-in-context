@@ -345,6 +345,7 @@
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
         <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
+        <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
       </div>
 
       <div class="messages" id="messages"></div>
@@ -628,6 +629,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     let handsFreeEnabled = localStorage.getItem('handsfree_enabled') === 'true';
     let continuousMode = false;
+
+    // Demo / free tier limiting (for "Try the app" without login)
+    const DEMO_RESPONSE_LIMIT = 5;
+    let demoResponsesUsed = parseInt(localStorage.getItem('demo_responses_used') || '0');
 
     let pendingTranscript = null;
     let commitTimeout = null;
@@ -1573,8 +1578,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const loadingMsg = addMessage("Thinking...", false, true);
       userInput.value = "";
 
+      // Demo limit for unauthenticated "Try the app"
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        if (demoResponsesUsed >= DEMO_RESPONSE_LIMIT) {
+          removeLoadingMessage();
+          addMessage("Demo limit reached (" + DEMO_RESPONSE_LIMIT + " responses). Sign up on the landing page to start your 3-day free trial or log in for full access.", false);
+          conversation.pop();
+          autoSaveCurrentChat();
+          updateHeaderForCurrentChat();
+          renderSidebarChats(currentSearchTerm || '');
+          const modal = document.getElementById('subscribe-modal');
+          if (modal) modal.style.display = 'flex';
+          return;
+        }
+        demoResponsesUsed++;
+        localStorage.setItem('demo_responses_used', demoResponsesUsed);
+        updateDemoStatus();
+      }
+
       try {
-        const token = localStorage.getItem('auth_token');
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
@@ -2619,7 +2642,9 @@ Ask about any passage, word, grammatical detail, or literary context. Every refe
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
-Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.
+
+Note: In demo mode (no login), limited to 5 responses before sign-up prompt for full trial access.`;
 
       const welcomeEl = addMessage(welcome, false);
       const speakWelcome = document.createElement("button");
@@ -2707,7 +2732,9 @@ Ask about any passage, word, grammatical detail, or literary context. Every scri
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
-Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.`;
+Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.
+
+Note: In demo mode (no login), limited to 5 responses before sign-up prompt for full trial access.`;
 
         const welcomeEl = addMessage(welcome, false);
         const speakWelcome = document.createElement("button");
@@ -2741,6 +2768,31 @@ Hands-free mode uses a wake word by default ("John", or your custom name if chan
           addMessage("Server warning: No XAI_API_KEY configured in .env", false);
         }
       }).catch(() => {});
+
+      const authToken = localStorage.getItem('auth_token');
+      if (authToken) {
+        // Clear demo counter once logged in with real account
+        localStorage.removeItem('demo_responses_used');
+        demoResponsesUsed = 0;
+      }
+
+      updateDemoStatus();
+    }
+
+    function updateDemoStatus() {
+      const el = document.getElementById('demo-status');
+      if (!el) return;
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        el.style.display = 'none';
+        return;
+      }
+      const left = Math.max(0, DEMO_RESPONSE_LIMIT - demoResponsesUsed);
+      el.style.display = 'inline';
+      el.textContent = `Demo: ${left} response${left === 1 ? '' : 's'} left`;
+      if (left === 0) {
+        el.style.color = '#c94e4e';
+      }
     }
 
     init();
