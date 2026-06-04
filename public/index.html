@@ -350,7 +350,7 @@
       <div class="messages" id="messages"></div>
 
       <div class="input-area">
-        <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in the Scriptures..." autocomplete="off" aria-label="Type your question or Bible reference">
+        <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
         <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
         <button id="send-btn">Send</button>
         <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
@@ -426,7 +426,7 @@
       <h3 style="margin:0 0 8px;">📚 Sources &amp; Data Attribution</h3>
 
       <div style="font-size:13px; line-height:1.45; color:#333;">
-        <p style="margin:0 0 10px;"><strong>All scripture citations in this app are traceable and verifiable.</strong></p>
+        <p style="margin:0 0 10px;"><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Bible Scripture Text (English + Original Languages)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
@@ -440,7 +440,7 @@
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">What "Context" Means in This App</h4>
-        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting Scripture interpret Scripture by examining a passage within its proper setting rather than in isolation. It includes:</p>
+        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word — examining a passage within its proper literary, grammatical, and canonical setting rather than in isolation. It includes:</p>
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
           <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
@@ -459,7 +459,7 @@
           <li>Compare the same words, themes, or constructions elsewhere in the author's writings and the wider canon.</li>
           <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew guide us.</li>
         </ol>
-        <p style="margin:0 0 8px; font-size:12px; color:#555;">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every scripture reference.</p>
+        <p style="margin:0 0 8px; font-size:12px; color:#555;">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Citations You Hear When It Speaks</h4>
         <p style="margin:0 0 8px;">The system prompt requires the model to include explicit, natural-sounding citations — including original languages — in every response that discusses scripture:</p>
@@ -485,7 +485,7 @@
         <p style="margin:0 0 10px;">Your chats are stored only in your browser’s localStorage (they survive refresh but stay on this device).</p>
 
         <p style="margin:8px 0 0; font-size:11px; color:#666;">
-          This design lets you verify every scripture reference against the actual source. The Bible data comes from the open public API at bible.helloao.org.
+          This design lets you verify every reference to The Word against the actual source. The Bible data comes from the open public API at bible.helloao.org.
         </p>
       </div>
 
@@ -579,7 +579,8 @@
     })();
 
     // ====================== CONFIG ======================
-    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages.
+    // Client-side prompt (server-side SYSTEM_PROMPT in server.js is the authoritative one)
+    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures (The Word) in their original languages and literary contexts.
 
 STRICT RULES — FOLLOW THESE ALWAYS:
 
@@ -2612,9 +2613,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function showWelcomeMessage() {
-      const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
+      const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
+Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 

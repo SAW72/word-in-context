@@ -384,10 +384,10 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 async function sendMagicLink(email, token) {
   const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
   const html = `
-    <p>Click to log in to The Word in Context:</p>
+    <p>Click to log in to <strong>The Word in Context</strong>:</p>
     <p><a href="${loginUrl}">Log in to your account</a></p>
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
-    <p><small>We will never sell your information. All chats are stored only in your browser. Payment info is handled securely by Stripe.</small></p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. Payment info is handled securely by Stripe. Your conversations never leave your device.</small></p>
   `;
   if (resend) {
     await resend.emails.send({
@@ -585,6 +585,7 @@ app.get('/success', (req, res) => {
     <p>Your 3-day trial has started (or subscription activated).</p>
     <p>Check your email for a secure login link.</p>
     <p><a href="/app">Open the App</a> (you may need to log in first)</p>
+    <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
     </body></html>
   `);
@@ -594,25 +595,25 @@ app.get('/success', (req, res) => {
 app.get('/login', (req, res) => {
   const token = req.query.token;
   if (!token) {
-    return res.send('<p>No token provided. <a href="/">Go home</a></p>');
+    return res.send('<p>No token provided. <a href="/">Go to The Word in Context</a></p>');
   }
-  // Redirect to verify which will return JSON; frontend will handle in practice
   res.send(`
-    <html><body style="font-family:sans-serif;padding:40px;">
-    <p>Verifying login...</p>
+    <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
+    <h2>The Word in Context</h2>
+    <p>Verifying your login link...</p>
     <script>
       fetch('/api/verify-magic?token=${token}')
         .then(r => r.json())
         .then(data => {
           if (data.token) {
             localStorage.setItem('auth_token', data.token);
-            localStorage.setItem('user_email', data.email);
+            localStorage.setItem('user_email', data.email || '');
             window.location.href = '/app';
           } else {
-            document.body.innerHTML = '<p>Login failed: ' + (data.error || 'unknown') + '</p>';
+            document.body.innerHTML = '<p>Login failed: ' + (data.error || 'unknown') + '<br><a href="/">Return to site</a></p>';
           }
         })
-        .catch(() => document.body.innerHTML = '<p>Login error. Try the link again.</p>');
+        .catch(() => document.body.innerHTML = '<p>Login error. Try the link again or <a href="/">return to the site</a>.</p>');
     </script>
     </body></html>
   `);

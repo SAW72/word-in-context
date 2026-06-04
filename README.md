@@ -1,8 +1,8 @@
 # 📖 The Word in Context
 
-A secure, voice-first application for deep study of the Hebrew, Aramaic, and Greek Scriptures using only literal, formal-equivalence translations.
+A secure, voice-first application for deep study of The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal, formal-equivalence translations.
 
-**Focus**: Getting as close as possible to what the original authors wrote and meant — literary context, original language insights, and precise wording.
+**Tagline**: Getting as close as possible to what the original authors wrote and meant — literary context, original language insights, and precise wording.
 
 > **Coming back to this project later?** Start with [RESUME_INSTRUCTIONS.md](./RESUME_INSTRUCTIONS.md). It summarizes the current state, how to resume this conversation with Grok, and the exact next steps for testers + launch.
 
