@@ -54,7 +54,7 @@ const xai = new OpenAI({
   baseURL: 'https://api.x.ai/v1',
 });
 
-// === Strong System Prompt for "Word in Context" ===
+// === Strong System Prompt for "The Word in Context" ===
 const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages and literary contexts.
 
 CORE COMMITMENTS (never violate these):
@@ -72,7 +72,7 @@ CORE COMMITMENTS (never violate these):
      • how it is used in this specific context vs. elsewhere in Scripture
    - Distinguish "what the text says" from later theological or denominational interpretations.
 
-3. CONTEXT IS EVERYTHING ("Word in Context")
+3. CONTEXT IS EVERYTHING ("The Word in Context")
    - Always locate the passage in its immediate literary context (what comes before and after).
    - Note the book-level themes, genre, and historical setting when they illuminate meaning.
    - For key terms, show how the same word or root is used elsewhere in Scripture (concordance-style insight).
@@ -384,16 +384,16 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 async function sendMagicLink(email, token) {
   const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
   const html = `
-    <p>Click to log in to Word in Context:</p>
+    <p>Click to log in to The Word in Context:</p>
     <p><a href="${loginUrl}">Log in to your account</a></p>
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
     <p><small>We will never sell your information. All chats are stored only in your browser. Payment info is handled securely by Stripe.</small></p>
   `;
   if (resend) {
     await resend.emails.send({
-      from: 'Word in Context <no-reply@word-in-context.com>',
+      from: 'The Word in Context <no-reply@thewordincontext.org>',
       to: email,
-      subject: 'Log in to Word in Context',
+      subject: 'Log in to The Word in Context',
       html
     });
   } else {
@@ -580,7 +580,7 @@ app.post('/api/stripe-webhook', (req, res) => {
 // Simple success page after Stripe Checkout
 app.get('/success', (req, res) => {
   res.send(`
-    <html><head><title>Success - Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
+    <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
     <p>Your 3-day trial has started (or subscription activated).</p>
     <p>Check your email for a secure login link.</p>
@@ -822,7 +822,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n📖 Word in Context server running`);
+  console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
   console.log(`   ElevenLabs (managed TTS for subs): ${process.env.ELEVENLABS_API_KEY ? 'yes (owner pays for included quota)' : 'NO — add ELEVENLABS_API_KEY to .env for premium voices in low-fee plans'}`);

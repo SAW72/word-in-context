@@ -1,4 +1,4 @@
-# 📖 Word in Context
+# 📖 The Word in Context
 
 A secure, voice-first application for deep study of the Hebrew, Aramaic, and Greek Scriptures using only literal, formal-equivalence translations.
 
@@ -108,7 +108,7 @@ This architecture supports selling a low-fee subscription without the app owner 
 - **"No XAI_API_KEY"**: Make sure `.env` exists and contains your key, then restart the server.
 - Voice not working well? Try Chrome/Edge first (best SpeechRecognition support). On macOS, download additional voices in System Settings → Accessibility → Spoken Content (local voices are free + high quality).
 - For even better voices: in Voice Settings (🔊), paste your own ElevenLabs key (billed to you) or use any local system voice (free, including ones you buy/install in macOS Spoken Content).
-- **Console spam** (e.g. "MaxListenersExceededWarning", "ObjectMultiplex", "orphaned data", "malformed chunk", "The Shared Storage API is deprecated...", "csNotification", "Content Security Policy of your site blocks the use of 'eval' in JavaScript"): These come from browser extensions (most commonly MetaMask / wallet extensions) that inject content scripts into *every* page, including your localhost dev server. They are harmless to the app and have nothing to do with Word in Context. The app already filters the known noisy strings from console.warn/error/info. For a perfectly clean console during development:
+- **Console spam** (e.g. "MaxListenersExceededWarning", "ObjectMultiplex", "orphaned data", "malformed chunk", "The Shared Storage API is deprecated...", "csNotification", "Content Security Policy of your site blocks the use of 'eval' in JavaScript"): These come from browser extensions (most commonly MetaMask / wallet extensions) that inject content scripts into *every* page, including your localhost dev server. They are harmless to the app and have nothing to do with The Word in Context. The app already filters the known noisy strings from console.warn/error/info. For a perfectly clean console during development:
   - Open the app in an Incognito / Private window (most extensions are disabled by default), or
   - Go to `chrome://extensions/` and temporarily disable MetaMask (and any other wallet/ad/privacy extensions) while working on voice features.
   - The source will often show as `contentscript.js:XXXXX` — this confirms it is extension-injected code, not the app.
@@ -147,7 +147,7 @@ Built for careful, reverent study of the original text of Scripture.
 - Software patents are extremely expensive ($15k–$40k+), take 2–4 years, and are hard to enforce (especially after the Alice Supreme Court decision). Most SaaS companies do **not** patent their core product.
 - **Better, cheaper, faster protection**:
   - **Copyright** (automatic): Your code, the exact prompts, the UI designs, the landing page copy, the specific way sources are fetched and displayed are all protected the moment you write them. Register with copyright.gov for extra strength (~$45–65).
-  - **Trademark** the name + logo ("Word in Context" + the book icon). Do this early via USPTO or a service like LegalZoom. Prevents others from using a confusingly similar brand.
+  - **Trademark** the name + logo ("The Word in Context" + the book icon). Do this early via USPTO or a service like LegalZoom. Prevents others from using a confusingly similar brand.
   - **Trade secrets**: Keep your best system prompts, any custom ranking/grounding logic, and customer data secret. Use NDAs when sharing code with contractors or testers.
   - **Contracts**: Have beta testers sign a simple NDA + feedback agreement. Add strong Terms of Service + Privacy Policy (use Termly or similar generators).
 - The real moat is **execution + data network effects + brand** (the specific "holy grok" wake word + live original language grounding + low-cost voice model is hard to replicate perfectly while keeping costs low).
@@ -205,7 +205,7 @@ app.post('/api/create-checkout', async (req, res) => {
    - `XAI_API_KEY` = your key
    - `NODE_ENV=production`
    - `PORT=10000` (Render requires this)
-7. Deploy. Your app will be at something like `https://word-in-context.onrender.com`
+7. Deploy. Your app will be at something like `https://thewordincontext.org` (or your Render URL during testing)
 8. Update landing links and tell testers to use the new URL (not localhost).
 
 **Production prep you should do now (see code changes below):**

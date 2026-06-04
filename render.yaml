@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: word-in-context
+    name: the-word-in-context
     runtime: node
     plan: free
     buildCommand: npm install

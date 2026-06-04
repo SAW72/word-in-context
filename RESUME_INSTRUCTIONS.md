@@ -1,6 +1,6 @@
 # How to Resume This Conversation and Project
 
-**Current Date Context:** We're in the middle of turning "Word in Context" into a shippable SaaS product.
+**Current Date Context:** We're in the middle of turning "The Word in Context" into a shippable SaaS product.
 
 ## 1. Coming Back to This Chat with Grok (After Closing the Terminal)
 Grok **automatically persists** every conversation to disk as a "session". You do **not** lose anything when you close the terminal.
@@ -139,7 +139,7 @@ I have the full context and can inspect/edit files directly with tools.
 
 You're in a great spot. When you come back, just reference this project and we'll pick up exactly where we left off (probably with deployment).
 
-If the Grok interface gives you a new session, paste a short summary like: "We're building the Word in Context Bible voice app. Last we were preparing for beta testers: landing page ready, need to deploy and market."
+If the Grok interface gives you a new session, paste a short summary like: "We're building The Word in Context Bible voice app. Last we were preparing for beta testers: landing page ready, need to deploy and market."
 
 See you soon! 🚀
 
