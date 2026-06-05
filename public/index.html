@@ -522,16 +522,17 @@
         </p>
       </div>
 
-      <!-- Login form for unauthenticated users (testers/trial users can request magic link here) -->
+      <!-- Login form for unauthenticated users (password login for saved credentials) -->
       <div id="login-section" style="display:none;">
-        <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester or trial account.</p>
+        <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester or trial account (password saved by browser).</p>
         <input type="email" id="modal-login-email" placeholder="Your email" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
-        <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Send me a login link</button>
+        <input type="password" id="modal-login-password" placeholder="Your password" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
+        <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Log in with password</button>
         <div id="modal-login-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Check your email for the secure login link.
+          Logged in! Redirecting...
         </div>
         <p style="font-size:11px; margin-top:8px; opacity:0.7;">
-          No account yet? <a href="/#signup" style="color:inherit; text-decoration:underline;">Sign up for 14-day tester access</a> (no card) or the normal trial on the landing page.
+          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a> (or sign up on landing).
         </p>
       </div>
 
@@ -2420,40 +2421,62 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       });
     }
 
-    // Handle "Send login link" from inside the Account modal (for logged-out testers/trial users)
+    // Handle password login from inside the Account modal
     const sendLoginBtn = document.getElementById('modal-send-login-btn');
     if (sendLoginBtn) {
       sendLoginBtn.addEventListener('click', async function() {
         const emailInput = document.getElementById('modal-login-email');
+        const passInput = document.getElementById('modal-login-password');
         const successDiv = document.getElementById('modal-login-success');
         const email = emailInput ? emailInput.value.trim() : '';
-        if (!email || !email.includes('@')) {
-          alert('Please enter a valid email.');
+        const password = passInput ? passInput.value : '';
+        if (!email || !email.includes('@') || !password) {
+          alert('Please enter email and password.');
           return;
         }
         try {
           sendLoginBtn.disabled = true;
-          sendLoginBtn.textContent = 'Sending...';
-          const res = await fetch('/api/request-login', {
+          sendLoginBtn.textContent = 'Logging in...';
+          const res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
+            body: JSON.stringify({ email, password })
           });
           const data = await res.json();
-          if (res.ok) {
+          if (res.ok && data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('user_email', data.email || email);
             if (successDiv) {
-              successDiv.textContent = data.message || 'Check your email for the secure login link.';
+              successDiv.textContent = 'Logged in! Redirecting to app...';
               successDiv.style.display = 'block';
             }
-            if (emailInput) emailInput.value = '';
+            setTimeout(() => { window.location.href = '/app'; }, 600);
           } else {
-            alert(data.error || 'Could not send login link. Please try again.');
+            alert(data.error || 'Login failed. Use magic link if no password set.');
           }
         } catch (err) {
           alert('Network error. Please try again.');
         } finally {
           sendLoginBtn.disabled = false;
-          sendLoginBtn.textContent = 'Send me a login link';
+          sendLoginBtn.textContent = 'Log in with password';
+        }
+      });
+    }
+
+    // Magic link fallback from modal
+    const modalMagicLink = document.getElementById('modal-use-magic-link');
+    if (modalMagicLink) {
+      modalMagicLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const emailInput = document.getElementById('modal-login-email');
+        const email = emailInput ? emailInput.value.trim() : '';
+        if (!email) { alert('Enter email first'); return; }
+        try {
+          const res = await fetch('/api/request-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+          const data = await res.json();
+          alert(data.message || 'Check your email for magic link.');
+        } catch (err) {
+          alert('Error sending link.');
         }
       });
     }

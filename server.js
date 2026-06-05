@@ -6,6 +6,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -19,6 +20,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
     status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
@@ -28,6 +30,15 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Migration for existing DBs (safe if column already exists)
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+} catch (e) {
+  if (!e.message.includes('duplicate column')) {
+    console.error('Migration warning for password_hash:', e.message);
+  }
+}
 
 // Magic tokens table (short lived)
 db.exec(`
@@ -487,9 +498,11 @@ async function sendMagicLink(email, token, options = {}) {
 app.post('/api/create-checkout', async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
-    const { trialDays: requestedTrialDays } = req.body;
+    const { trialDays: requestedTrialDays, password } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Password required (min 8 characters) to save login on this device' });
 
+    const password_hash = await bcrypt.hash(password, 10);
     const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
       ? requestedTrialDays
       : TRIAL_DAYS;
@@ -501,15 +514,18 @@ app.post('/api/create-checkout', async (req, res) => {
       // Create Stripe customer
       const customer = await stripe.customers.create({ email });
       db.prepare(`
-        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
-        VALUES (?, ?, 'trialing', ?, 1)
-      `).run(email, customer.id, trialEnd);
+        INSERT INTO users (email, password_hash, stripe_customer_id, status, trial_end, access_granted)
+        VALUES (?, ?, ?, 'trialing', ?, 1)
+      `).run(email, password_hash, customer.id, trialEnd);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else if (!user.stripe_customer_id) {
       // Upgrade existing user (e.g. previous tester signup with no card) to have a Stripe customer
       const customer = await stripe.customers.create({ email });
-      db.prepare(`UPDATE users SET stripe_customer_id = ? WHERE email = ?`).run(customer.id, email);
+      db.prepare(`UPDATE users SET password_hash = ?, stripe_customer_id = ? WHERE email = ?`).run(password_hash, customer.id, email);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    } else {
+      // Update password for existing
+      db.prepare(`UPDATE users SET password_hash = ? WHERE email = ?`).run(password_hash, email);
     }
 
     // Create Checkout for subscription with trial
@@ -540,41 +556,48 @@ app.post('/api/create-checkout', async (req, res) => {
 app.post('/api/tester-signup', async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
+    const password = req.body.password;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Password required (min 8 characters) for device-saved login' });
 
+    const password_hash = await bcrypt.hash(password, 10);
     const trialEnd = new Date(Date.now() + TESTER_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
     if (!user) {
       db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted)
-        VALUES (?, 'trialing', ?, 1)
-      `).run(email, trialEnd);
+        INSERT INTO users (email, password_hash, status, trial_end, access_granted)
+        VALUES (?, ?, 'trialing', ?, 1)
+      `).run(email, password_hash, trialEnd);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
-      // Re-activate / extend as tester trial if they already exist
+      // Re-activate / extend as tester trial if they already exist (update password if provided)
       db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1
+        UPDATE users SET password_hash = ?, status = 'trialing', trial_end = ?, access_granted = 1
         WHERE email = ?
-      `).run(trialEnd, email);
+      `).run(password_hash, trialEnd, email);
     }
 
-    // Create short-lived magic token (same as normal login)
+    // Create short-lived magic token (same as normal login) — still send initial link for convenience
     const token = require('crypto').randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
 
-    // Send custom tester magic link email
+    // Send custom tester magic link email (optional first login)
     await sendMagicLink(email, token, { isTester: true });
+
+    // Since password was provided on signup, issue JWT immediately so they can log in right away (browser can save credentials)
+    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       success: true, 
-      message: `Check your email for the secure login link. Your ${TESTER_TRIAL_DAYS}-day tester access (full features, no card) is now active and will end automatically.` 
+      token: jwtToken,
+      email,
+      message: `Account created with password. You can log in immediately below (or check email for magic link). Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
     });
   } catch (err) {
     console.error('tester-signup error:', err);
-    // Surface the real cause in the response for debugging (owner-only tester form; remove detail in future prod if desired)
     res.status(500).json({ error: 'Could not create tester access. ' + (err.message || 'Please try again.') });
   }
 });
@@ -598,6 +621,44 @@ app.post('/api/request-login', async (req, res) => {
   } catch (err) {
     console.error('request-login error:', err);
     res.status(500).json({ error: 'Could not send login link. ' + (err.message || 'Please try again.') });
+  }
+});
+
+// New real password login (for device-saved credentials / password managers)
+app.post('/api/login', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const password = req.body.password;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user || !user.password_hash) {
+      return res.status(401).json({ error: 'No password set for this account. Use the magic link login or sign up again with a password.' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (!user.access_granted) {
+      return res.status(403).json({ error: 'Account access revoked' });
+    }
+
+    // Issue JWT (same as magic link)
+    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+
+    // Clean any old magic tokens
+    db.prepare('DELETE FROM magic_tokens WHERE email = ?').run(email);
+
+    res.json({ 
+      success: true, 
+      token: jwtToken, 
+      email: user.email,
+      message: 'Logged in successfully. Credentials can now be saved by your browser.' 
+    });
+  } catch (err) {
+    console.error('login error:', err);
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 

@@ -134,7 +134,8 @@
     <h2 style="text-align:center;">Start your free trial</h2>
     <div class="signup-form">
       <form id="trial-form">
-        <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <input type="password" id="trial-password" placeholder="Choose password (min 8 chars — saved by your browser for easy login)" required minlength="8" style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <button type="submit" class="btn" style="width:100%;">Start 7-Day Free Trial (card required after trial ends)</button>
         <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">
           Card details collected securely by Stripe for after the trial (no charge during trial). We’ll send a login link after checkout.<br>
@@ -147,6 +148,7 @@
         <p style="font-size:13px; margin-bottom:8px;"><strong>For testers &amp; early feedback (no card, full unlimited access):</strong></p>
         <form id="tester-form" style="max-width: 400px; margin: 0 auto;">
           <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+          <input type="password" id="tester-password" placeholder="Choose password (min 8 chars — saved by browser)" required minlength="8" style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
           <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Sign up for 14-day tester access (email only, no card)</button>
         </form>
         <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
@@ -165,9 +167,13 @@
         <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Already have an account? Log in with email</button>
       </div>
       <form id="login-form" style="max-width:400px;margin:0 auto;">
-        <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%; background:#555;">Send me a login link</button>
+        <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <input type="password" id="login-password" placeholder="Your password" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <button type="submit" class="btn" style="width:100%; background:#555;">Log in with password</button>
       </form>
+      <p style="text-align:center; font-size:12px; margin-top:8px; opacity:0.7;">
+        Forgot password or never set one? <a href="#" id="use-magic-link" style="color:inherit; text-decoration:underline;">Send magic login link instead</a>
+      </p>
       <div id="login-success" style="display:none; text-align:center; color:#2c3e50; margin-top:10px;">
         <p>Check your email for the secure login link.</p>
       </div>
@@ -194,11 +200,12 @@
     document.getElementById('trial-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('trial-email').value;
+      const password = document.getElementById('trial-password').value;
       try {
         const res = await fetch('/api/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, password })
         });
         const data = await res.json();
         if (data.url) {
@@ -215,11 +222,12 @@
     document.getElementById('tester-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('tester-email').value;
+      const password = document.getElementById('tester-password').value;
       try {
         const res = await fetch('/api/tester-signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, password })
         });
         const data = await res.json();
         const errDiv = document.getElementById('tester-error');
@@ -228,8 +236,14 @@
           document.getElementById('tester-form').style.display = 'none';
           const successDiv = document.getElementById('tester-success');
           const days = (typeof getTesterDays === 'function' ? getTesterDays() : 14);
-          successDiv.innerHTML = `Check your email for the secure login link. Your <strong>${days}-day</strong> tester access (full features, no card) is now active and will end automatically after ${days} days.`;
+          successDiv.innerHTML = `Account created with password! Logging you in... (or check email for magic link). Your <strong>${days}-day</strong> tester access is active.`;
           successDiv.style.display = 'block';
+
+          if (data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('user_email', data.email || email);
+            setTimeout(() => { window.location.href = '/app'; }, 700);
+          }
         } else {
           errDiv.textContent = data.error || 'Something went wrong.';
           errDiv.style.display = 'block';
@@ -241,32 +255,76 @@
       }
     });
 
-    // Magic link login request
+    // Password login (primary — allows browser password manager to save credentials)
     document.getElementById('login-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const errDiv = document.getElementById('login-error');
+      const successDiv = document.getElementById('login-success');
+      errDiv.style.display = 'none';
+      successDiv.style.display = 'none';
       try {
-        const res = await fetch('/api/request-login', {
+        const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, password })
         });
         const data = await res.json();
-        const errDiv = document.getElementById('login-error');
-        errDiv.style.display = 'none';
-        if (res.ok) {
-          document.getElementById('login-form').style.display = 'none';
-          document.getElementById('login-success').style.display = 'block';
+        if (res.ok && data.token) {
+          // Store JWT like magic link does
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('user_email', data.email || email);
+          successDiv.textContent = 'Logged in! Redirecting...';
+          successDiv.style.display = 'block';
+          // Redirect to app
+          setTimeout(() => {
+            window.location.href = '/app';
+          }, 600);
         } else {
-          errDiv.textContent = data.error || 'No account found with that email. Start a trial first.';
+          errDiv.textContent = data.error || 'Login failed. Check email/password or use magic link.';
           errDiv.style.display = 'block';
         }
       } catch (err) {
-        const errDiv = document.getElementById('login-error');
         errDiv.textContent = 'Network error. Please try again later.';
         errDiv.style.display = 'block';
       }
     });
+
+    // Fallback: magic link request (for forgot password or legacy no-password accounts)
+    const magicLinkLink = document.getElementById('use-magic-link');
+    if (magicLinkLink) {
+      magicLinkLink.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        if (!email) {
+          alert('Enter your email above first.');
+          return;
+        }
+        try {
+          const res = await fetch('/api/request-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          const errDiv = document.getElementById('login-error');
+          const successDiv = document.getElementById('login-success');
+          errDiv.style.display = 'none';
+          if (res.ok) {
+            successDiv.textContent = data.message || 'Check your email for the magic login link.';
+            successDiv.style.display = 'block';
+          } else {
+            errDiv.textContent = data.error || 'Could not send link.';
+            errDiv.style.display = 'block';
+          }
+        } catch (err) {
+          const errDiv = document.getElementById('login-error');
+          errDiv.textContent = 'Network error.';
+          errDiv.style.display = 'block';
+        }
+      });
+    }
 
     // Pull current trial lengths from server so marketing text matches your env
     let normalDays = 7;
