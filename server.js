@@ -430,9 +430,10 @@ async function sendMagicLink(email, token, options = {}) {
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
     <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? `This is tester access and will expire after ${days} days.` : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
   `;
+  const fromEmail = process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>';
   if (resend) {
     await resend.emails.send({
-      from: 'The Word in Context <no-reply@thewordincontext.org>',
+      from: fromEmail,
       to: email,
       subject,
       html

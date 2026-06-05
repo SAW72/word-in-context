@@ -235,7 +235,8 @@ app.post('/api/create-checkout', async (req, res) => {
 - Full auth + Stripe trial + admin controls live (no simple beta gate needed).
 - SQLite (`users.db` + better-sqlite3) is already the persistent store for accounts/trials (good for Render free disk).
 - .nvmrc + package.json "engines": {"node":"22.x"} to keep better-sqlite3 happy on Render.
-- Domain/custom + Resend verification: do this before heavy marketing.
+- Domain/custom + Resend verification (critical for magic links to work from your domain): 
+  Add the domain in Resend dashboard, add the DNS records it gives you (including resend._domainkey for DKIM, _resend for verification, SPF), verify it, then set the RESEND_API_KEY (the re_ key, separate from the DNS records). See .env.example for full steps. Do this early.
 - Add ToS/Privacy (use a generator) + consider a simple public /privacy page.
 
 After deploy, send testers the public URL + instructions: "Visit the landing, sign up for beta, then use the /app link."
