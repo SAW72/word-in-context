@@ -506,7 +506,7 @@ app.post('/api/create-checkout', async (req, res) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error('create-checkout error:', err);
-    res.status(500).json({ error: 'Could not start checkout' });
+    res.status(500).json({ error: 'Could not start checkout. ' + (err.message || 'Please try again.') });
   }
 });
 
@@ -548,7 +548,8 @@ app.post('/api/tester-signup', async (req, res) => {
     });
   } catch (err) {
     console.error('tester-signup error:', err);
-    res.status(500).json({ error: 'Could not create tester access. Please try again.' });
+    // Surface the real cause in the response for debugging (owner-only tester form; remove detail in future prod if desired)
+    res.status(500).json({ error: 'Could not create tester access. ' + (err.message || 'Please try again.') });
   }
 });
 
@@ -570,7 +571,7 @@ app.post('/api/request-login', async (req, res) => {
     res.json({ success: true, message: 'Check your email for a login link.' });
   } catch (err) {
     console.error('request-login error:', err);
-    res.status(500).json({ error: 'Could not send login link' });
+    res.status(500).json({ error: 'Could not send login link. ' + (err.message || 'Please try again.') });
   }
 });
 
