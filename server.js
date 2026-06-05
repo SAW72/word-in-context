@@ -420,24 +420,41 @@ async function sendMagicLink(email, token, options = {}) {
   const isTester = !!options.isTester;
   const days = isTester ? TESTER_TRIAL_DAYS : TRIAL_DAYS;
   const subject = options.subject || (isTester ? `Your tester access to The Word in Context (${days} days)` : 'Log in to The Word in Context');
-  const prefix = options.htmlPrefix || (isTester 
+  // Build prefix cleanly (strip any source-code indentation from the literal)
+  let prefix = options.htmlPrefix || (isTester
     ? `<p>Welcome to <strong>The Word in Context</strong> as a tester!</p>
-       <p>Your <strong>${days}-day tester access</strong> (no credit card required) has been activated. It ends automatically after ${days} days unless extended.</p>`
+<p>Your <strong>${days}-day tester access</strong> (no credit card required) has been activated. It ends automatically after ${days} days unless extended.</p>`
     : `<p>Click to log in to <strong>The Word in Context</strong>:</p>`);
-  const html = `
-    ${prefix}
-    <p><a href="${loginUrl}">Log in to your account</a></p>
-    <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
-    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? `This is tester access and will expire after ${days} days.` : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
-  `;
-  const fromEmail = process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>';
+  prefix = prefix.replace(/^\s+/gm, '').trim();
+
+  // Build final HTML with join (never depends on template literal indentation in source)
+  const html = [
+    prefix,
+    `<p><a href="${loginUrl}">Log in to your account</a></p>`,
+    `<p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>`,
+    `<p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? `This is tester access and will expire after ${days} days.` : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>`
+  ].join('\n');
+
+  let fromEmail = process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>';
+  fromEmail = fromEmail.trim();
+  // Force proper title-case for the display name part (handles "the Word...", "the word...", etc.)
+  fromEmail = fromEmail.replace(/^the\s+/i, 'The ');
+
+  console.log(`[sendMagicLink] to=${email} from=${fromEmail} resendConfigured=${!!resend} url=${loginUrl} (check Resend Emails dashboard too)`);
+  console.log(`[sendMagicLink] actual from value being used: "${fromEmail}"`);
+
   if (resend) {
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: fromEmail,
       to: email,
       subject,
       html
     });
+    if (error) {
+      console.error('[sendMagicLink] Resend returned error:', error);
+      throw new Error('Failed to send email via Resend: ' + (error.message || JSON.stringify(error)));
+    }
+    console.log(`[sendMagicLink] Resend accepted send. id=${data && data.id ? data.id : 'n/a'}`);
   } else {
     console.log(`[MAGIC LINK for ${email}] ${loginUrl}`);
     throw new Error('RESEND_API_KEY not configured on server - cannot send magic links');

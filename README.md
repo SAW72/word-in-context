@@ -225,7 +225,7 @@ app.post('/api/create-checkout', async (req, res) => {
    - `TRIAL_DAYS=7` (optional, default 7 — length of normal Stripe trial)
    - `TESTER_TRIAL_DAYS=14` (optional, default 14 — length of card-free tester email-only access)
    - `DEMO_LIMIT=3` (optional, default 3 — controls the "Try the App" limited responses)
-   - `RENDER_EXTERNAL_URL` = https://your-app.onrender.com (or your custom domain)
+   - `RENDER_EXTERNAL_URL` = https://thewordincontext.org (or your current onrender URL while testing on the render domain; update when you switch custom domain DNS)
 7. Deploy. Your app will be at something like `https://thewordincontext.org` (or your Render URL during testing)
 8. Update landing links and tell testers to use the new URL (not localhost).
 
