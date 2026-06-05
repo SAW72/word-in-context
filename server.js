@@ -809,9 +809,39 @@ app.post('/api/chat', (req, res, next) => {
       // Matches common Bible refs, including bare chapters for full context:
       // "John 3:16", "John 1:1-10", "1 John 1:1", "John 1", "John chapter 1", "Jn 1", "Ps 23", etc.
       const regex = /\b((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?\b/gi;
-      const matches = text.match(regex) || [];
-      // Normalize spacing
-      return [...new Set(matches.map(m => m.trim().replace(/\s+/g, ' ')))];
+      let matches = text.match(regex) || [];
+      // Normalize
+      matches = matches.map(m => m.trim().replace(/\s+/g, ' '));
+
+      // Explicitly catch "1 John ...", "2 Peter ..." patterns (global match can be derailed by preceding numbers)
+      const numbered = text.match(/\b[1-3]\s+[A-Za-z]+\s+\d+(?::\d+(?:-\d+)?)?\b/gi) || [];
+      matches = [...matches, ...numbered.map(m => m.trim().replace(/\s+/g, ' '))];
+
+      // Known Bible book prefixes (to filter junk matches like "See 1", "also 1", "verse 1")
+      const knownBooks = new Set([
+        'gen','genesis','ex','exo','exodus','lev','leviticus','num','numbers','deut','deuteronomy',
+        'josh','joshua','judg','judges','ruth',
+        '1sam','1 samuel','2sam','2 samuel','1ki','1 kings','2ki','2 kings',
+        '1chr','1 chronicles','2chr','2 chronicles','ezr','ezra','neh','nehemiah','est','esther',
+        'job','ps','psalm','psalms','pro','prov','proverbs','ecc','eccl','ecclesiastes','sng','song',
+        'isa','isaiah','jer','jeremiah','lam','lamentations','eze','ezekiel','dan','daniel',
+        'hos','hosea','jol','joel','amo','amos','oba','obadiah','jon','jonah','mic','micah',
+        'nam','nahum','hab','habakkuk','zep','zephaniah','hag','haggai','zec','zechariah','mal','malachi',
+        'mat','matthew','mt','mrk','mark','mk','luk','luke','lk','jhn','john','jn',
+        'act','acts','rom','romans','1co','1 corinthians','2co','2 corinthians',
+        'gal','galatians','eph','ephesians','php','philippians','col','colossians',
+        '1th','1 thessalonians','2th','2 thessalonians','1ti','1 timothy','2ti','2 timothy','tit','titus',
+        'phm','philemon','heb','hebrews','jas','james',
+        '1pe','1 peter','2pe','2 peter','1jn','1 john','2jn','2 john','3jn','3 john','jud','jude','rev','revelation'
+      ]);
+
+      matches = matches.filter(m => {
+        const first = m.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+        // must start with a known book or a number+book like "1john"
+        return knownBooks.has(first) || knownBooks.has(m.toLowerCase().split(/\s+/).slice(0,2).join('').replace(/[^a-z0-9]/g,'')) || /^\d/.test(m);
+      });
+
+      return [...new Set(matches)];
     }
 
     // Collect refs from the last several messages (user questions + previous AI answers)
