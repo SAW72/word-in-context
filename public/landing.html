@@ -271,7 +271,7 @@
       const trialBtn = document.querySelector('#trial-form button');
       if (trialBtn) trialBtn.textContent = `Start ${normal}-Day Free Trial (card required after)`;
       // Update tester texts
-      const testerP = document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
+      const testerP = document.querySelector('#tester-error + p') || document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
       if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${tester} days unless we extend it for you.`;
       const testerBtn = document.querySelector('#tester-form button');
       if (testerBtn) testerBtn.textContent = `Sign up for ${tester}-day tester access (email only, no card)`;
