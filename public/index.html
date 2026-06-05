@@ -511,6 +511,15 @@
       <div id="account-info">
         <p id="account-email" style="font-size:14px; margin:8px 0;"></p>
         <p id="account-status" style="font-size:13px; margin:4px 0; color:#2c3e50;"></p>
+
+        <!-- Set password section for users who logged in via magic link (or to change password) -->
+        <div id="set-password-section" style="margin-top:8px; padding-top:8px; border-top:1px solid #eee;">
+          <p style="font-size:11px; margin:2px 0 4px; opacity:0.8;">Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser's password manager). Works after magic link login.</p>
+          <input type="password" id="set-password-input" placeholder="New password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+          <button id="set-password-btn" style="width:100%; background:#2c3e50; color:white; padding:6px; border:none; border-radius:4px; font-size:12px;">Set / Update Password</button>
+          <div id="set-password-msg" style="font-size:11px; margin-top:4px; display:none;"></div>
+        </div>
+
         <button id="request-login-from-account-btn" style="width:100%; background:#777; color:white; padding:8px; border:none; border-radius:6px; margin-top:6px; font-size:12px;">Request login link (for other device/browser)</button>
         <button id="logout-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; margin-top:10px;">Log out</button>
         <p style="font-size:11px; margin-top:12px; opacity:0.7;">
@@ -1740,6 +1749,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               if (modalTitle) modalTitle.textContent = 'Account';
               if (accountInfo) accountInfo.style.display = '';
               if (loginSection) loginSection.style.display = 'none';
+              const setPwSection = document.getElementById('set-password-section');
+              if (setPwSection) setPwSection.style.display = 'none';
 
               const lb = document.getElementById('logout-btn');
               if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
@@ -1754,10 +1765,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                     if (!data.access_granted) txt = 'Access revoked';
                     statusEl.textContent = txt;
                   }
+                  const setPwSection = document.getElementById('set-password-section');
+                  if (setPwSection) {
+                    setPwSection.style.display = data.has_password ? 'none' : '';
+                  }
+                  const setPwBtn = document.getElementById('set-password-btn');
+                  if (setPwBtn) {
+                    setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
+                  }
                 })
                 .catch(() => {
                   if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
                   if (statusEl) statusEl.textContent = 'Active (token may be expired)';
+                  const setPwSection = document.getElementById('set-password-section');
+                  if (setPwSection) setPwSection.style.display = 'none';
                 });
             }
           }
@@ -2369,6 +2390,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if (token) {
             if (accountInfo) accountInfo.style.display = '';
             if (loginSection) loginSection.style.display = 'none';
+            const setPwSection = document.getElementById('set-password-section');
+            if (setPwSection) setPwSection.style.display = 'none';
 
             // Try to fetch status
             const lb = document.getElementById('logout-btn');
@@ -2383,14 +2406,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                   if (!data.access_granted) txt = 'Access revoked';
                   statusEl.textContent = txt;
                 }
+                const setPwSection = document.getElementById('set-password-section');
+                if (setPwSection) {
+                  setPwSection.style.display = data.has_password ? 'none' : '';
+                }
+                const setPwBtn = document.getElementById('set-password-btn');
+                if (setPwBtn) {
+                  setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
+                }
               })
               .catch(() => {
                 if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
                 if (statusEl) statusEl.textContent = 'Active';
+                const setPwSection = document.getElementById('set-password-section');
+                if (setPwSection) setPwSection.style.display = 'none';
               });
           } else {
             if (accountInfo) accountInfo.style.display = 'none';
             if (loginSection) loginSection.style.display = '';
+            const setPwSection = document.getElementById('set-password-section');
+            if (setPwSection) setPwSection.style.display = 'none';
 
             // Reset success message
             const loginSuccess = document.getElementById('modal-login-success');
@@ -2493,6 +2528,47 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (loginSuccess) loginSuccess.style.display = 'none';
         const loginEmailInput = document.getElementById('modal-login-email');
         if (loginEmailInput) loginEmailInput.value = '';
+      });
+    }
+
+    // Set / change password button (for magic-link logged in users to enable direct password login)
+    const setPwBtn = document.getElementById('set-password-btn');
+    if (setPwBtn) {
+      setPwBtn.addEventListener('click', async () => {
+        const input = document.getElementById('set-password-input');
+        const msg = document.getElementById('set-password-msg');
+        const password = input ? input.value : '';
+        if (!password || password.length < 8) {
+          if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
+          return;
+        }
+        const token = getEffectiveAuthToken();
+        if (!token) { alert('Not logged in'); return; }
+        try {
+          setPwBtn.disabled = true;
+          setPwBtn.textContent = 'Saving...';
+          const res = await fetch('/api/set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ password })
+          });
+          const data = await res.json();
+          if (msg) {
+            msg.textContent = data.message || (data.success ? 'Password saved!' : 'Failed');
+            msg.style.color = data.success ? 'green' : '#c0392b';
+            msg.style.display = 'block';
+          }
+          if (data.success && input) input.value = '';
+          if (data.success) {
+            const setPwSection = document.getElementById('set-password-section');
+            if (setPwSection) setPwSection.style.display = 'none';
+          }
+        } catch (e) {
+          if (msg) { msg.textContent = 'Error setting password.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
+        } finally {
+          setPwBtn.disabled = false;
+          setPwBtn.textContent = 'Set / Update Password';
+        }
       });
     }
 

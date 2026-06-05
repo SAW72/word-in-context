@@ -662,6 +662,23 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Allow logged-in users (e.g. via magic link) to set a password for future direct logins
+app.post('/api/set-password', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const password_hash = await bcrypt.hash(password, 10);
+    const email = req.user.email;  // populated by requireAuth
+    db.prepare(`UPDATE users SET password_hash = ? WHERE email = ?`).run(password_hash, email);
+    res.json({ success: true, message: 'Password set successfully. You can now use email + password to log in directly from the landing page (browser can save it).' });
+  } catch (err) {
+    console.error('set-password error:', err);
+    res.status(500).json({ error: 'Failed to set password' });
+  }
+});
+
 // Verify magic token and issue JWT
 app.get('/api/verify-magic', (req, res) => {
   try {
@@ -700,7 +717,8 @@ app.get('/api/me', requireAuth, (req, res) => {
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free
+    manual_free: !!u.manual_free,
+    has_password: !!u.password_hash
   });
 });
 
