@@ -224,7 +224,10 @@
         errDiv.style.display = 'none';
         if (res.ok) {
           document.getElementById('tester-form').style.display = 'none';
-          document.getElementById('tester-success').style.display = 'block';
+          const successDiv = document.getElementById('tester-success');
+          const days = (typeof getTesterDays === 'function' ? getTesterDays() : 14);
+          successDiv.innerHTML = `Check your email for the secure login link. Your <strong>${days}-day</strong> tester access (full features, no card) is now active and will end automatically after ${days} days.`;
+          successDiv.style.display = 'block';
         } else {
           errDiv.textContent = data.error || 'Something went wrong.';
           errDiv.style.display = 'block';
@@ -264,21 +267,26 @@
     });
 
     // Pull current trial lengths from server so marketing text matches your env
+    let normalDays = 7;
+    let testerDays = 14;
     fetch('/api/config').then(r => r.json()).then(c => {
-      const normal = c.trialDays || 7;
-      const tester = c.testerTrialDays || 14;
+      normalDays = c.trialDays || 7;
+      testerDays = c.testerTrialDays || 14;
       // Update main trial button if present
       const trialBtn = document.querySelector('#trial-form button');
-      if (trialBtn) trialBtn.textContent = `Start ${normal}-Day Free Trial (card required after)`;
+      if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
       // Update tester texts
       const testerP = document.querySelector('#tester-error + p') || document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
-      if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${tester} days unless we extend it for you.`;
+      if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${testerDays} days unless we extend it for you.`;
       const testerBtn = document.querySelector('#tester-form button');
-      if (testerBtn) testerBtn.textContent = `Sign up for ${tester}-day tester access (email only, no card)`;
+      if (testerBtn) testerBtn.textContent = `Sign up for ${testerDays}-day tester access (email only, no card)`;
       // Update the h2 if present
       const h2 = document.querySelector('h2');
-      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normal} days normal / ${tester} for testers)`;
+      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normalDays} days normal / ${testerDays} for testers)`;
     }).catch(() => {});
+
+    // Helper to get live tester days for success message
+    function getTesterDays() { return testerDays; }
   </script>
 </body>
 </html>
