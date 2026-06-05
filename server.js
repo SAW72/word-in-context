@@ -136,16 +136,28 @@ You are speaking with someone who wants to get as close as possible to what the 
 //   Hebrew OT: hbo_wlc / heb_wlc (Westminster Leningrad Codex - standard Masoretic Text)
 // Correct endpoints: https://bible.helloao.org/api/{TRANSLATION}/{BOOK}/{CHAPTER}.json
 // Pass the exact id from /api/available_translations.json (e.g. 'BSB', 'grc_sbl', 'hbo_wlc')
+//
+// Improvement: references to a chapter (e.g. "John 1", "the first chapter of John") or any verse
+// in a chapter now return the *full chapter* text for BSB + original language. This ensures
+// the model (and user via Sources UI) always has complete literal sources + context for
+// the literary unit being discussed, instead of only the exact verses mentioned.
 async function fetchBiblePassage(reference, translation = 'BSB') {
   try {
-    const cleaned = reference.trim();
-    const match = cleaned.match(/^(\d?\s*[A-Za-z]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
+    const cleaned = reference.trim().replace(/\s+/g, ' ');
+    // Support bare chapters ("John 1", "John chapter 1", "Jn 1") as well as verses/ranges.
+    // Book prefixes like "1 John", "2 Peter" etc. are handled.
+    const match = cleaned.match(/^((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
     if (!match) return null;
 
     let book = match[1].trim();
     const chapter = match[2];
-    const verseStart = parseInt(match[3] || '1', 10);
-    const verseEnd = parseInt(match[4] || match[3] || '1', 10);
+
+    // Always fetch the full chapter for complete literary context and "all the sources".
+    // This fixes cases where only a few verses (e.g. John 1:1-3) were previously grounded
+    // even when the user or model was discussing the whole chapter ("the book of John").
+    const fetchStart = 1;
+    const fetchEnd = 999;
+
 
     const bookMap = {
       'genesis': 'GEN', 'gen': 'GEN',
@@ -241,11 +253,12 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
     const content = data?.chapter?.content;
     if (!Array.isArray(content)) return null;
 
-    // Extract verses in the requested range
+    // Always extract *all* verses in the chapter for full literary context / complete sources.
+    // Any reference to the chapter or a verse in it now supplies the entire chapter (BSB + Greek/Hebrew).
     const verses = [];
     for (const item of content) {
       if (item.type === 'verse' && typeof item.number === 'number') {
-        if (item.number >= verseStart && item.number <= verseEnd) {
+        if (item.number >= fetchStart && item.number <= fetchEnd) {
           // Join the text pieces inside the verse content
           const verseText = (item.content || [])
             .map(part => (typeof part === 'string' ? part : part?.text || ''))
@@ -260,8 +273,12 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
 
     if (verses.length === 0) return null;
 
+    // Label as the full chapter (since we always supply the complete chapter text for context).
+    // Specific verse ranges are still respected in conversation, but grounding gives the whole literary unit.
+    const refLabel = `${book} ${chapter}`;
+
     return {
-      reference: `${book} ${chapter}:${verseStart}${verseEnd !== verseStart ? '-' + verseEnd : ''}`,
+      reference: refLabel,
       translation: trans,
       text: verses.join(' ')
     };
@@ -789,10 +806,12 @@ app.post('/api/chat', (req, res, next) => {
     // is always grounded in actual literal text rather than relying solely on training data.
     function extractRefs(text) {
       if (!text) return [];
-      // Matches common Bible refs: "John 3:16", "Galatians 6:1-10", "1 John 1:1", "Ps 23:1" etc.
-      const regex = /\b(1\s?[A-Za-z]+|2\s?[A-Za-z]+|3\s?[A-Za-z]+|[A-Za-z]+)\s+\d+:\d+(?:-\d+)?\b/g;
+      // Matches common Bible refs, including bare chapters for full context:
+      // "John 3:16", "John 1:1-10", "1 John 1:1", "John 1", "John chapter 1", "Jn 1", "Ps 23", etc.
+      const regex = /\b((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?\b/gi;
       const matches = text.match(regex) || [];
-      return [...new Set(matches.map(m => m.trim()))];
+      // Normalize spacing
+      return [...new Set(matches.map(m => m.trim().replace(/\s+/g, ' ')))];
     }
 
     // Collect refs from the last several messages (user questions + previous AI answers)
@@ -824,7 +843,8 @@ app.post('/api/chat', (req, res, next) => {
     }
 
     const fetchedPassages = [];
-    for (const ref of allRefs.slice(0, 4)) { // cap refs, will fetch originals too
+    for (const ref of allRefs.slice(0, 8)) { // cap refs (raised to support more chapter context), will fetch originals too
+
       // Always fetch the English literal (BSB)
       const bsb = await fetchBiblePassage(ref, 'BSB');
       if (bsb) fetchedPassages.push(bsb);
