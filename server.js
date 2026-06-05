@@ -300,9 +300,10 @@ function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
     const now = new Date();
-    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
-    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
+    const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
+    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+    if (!effectivelyTrialing && !hasPaidOrFree) {
       return res.status(403).json({ error: 'Subscription required or trial expired.' });
     }
     req.userRecord = user;
