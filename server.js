@@ -49,6 +49,10 @@ const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 
+function normalizeEmail(e) {
+  return (e || '').trim().toLowerCase();
+}
+
 // Production note: When deploying (Render, Railway, etc.), set NODE_ENV=production
 // and provide XAI_API_KEY + any future keys via the platform's environment variables.
 // Free tiers may sleep the service — that's fine for early beta.
@@ -465,12 +469,15 @@ async function sendMagicLink(email, token, options = {}) {
 // Create or get user + start configurable trial via Stripe Checkout
 app.post('/api/create-checkout', async (req, res) => {
   try {
-    const { email, trialDays: requestedTrialDays } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { trialDays: requestedTrialDays } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
     const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
       ? requestedTrialDays
       : TRIAL_DAYS;
+
+    const trialEnd = new Date(Date.now() + effectiveTrialDays * 24 * 60 * 60 * 1000).toISOString();
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
@@ -478,8 +485,8 @@ app.post('/api/create-checkout', async (req, res) => {
       const customer = await stripe.customers.create({ email });
       db.prepare(`
         INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
-        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1)
-      `).run(email, customer.id);
+        VALUES (?, ?, 'trialing', ?, 1)
+      `).run(email, customer.id, trialEnd);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else if (!user.stripe_customer_id) {
       // Upgrade existing user (e.g. previous tester signup with no card) to have a Stripe customer
@@ -515,24 +522,25 @@ app.post('/api/create-checkout', async (req, res) => {
 // No Stripe involved. Sends magic login link immediately.
 app.post('/api/tester-signup', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
+    const trialEnd = new Date(Date.now() + TESTER_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    const trialEndExpr = `datetime('now', '+${TESTER_TRIAL_DAYS} days')`;
 
     if (!user) {
       db.prepare(`
         INSERT INTO users (email, status, trial_end, access_granted)
-        VALUES (?, 'trialing', ${trialEndExpr}, 1)
-      `).run(email);
+        VALUES (?, 'trialing', ?, 1)
+      `).run(email, trialEnd);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
       // Re-activate / extend as tester trial if they already exist
       db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1
+        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1
         WHERE email = ?
-      `).run(email);
+      `).run(trialEnd, email);
     }
 
     // Create short-lived magic token (same as normal login)
@@ -557,7 +565,7 @@ app.post('/api/tester-signup', async (req, res) => {
 // Magic link login request
 app.post('/api/request-login', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
@@ -652,7 +660,8 @@ app.post('/api/admin/set-access', (req, res) => {
     if (payload.role !== 'admin') throw new Error();
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
-  const { email, access_granted, manual_free } = req.body;
+  const email = normalizeEmail(req.body.email);
+  const { access_granted, manual_free } = req.body;
   db.prepare(`
     UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
   `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
@@ -672,7 +681,7 @@ app.post('/api/stripe-webhook', (req, res) => {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const email = session.metadata?.email || session.customer_email;
+    const email = normalizeEmail(session.metadata?.email || session.customer_email);
     if (email) {
       db.prepare(`
         UPDATE users SET status = 'trialing', access_granted = 1 WHERE email = ?
