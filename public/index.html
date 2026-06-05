@@ -506,6 +506,8 @@
   <div class="modal" id="subscribe-modal">
     <div class="modal-content" style="max-width: 420px; text-align: left;">
       <h3 style="margin-bottom:4px;">Account</h3>
+
+      <!-- Logged in view -->
       <div id="account-info">
         <p id="account-email" style="font-size:14px; margin:8px 0;"></p>
         <p id="account-status" style="font-size:13px; margin:4px 0; color:#2c3e50;"></p>
@@ -518,6 +520,20 @@
           Manage or cancel anytime via Stripe customer portal (link in email receipts).
         </p>
       </div>
+
+      <!-- Login form for unauthenticated users (testers/trial users can request magic link here) -->
+      <div id="login-section" style="display:none;">
+        <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester or trial account.</p>
+        <input type="email" id="modal-login-email" placeholder="Your email" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
+        <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Send me a login link</button>
+        <div id="modal-login-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
+          Check your email for the secure login link.
+        </div>
+        <p style="font-size:11px; margin-top:8px; opacity:0.7;">
+          No account yet? <a href="/#signup" style="color:inherit; text-decoration:underline;">Sign up for 14-day tester access</a> (no card) or the normal trial on the landing page.
+        </p>
+      </div>
+
       <div style="margin-top:16px; font-size:11px; opacity:0.6;">
         Full admin control: we can grant free access or cut off any account at any time.
       </div>
@@ -1711,7 +1727,37 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if ((response.status === 401 || response.status === 403) && token) {
             // Only auto-prompt login modal for real accounts; demo uses the banner + Account button
             const modal = document.getElementById('subscribe-modal');
-            if (modal) modal.style.display = 'flex';
+            if (modal) {
+              modal.style.display = 'flex';
+              // Populate like the button click does (for stale token case)
+              const accountInfo = document.getElementById('account-info');
+              const loginSection = document.getElementById('login-section');
+              const emailEl = document.getElementById('account-email');
+              const statusEl = document.getElementById('account-status');
+              const modalTitle = modal.querySelector('h3');
+              if (modalTitle) modalTitle.textContent = 'Account';
+              if (accountInfo) accountInfo.style.display = '';
+              if (loginSection) loginSection.style.display = 'none';
+
+              const lb = document.getElementById('logout-btn');
+              if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
+
+              fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
+                .then(r => r.json())
+                .then(data => {
+                  if (emailEl) emailEl.textContent = data.email || 'Logged in';
+                  if (statusEl) {
+                    let txt = data.status || 'active';
+                    if (data.trial_end) txt += ' (trial ends ' + new Date(data.trial_end).toLocaleDateString() + ')';
+                    if (!data.access_granted) txt = 'Access revoked';
+                    statusEl.textContent = txt;
+                  }
+                })
+                .catch(() => {
+                  if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
+                  if (statusEl) statusEl.textContent = 'Active (token may be expired)';
+                });
+            }
           }
           return;
         }
@@ -2309,9 +2355,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (modal) {
           modal.style.display = 'flex';
           const token = getEffectiveAuthToken();
+          const accountInfo = document.getElementById('account-info');
+          const loginSection = document.getElementById('login-section');
           const emailEl = document.getElementById('account-email');
           const statusEl = document.getElementById('account-status');
+          const modalTitle = modal.querySelector('h3');
+          if (modalTitle) {
+            modalTitle.textContent = token ? 'Account' : 'Log in';
+          }
+
           if (token) {
+            if (accountInfo) accountInfo.style.display = '';
+            if (loginSection) loginSection.style.display = 'none';
+
             // Try to fetch status
             const lb = document.getElementById('logout-btn');
             if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
@@ -2331,18 +2387,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                 if (statusEl) statusEl.textContent = 'Active';
               });
           } else {
-            if (emailEl) emailEl.textContent = 'Demo mode (no account)';
-            if (statusEl) statusEl.textContent = `Limited to ${DEMO_RESPONSE_LIMIT} responses. Start your ${TRIAL_DAYS}-day free trial for full access.`;
-            // Listener on logoutBtn already handles !token by navigating to #signup (repurposes the button label below if desired)
-            const lb = document.getElementById('logout-btn');
-            if (lb) {
-              lb.textContent = `Start ${TRIAL_DAYS}-Day Free Trial`;
-              lb.style.background = '#c9a227';
-              lb.style.color = '#1a252f';
-            }
+            if (accountInfo) accountInfo.style.display = 'none';
+            if (loginSection) loginSection.style.display = '';
+
+            // Reset success message
+            const loginSuccess = document.getElementById('modal-login-success');
+            if (loginSuccess) loginSuccess.style.display = 'none';
+
+            // Clear previous input if desired
+            const loginEmailInput = document.getElementById('modal-login-email');
+            if (loginEmailInput) loginEmailInput.value = '';
           }
         }
       });
+    }
+
+    // Update header "Account" button label for unauthenticated users (makes it obvious there's a login path)
+    const upgradeBtnEl = document.getElementById('upgrade-btn');
+    if (upgradeBtnEl) {
+      if (!getEffectiveAuthToken()) {
+        upgradeBtnEl.textContent = 'Log in';
+      }
+      // Optional: after successful login in the modal, we could change it back, but since page usually reloads on login it's fine
     }
 
     // Close button for Account modal (the modal had no way to close except logout or refresh)
@@ -2350,6 +2416,44 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     if (closeAccountBtn) {
       closeAccountBtn.addEventListener('click', () => {
         document.getElementById('subscribe-modal').style.display = 'none';
+      });
+    }
+
+    // Handle "Send login link" from inside the Account modal (for logged-out testers/trial users)
+    const sendLoginBtn = document.getElementById('modal-send-login-btn');
+    if (sendLoginBtn) {
+      sendLoginBtn.addEventListener('click', async function() {
+        const emailInput = document.getElementById('modal-login-email');
+        const successDiv = document.getElementById('modal-login-success');
+        const email = emailInput ? emailInput.value.trim() : '';
+        if (!email || !email.includes('@')) {
+          alert('Please enter a valid email.');
+          return;
+        }
+        try {
+          sendLoginBtn.disabled = true;
+          sendLoginBtn.textContent = 'Sending...';
+          const res = await fetch('/api/request-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            if (successDiv) {
+              successDiv.textContent = data.message || 'Check your email for the secure login link.';
+              successDiv.style.display = 'block';
+            }
+            if (emailInput) emailInput.value = '';
+          } else {
+            alert(data.error || 'Could not send login link. Please try again.');
+          }
+        } catch (err) {
+          alert('Network error. Please try again.');
+        } finally {
+          sendLoginBtn.disabled = false;
+          sendLoginBtn.textContent = 'Send me a login link';
+        }
       });
     }
 

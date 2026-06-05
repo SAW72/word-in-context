@@ -150,7 +150,7 @@
           <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Sign up for 14-day tester access (email only, no card)</button>
         </form>
         <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Check your email for the secure login link. Your tester access (full features, no card) is now active and will end after the configured period.
+          Check your email for the secure login link. Your tester access (full features, no card) is now active and will end automatically after the configured period.
         </div>
         <div id="tester-error" style="display:none; margin-top:8px; color:#c0392b; font-size:13px; font-weight:500;"></div>
         <p style="font-size:11px; opacity:0.7; margin-top:6px;">Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
@@ -161,7 +161,9 @@
       </div>
 
       <hr style="margin:30px 0;">
-      <p style="text-align:center;"><strong>Already have an account?</strong></p>
+      <div style="text-align:center; margin-bottom:8px;">
+        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Already have an account? Log in with email</button>
+      </div>
       <form id="login-form" style="max-width:400px;margin:0 auto;">
         <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <button type="submit" class="btn" style="width:100%; background:#555;">Send me a login link</button>
