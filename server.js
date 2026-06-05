@@ -883,8 +883,44 @@ app.post('/api/chat', (req, res, next) => {
     // === Improved scripture grounding: scan recent conversation for references ===
     // We pull live from the public Bible API (https://bible.helloao.org) so the model
     // is always grounded in actual literal text rather than relying solely on training data.
+    function normalizeBibleTranscriptForRefs(text) {
+      if (!text) return text;
+      let t = ' ' + text + ' ';
+      // Same common corrections as client for robustness
+      t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
+      t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
+      t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
+      t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
+      t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
+      t = t.replace(/\b(one|1st|first)\s+corinthians\b/gi, ' 1 Corinthians ');
+      t = t.replace(/\b(two|2nd|second)\s+corinthians\b/gi, ' 2 Corinthians ');
+      t = t.replace(/\b(one|1st|first)\s+thessalonians\b/gi, ' 1 Thessalonians ');
+      t = t.replace(/\b(two|2nd|second)\s+thessalonians\b/gi, ' 2 Thessalonians ');
+      t = t.replace(/\b(one|1st|first)\s+timothy\b/gi, ' 1 Timothy ');
+      t = t.replace(/\b(two|2nd|second)\s+timothy\b/gi, ' 2 Timothy ');
+      t = t.replace(/\b(one|1st|first)\s+kings\b/gi, ' 1 Kings ');
+      t = t.replace(/\b(two|2nd|second)\s+kings\b/gi, ' 2 Kings ');
+      t = t.replace(/\b(one|1st|first)\s+samuel\b/gi, ' 1 Samuel ');
+      t = t.replace(/\b(two|2nd|second)\s+samuel\b/gi, ' 2 Samuel ');
+      t = t.replace(/\b(one|1st|first)\s+chronicles\b/gi, ' 1 Chronicles ');
+      t = t.replace(/\b(two|2nd|second)\s+chronicles\b/gi, ' 2 Chronicles ');
+      t = t.replace(/\bchapter\s+(one|first)\b/gi, 'chapter 1');
+      t = t.replace(/\bchapter\s+(two|second)\b/gi, 'chapter 2');
+      t = t.replace(/\bchapter\s+(three|third)\b/gi, 'chapter 3');
+      t = t.replace(/\bchapter\s+four\b/gi, 'chapter 4');
+      t = t.replace(/\b1\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\bfirst\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\bone\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\b(1|2|3)\s+john\s+four\b/gi, '$1 John 4');
+      t = t.trim();
+      return t;
+    }
+
     function extractRefs(text) {
       if (!text) return [];
+      // Normalize common STT / voice errors for Bible refs before extraction (helps grounding when mic input is noisy)
+      text = normalizeBibleTranscriptForRefs(text);
+
       // Matches common Bible refs, including bare chapters for full context:
       // "John 3:16", "John 1:1-10", "1 John 1:1", "John 1", "John chapter 1", "Jn 1", "Ps 23", etc.
       const regex = /\b((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?\b/gi;

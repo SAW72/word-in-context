@@ -1850,7 +1850,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // With interimResults=true and continuous=true, we get progressive results.
         // Use the latest transcript (interim or final) to capture full sentences without cutting off.
         const result = event.results[event.results.length - 1];
-        const transcript = result[0].transcript.trim();
+        let transcript = result[0].transcript.trim();
+        transcript = normalizeBibleTranscript(transcript);  // fix common STT errors for Bible refs like "1 John 4"
         const confidence = result[0].confidence || 0;
         const isFinal = result.isFinal;
 
@@ -2022,7 +2023,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (isFinal) {
           stopListeningUI();
           if (transcript && transcript.length > 1) {
-            const t = transcript;
+            const t = normalizeBibleTranscript(transcript);
             currentTranscript = '';
             sendToGrok(t);
           }
@@ -2247,6 +2248,68 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return remainder;
     }
 
+    // Normalize common speech-to-text errors, especially Bible references like "1 John 4" (often "one john four", "first john four", "i john 4").
+    // This helps both the sent command text and ref extraction.
+    function normalizeBibleTranscript(text) {
+      if (!text) return text;
+      let t = ' ' + text + ' ';
+
+      // Numbered books - very common STT mistakes for "1 John", "2 Peter" etc.
+      t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
+      t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
+      t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
+
+      t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
+      t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
+
+      t = t.replace(/\b(one|1st|first)\s+corinthians\b/gi, ' 1 Corinthians ');
+      t = t.replace(/\b(two|2nd|second)\s+corinthians\b/gi, ' 2 Corinthians ');
+
+      t = t.replace(/\b(one|1st|first)\s+thessalonians\b/gi, ' 1 Thessalonians ');
+      t = t.replace(/\b(two|2nd|second)\s+thessalonians\b/gi, ' 2 Thessalonians ');
+
+      t = t.replace(/\b(one|1st|first)\s+timothy\b/gi, ' 1 Timothy ');
+      t = t.replace(/\b(two|2nd|second)\s+timothy\b/gi, ' 2 Timothy ');
+
+      t = t.replace(/\b(one|1st|first)\s+kings\b/gi, ' 1 Kings ');
+      t = t.replace(/\b(two|2nd|second)\s+kings\b/gi, ' 2 Kings ');
+
+      t = t.replace(/\b(one|1st|first)\s+samuel\b/gi, ' 1 Samuel ');
+      t = t.replace(/\b(two|2nd|second)\s+samuel\b/gi, ' 2 Samuel ');
+
+      t = t.replace(/\b(one|1st|first)\s+chronicles\b/gi, ' 1 Chronicles ');
+      t = t.replace(/\b(two|2nd|second)\s+chronicles\b/gi, ' 2 Chronicles ');
+
+      // Fix word numbers for chapters/verses in refs (STT often says "four" instead of "4")
+      t = t.replace(/\bchapter\s+(one|first)\b/gi, 'chapter 1');
+      t = t.replace(/\bchapter\s+(two|second)\b/gi, 'chapter 2');
+      t = t.replace(/\bchapter\s+(three|third)\b/gi, 'chapter 3');
+      t = t.replace(/\bchapter\s+four\b/gi, 'chapter 4');
+      t = t.replace(/\bchapter\s+five\b/gi, 'chapter 5');
+      t = t.replace(/\bchapter\s+six\b/gi, 'chapter 6');
+      t = t.replace(/\bchapter\s+seven\b/gi, 'chapter 7');
+      t = t.replace(/\bchapter\s+eight\b/gi, 'chapter 8');
+      t = t.replace(/\bchapter\s+nine\b/gi, 'chapter 9');
+      t = t.replace(/\bchapter\s+ten\b/gi, 'chapter 10');
+
+      t = t.replace(/\bverse\s+four\b/gi, 'verse 4');
+      t = t.replace(/\bverse\s+five\b/gi, 'verse 5');
+
+      // Specific fixes for the reported garble "4 four 1 john 4" etc. and common "1 john four"
+      t = t.replace(/\b4\s+four\s+1\s+john\s+4\b/gi, '1 John 4');
+      t = t.replace(/\bfour\s+1\s+john\s+4\b/gi, '1 John 4');
+      t = t.replace(/\b1\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\bfirst\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\bone\s+john\s+four\b/gi, '1 John 4');
+      t = t.replace(/\bi\s+john\s+four\b/gi, '1 John 4');
+
+      // General "X four" -> "X 4" near john refs (helps extraction and model)
+      t = t.replace(/\b(1|2|3)\s+john\s+four\b/gi, '$1 John 4');
+
+      t = t.trim();
+      return t;
+    }
+
     // Extracted commit logic for hands-free wake-word gated turns.
     // Centralized so we can call it from the silence timer and from barge-in short timers.
     function commitHandsFreeTranscript(finalText, conf) {
@@ -2256,6 +2319,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // === Wake-word gated commit ===
+      finalText = normalizeBibleTranscript(finalText);
       let cmd = getCommandAfterWake(finalText);
       const recentlyWoke = Date.now() < wakeWordActiveUntil;
 
