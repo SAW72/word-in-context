@@ -511,6 +511,7 @@
       <div id="account-info">
         <p id="account-email" style="font-size:14px; margin:8px 0;"></p>
         <p id="account-status" style="font-size:13px; margin:4px 0; color:#2c3e50;"></p>
+        <button id="request-login-from-account-btn" style="width:100%; background:#777; color:white; padding:8px; border:none; border-radius:6px; margin-top:6px; font-size:12px;">Request login link (for other device/browser)</button>
         <button id="logout-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; margin-top:10px;">Log out</button>
         <p style="font-size:11px; margin-top:12px; opacity:0.7;">
           Free trial (length set by TRIAL_DAYS env, default 7) or active subscription required. We will never sell your information. 
@@ -2454,6 +2455,21 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           sendLoginBtn.disabled = false;
           sendLoginBtn.textContent = 'Send me a login link';
         }
+      });
+    }
+
+    // "Request login link" button inside the logged-in Account view (for convenience on other devices/browsers)
+    const reqLoginFromAccountBtn = document.getElementById('request-login-from-account-btn');
+    if (reqLoginFromAccountBtn) {
+      reqLoginFromAccountBtn.addEventListener('click', () => {
+        const accountInfo = document.getElementById('account-info');
+        const loginSection = document.getElementById('login-section');
+        if (accountInfo) accountInfo.style.display = 'none';
+        if (loginSection) loginSection.style.display = '';
+        const loginSuccess = document.getElementById('modal-login-success');
+        if (loginSuccess) loginSuccess.style.display = 'none';
+        const loginEmailInput = document.getElementById('modal-login-email');
+        if (loginEmailInput) loginEmailInput.value = '';
       });
     }
 
