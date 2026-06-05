@@ -142,17 +142,19 @@ CORE COMMITMENTS (never violate these):
 You are speaking with someone who wants to get as close as possible to what the original authors wrote and meant. All scripture discussed must be traceable to a specific, cited literal source.`;
 
 // === Bible verse fetcher using the Free Use Bible API ===
-// Supports English literals (BSB etc.) + original languages:
+// Supports English literals (user's default e.g. eng_lsv/LSV NASB-style, BSB etc.) + original languages:
 //   Greek NT: grc_sbl (SBL Greek New Testament), grc_byz, grc_mtk, grc_gtr (TR), etc.
 //   Hebrew OT: hbo_wlc / heb_wlc (Westminster Leningrad Codex - standard Masoretic Text)
 // Correct endpoints: https://bible.helloao.org/api/{TRANSLATION}/{BOOK}/{CHAPTER}.json
-// Pass the exact id from /api/available_translations.json (e.g. 'BSB', 'grc_sbl', 'hbo_wlc')
+// Pass the exact id from /api/available_translations.json (e.g. 'eng_lsv' for NASB-style LSV, 'BSB', 'grc_sbl', 'hbo_wlc')
 //
+// The default English translation for live grounding is now user-configurable in the app (🔊 Voice Settings).
+// Default is eng_lsv (Literal Standard Version — modern NASB 2020-style literal formal equivalence).
 // Improvement: references to a chapter (e.g. "John 1", "the first chapter of John") or any verse
-// in a chapter now return the *full chapter* text for BSB + original language. This ensures
+// in a chapter now return the *full chapter* text for the chosen English + original language. This ensures
 // the model (and user via Sources UI) always has complete literal sources + context for
 // the literary unit being discussed, instead of only the exact verses mentioned.
-async function fetchBiblePassage(reference, translation = 'BSB') {
+async function fetchBiblePassage(reference, translation = 'eng_lsv') {
   try {
     const cleaned = reference.trim().replace(/\s+/g, ' ');
     // Support bare chapters ("John 1", "John chapter 1", "Jn 1") as well as verses/ranges.
@@ -871,6 +873,7 @@ app.post('/api/chat', (req, res, next) => {
       console.log('[demo] limited demo chat request (client should enforce small response cap)');
     }
     const { messages } = req.body;
+    const defaultTrans = (req.body && typeof req.body.defaultTranslation === 'string' && req.body.defaultTranslation.trim()) || 'eng_lsv';
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array required' });
@@ -971,6 +974,14 @@ app.post('/api/chat', (req, res, next) => {
     // Translation display names for citations and UI
     const transDisplayNames = {
       'BSB': 'Berean Standard Bible',
+      'eng_lsv': 'Literal Standard Version (NASB-style)',
+      'LSV': 'Literal Standard Version (NASB-style)',
+      'eng_asv': 'American Standard Version (1901)',
+      'ASV': 'American Standard Version (1901)',
+      'eng_ylt': 'Young\'s Literal Translation',
+      'YLT': 'Young\'s Literal Translation',
+      'ENGWEBP': 'World English Bible',
+      'WEB': 'World English Bible',
       'grc_sbl': 'SBL Greek New Testament',
       'hbo_wlc': 'Westminster Leningrad Codex (Hebrew OT)',
       'heb_wlc': 'Westminster Leningrad Codex (Hebrew)',
@@ -990,8 +1001,8 @@ app.post('/api/chat', (req, res, next) => {
     const fetchedPassages = [];
     for (const ref of allRefs.slice(0, 8)) { // cap refs (raised to support more chapter context), will fetch originals too
 
-      // Always fetch the English literal (BSB)
-      const bsb = await fetchBiblePassage(ref, 'BSB');
+      // Always fetch the English literal (user's chosen default, e.g. eng_lsv for NASB-style)
+      const bsb = await fetchBiblePassage(ref, defaultTrans);
       if (bsb) fetchedPassages.push(bsb);
 
       // Also fetch main original language text for Greek NT or Hebrew OT
@@ -1034,7 +1045,7 @@ app.post('/api/chat', (req, res, next) => {
     const replyRefs = extractRefs(reply);
     for (const ref of replyRefs) {
       if (!allRefs.includes(ref)) {
-        const bsb = await fetchBiblePassage(ref, 'BSB');
+        const bsb = await fetchBiblePassage(ref, defaultTrans);
         if (bsb) fetchedPassages.push(bsb);
         const grc = await fetchBiblePassage(ref, 'grc_sbl');
         if (grc) fetchedPassages.push(grc);

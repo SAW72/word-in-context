@@ -410,6 +410,17 @@
         <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "John". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
       </div>
 
+      <!-- Default English translation for Bible grounding -->
+      <label for="default-trans-select" style="font-size:13px;display:block;margin-bottom:4px; margin-top:8px;">Default English Translation (used for live literal text & citations in replies)
+        <select id="default-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;">
+          <option value="eng_lsv" selected>LSV — Literal Standard Version (NASB 2020 style modern literal) — new default</option>
+          <option value="BSB">BSB — Berean Standard Bible (very literal)</option>
+          <option value="eng_asv">ASV — American Standard Version (1901 classic literal)</option>
+          <option value="eng_ylt">YLT — Young\'s Literal Translation (ultra-literal)</option>
+          <option value="ENGWEBP">WEB — World English Bible (public domain formal)</option>
+        </select>
+      </label>
+
       <!-- ElevenLabs is now bring-your-own-key only (no more shared "managed" credits in the default UI
            to avoid confusion and reverting issues). Paste a key to unlock premium voices in the dropdown.
            For a different/low-cost service, local system voices (including any you buy/install) are recommended
@@ -439,7 +450,7 @@
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
-          <li><strong>English grounding</strong>: Primarily Berean Standard Bible (BSB) and other literal translations (ESV, NASB, etc.).</li>
+          <li><strong>English grounding</strong>: User-selectable default (LSV as NASB-style literal by default; also BSB, ASV, YLT, WEB etc. via Voice Settings). All are formal/literal.</li>
           <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
           <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
@@ -1513,6 +1524,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
+      const transSelect = document.getElementById('default-trans-select');
+      if (transSelect) {
+        const saved = localStorage.getItem('default_english_trans') || 'eng_lsv';
+        transSelect.value = saved;
+        transSelect.onchange = () => {
+          localStorage.setItem('default_english_trans', transSelect.value || 'eng_lsv');
+        };
+      }
+
       // Premium toggle removed (ElevenLabs is now key-only). We still keep the variable for backward compat with saved state.
       loadVoices();
 
@@ -1629,6 +1649,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('wake_word', wakeWord);
       }
 
+      const transSelect = document.getElementById('default-trans-select');
+      if (transSelect) {
+        localStorage.setItem('default_english_trans', transSelect.value || 'eng_lsv');
+      }
+
       if (typeof updateHandsFreeLabel === 'function') {
         updateHandsFreeLabel();
       }
@@ -1722,7 +1747,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ messages: conversation })
+          body: JSON.stringify({ 
+            messages: conversation,
+            defaultTranslation: localStorage.getItem('default_english_trans') || 'eng_lsv'
+          })
         });
 
         const data = await response.json();
@@ -3081,7 +3109,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function showWelcomeMessage() {
       const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
+Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Literal Standard Version)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
@@ -3171,7 +3199,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       if (isEmptyNew) {
         const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
+Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Literal Standard Version)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
