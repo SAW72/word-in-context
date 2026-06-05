@@ -10,6 +10,27 @@ services:
         value: production
       - key: PORT
         value: 10000
-      # XAI_API_KEY is intentionally omitted here for security.
-      # Add it manually in the Render dashboard as a secret (Environment > Add Environment Variable).
-      # Do the same for ELEVENLABS_API_KEY if you want to offer managed TTS.
+      # Non-sensitive config (can be declared here or set in dashboard)
+      - key: TRIAL_DAYS
+        value: "7"
+      - key: TESTER_TRIAL_DAYS
+        value: "14"
+      - key: DEMO_LIMIT
+        value: "5"
+      # RENDER_EXTERNAL_URL should be set to your actual URL (for magic links etc.)
+      # - key: RENDER_EXTERNAL_URL
+      #   value: https://your-app.onrender.com
+
+      # --- Sensitive secrets (NEVER put real values in this file or git) ---
+      # Add these ONLY in the Render dashboard (Environment tab) and mark as Secret:
+      #   XAI_API_KEY
+      #   STRIPE_SECRET_KEY
+      #   STRIPE_WEBHOOK_SECRET
+      #   STRIPE_PRICE_ID   (can be non-secret if you want)
+      #   RESEND_API_KEY
+      #   JWT_SECRET
+      #   ADMIN_PASSWORD
+      #   (ELEVENLABS_API_KEY if using managed TTS)
+      #
+      # This file defines the service + safe defaults.
+      # Real secrets are injected by the platform at runtime as process.env.

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin • The Word in Context</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#f5e8d3; color:#2c3e50; margin:0; padding:20px; }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { color:#1a252f; }
+  table { width:100%; border-collapse: collapse; background:white; border-radius:8px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08); }
+  th, td { padding:10px 12px; text-align:left; border-bottom:1px solid #e8d9c2; }
+  th { background:#1a252f; color:#f5e8d3; }
+  tr:last-child td { border-bottom:none; }
+  .btn { background:#c9a227; color:#1a252f; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; margin:2px; }
+  .btn.danger { background:#c94e4e; color:white; }
+  .btn.gray { background:#555; color:white; }
+  .login-box { background:white; padding:24px; border-radius:12px; max-width:360px; margin:40px auto; box-shadow:0 8px 24px rgba(0,0,0,0.1); }
+  .login-box input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; }
+  .status { font-size:13px; margin:8px 0; color:#8b5e3c; }
+  .user-row td { font-size:13px; }
+  .small { font-size:11px; opacity:0.7; }
+</style>
+</head><body>
+<div class="container">
+  <h1>📖 The Word in Context — Admin</h1>
+  <p class="small">Full control: grant free access, cut off accounts, view trial status. Token expires in 4h.</p>
+
+  <div id="login-panel">
+    <div class="login-box">
+      <h3>Admin Login</h3>
+      <input type="password" id="admin-pass" placeholder="ADMIN_PASSWORD">
+      <button class="btn" onclick="adminLogin()">Log in</button>
+      <div id="login-status" class="status"></div>
+      <p class="small">Set ADMIN_PASSWORD in your Render env (same as used for curls).</p>
+    </div>
+  </div>
+
+  <div id="admin-panel" style="display:none;">
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+      <button class="btn" onclick="loadUsers()">🔄 Reload users</button>
+      <button class="btn gray" onclick="logoutAdmin()">Log out</button>
+      <a href="/" style="margin-left:auto; color:#c9a227;">← Landing</a>
+      <a href="/app" style="color:#c9a227;">App</a>
+    </div>
+    <div id="admin-status" class="status"></div>
+    <table id="users-table">
+      <thead><tr>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Trial End</th>
+        <th>Access</th>
+        <th>Manual Free</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+    <p class="small" style="margin-top:16px;">Tip: Use "Make free forever" (manual_free=1) for testers you want to keep forever. "Revoke" sets access_granted=0 immediately. Changes take effect on next /api/chat or /api/me.</p>
+  </div>
+</div>
+
+<script>
+  let adminToken = null;
+  const base = '';
+
+  async function adminLogin() {
+    const pass = document.getElementById('admin-pass').value;
+    const status = document.getElementById('login-status');
+    status.textContent = 'Checking...';
+    try {
+      const r = await fetch(base + '/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass })
+      });
+      const data = await r.json();
+      if (r.ok && data.token) {
+        adminToken = data.token;
+        sessionStorage.setItem('admin_token', adminToken);
+        document.getElementById('login-panel').style.display = 'none';
+        document.getElementById('admin-panel').style.display = 'block';
+        loadUsers();
+      } else {
+        status.textContent = data.error || 'Login failed';
+      }
+    } catch (e) {
+      status.textContent = 'Network error';
+    }
+  }
+
+  function logoutAdmin() {
+    adminToken = null;
+    sessionStorage.removeItem('admin_token');
+    document.getElementById('admin-panel').style.display = 'none';
+    document.getElementById('login-panel').style.display = 'block';
+    document.getElementById('login-status').textContent = '';
+  }
+
+  async function loadUsers() {
+    const tbody = document.getElementById('users-tbody');
+    const status = document.getElementById('admin-status');
+    status.textContent = 'Loading users...';
+    tbody.innerHTML = '';
+    try {
+      const r = await fetch(base + '/api/admin/users', {
+        headers: { 'Authorization': 'Bearer ' + adminToken }
+      });
+      if (!r.ok) throw new Error('auth');
+      const users = await r.json();
+      status.textContent = users.length + ' users';
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.className = 'user-row';
+        const trial = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : '-';
+        const acc = u.access_granted ? '✅' : '❌';
+        const free = u.manual_free ? '✅' : '—';
+        tr.innerHTML = `
+          <td>${u.email}</td>
+          <td>${u.status || ''}</td>
+          <td class="small">${trial}</td>
+          <td>${acc}</td>
+          <td>${free}</td>
+          <td class="small">${(u.created_at || '').slice(0,10)}</td>
+          <td>
+            <button class="btn" onclick="setAccess('${u.email}', 1, ${u.manual_free ? 1 : 0})">Grant access</button>
+            <button class="btn danger" onclick="setAccess('${u.email}', 0, ${u.manual_free ? 1 : 0})">Revoke</button>
+            <button class="btn" onclick="setAccess('${u.email}', ${u.access_granted ? 1 : 0}, 1)">Make free forever</button>
+            <button class="btn gray" onclick="setAccess('${u.email}', ${u.access_granted ? 1 : 0}, 0)">Remove free</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      status.textContent = 'Failed to load (bad or expired admin token?)';
+      logoutAdmin();
+    }
+  }
+
+  async function setAccess(email, access_granted, manual_free) {
+    const status = document.getElementById('admin-status');
+    status.textContent = 'Updating ' + email + '...';
+    try {
+      const r = await fetch(base + '/api/admin/set-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ email, access_granted: !!access_granted, manual_free: !!manual_free })
+      });
+      const data = await r.json();
+      if (r.ok) {
+        status.textContent = 'Updated ' + email;
+        loadUsers();
+      } else {
+        status.textContent = data.error || 'Update failed';
+      }
+    } catch (e) {
+      status.textContent = 'Error updating';
+    }
+  }
+
+  // Auto-restore admin session
+  window.onload = () => {
+    const saved = sessionStorage.getItem('admin_token');
+    if (saved) {
+      adminToken = saved;
+      document.getElementById('login-panel').style.display = 'none';
+      document.getElementById('admin-panel').style.display = 'block';
+      loadUsers();
+    }
+    // Also load a hint of config
+    fetch(base + '/api/config').then(r=>r.json()).then(c => {
+      const s = document.getElementById('admin-status');
+      if (s && !s.textContent) s.textContent = 'Demo limit: ' + (c.demoLimit||10) + ' • Normal trial: ' + (c.trialDays||7) + 'd • Tester trial: ' + (c.testerTrialDays||14) + 'd (no card)';
+    }).catch(()=>{});
+  };
+</script>
+</body></html>

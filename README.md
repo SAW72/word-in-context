@@ -120,10 +120,21 @@ Built for careful, reverent study of the original text of Scripture.
 
 ## Launching as a Subscription SaaS – Getting Testers & Users
 
+**Current implemented state (refined demo + admin + config)**:
+- Full Stripe trial (TRIAL_DAYS=7 by default, configurable via env) + separate no-card 14-day tester signup (TESTER_TRIAL_DAYS env) + magic-link login (Resend) + JWT sessions. UI and success pages use the configured values (no hard-coded 3).
+- "Try the App" button on landing goes to limited demo: **3 responses** (via `DEMO_LIMIT` env) with banner, disables, strong CTAs to trial. Server supports demo calls + IP throttle.
+- New **card-free tester path**: "Sign up for 14-day tester access (email only, no card)" form on landing. Calls `/api/tester-signup` → email-only, 14-day full access (TESTER_TRIAL_DAYS env), magic link, no Stripe/checkout. Access auto-expires. Normal signups still go through Stripe (TRIAL_DAYS=7 default, card collected for post-trial billing).
+- `/admin` page: enter `ADMIN_PASSWORD` → full user list + grant/revoke/manual_free toggles (no more curls).
+- `/api/config` for dynamic limits.
+- All privacy disclaimers, "John" wake word, live SBL Greek + WLC Hebrew, local voices priority, etc. are live.
+- Deployed model: Render + Node 22 pin (see .nvmrc + package.json engines).
+
+Update these docs when you change env-driven behavior.
+
 ### 1. Getting Beta Testers to Sign Up
 - **Landing page first**: The root `/` now serves a beautiful marketing landing page (`public/landing.html`) with pricing, features, and a beta signup form.
 - Run locally: `npm start` then visit http://localhost:8787 — people see the landing and can sign up.
-- The form POSTs to `/api/beta-signup` which appends to `betas.json` (simple, no DB needed for early testing).
+- The trial form POSTs to `/api/create-checkout` (real Stripe Checkout with trial_period_days from env). Tester path uses `/api/tester-signup` (no Stripe). No more simple betas.json for the paid path (betas.json may still exist for legacy).
 - **Recruitment channels** (from real SaaS experience):
   - Your personal network + church / small group / Bible study friends.
   - Reddit: r/Bible, r/Christianity, r/Reformed, r/BibleStudy (post value-first, not just "try my app").
@@ -136,7 +147,7 @@ Built for careful, reverent study of the original text of Scripture.
 ### 2. Turning Testers into Paying Subscribers
 - After beta: Add real Stripe (see below).
 - Use the landing page + email list you collect.
-- In-app: There's now an "Upgrade / Beta" button that lets people activate with the email they signed up with (sets local flag for now).
+- In-app: "Account" button shows real email + trial status (from /api/me). "Try the App" (demo) for unauth visitors is limited to DEMO_LIMIT responses before forcing the trial CTA. Full access only after successful Stripe trial + magic link login.
 - Keep the unique value front and center: **spoken original Greek/Hebrew citations + "John" hands-free + free local voices** = hard to copy cheaply.
 - Low price point ($4.99–$6.99/mo) + "free voices forever" makes conversion easy.
 
@@ -201,20 +212,31 @@ app.post('/api/create-checkout', async (req, res) => {
 3. Root Directory: leave blank (or point if monorepo).
 4. Build Command: `npm install`
 5. Start Command: `npm start`
-6. Add Environment Variables:
-   - `XAI_API_KEY` = your key
+6. Add Environment Variables (all required for full SaaS):
+   - `XAI_API_KEY` = your xAI key
    - `NODE_ENV=production`
    - `PORT=10000` (Render requires this)
+   - `STRIPE_SECRET_KEY` = sk_test_...
+   - `STRIPE_WEBHOOK_SECRET` = whsec_test_...
+   - `STRIPE_PRICE_ID` = price_...
+   - `RESEND_API_KEY` = re_...
+   - `JWT_SECRET` = (long random, e.g. openssl rand -base64 48)
+   - `ADMIN_PASSWORD` = (your choice, for /admin and /api/admin/login)
+   - `TRIAL_DAYS=7` (optional, default 7 — length of normal Stripe trial)
+   - `TESTER_TRIAL_DAYS=14` (optional, default 14 — length of card-free tester email-only access)
+   - `DEMO_LIMIT=3` (optional, default 3 — controls the "Try the App" limited responses)
+   - `RENDER_EXTERNAL_URL` = https://your-app.onrender.com (or your custom domain)
 7. Deploy. Your app will be at something like `https://thewordincontext.org` (or your Render URL during testing)
 8. Update landing links and tell testers to use the new URL (not localhost).
 
-**Production prep you should do now (see code changes below):**
-- Use `process.env.PORT || 8787`
-- Add basic rate limiting (use `express-rate-limit`)
-- For beta: Simple password gate or email whitelist before full auth/Stripe.
-- Set up a real DB later (SQLite for starters, then Postgres) instead of just `betas.json` and localStorage.
-- Add proper error handling, logging.
-- Domain: Buy cheap on Namecheap + point to Render (Cloudflare for free SSL/DNS).
+**Production prep notes (many already done in current code):**
+- `process.env.PORT || 8787` and trust proxy already in server.js
+- Lightweight demo IP throttle implemented (no extra deps); full `express-rate-limit` + helmet can be added later for extra safety.
+- Full auth + Stripe trial + admin controls live (no simple beta gate needed).
+- SQLite (`users.db` + better-sqlite3) is already the persistent store for accounts/trials (good for Render free disk).
+- .nvmrc + package.json "engines": {"node":"22.x"} to keep better-sqlite3 happy on Render.
+- Domain/custom + Resend verification: do this before heavy marketing.
+- Add ToS/Privacy (use a generator) + consider a simple public /privacy page.
 
 After deploy, send testers the public URL + instructions: "Visit the landing, sign up for beta, then use the /app link."
 

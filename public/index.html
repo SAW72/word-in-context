@@ -348,6 +348,11 @@
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
       </div>
 
+      <!-- Demo mode banner (shown only for unauthenticated /app visitors via Try the App). Prominent but not annoying. -->
+      <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:6px 12px; font-size:12.5px; text-align:center; border-bottom:1px solid #ffe69c;">
+        Demo mode — limited responses for trying the app. <a href="/" style="color:#664d03; font-weight:600; text-decoration:underline;">Start free trial</a> for full access.
+      </div>
+
       <div class="messages" id="messages"></div>
 
       <div class="input-area">
@@ -428,7 +433,7 @@
 
       <div style="font-size:13px; line-height:1.45; color:#333;">
         <p style="margin:0 0 10px;"><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
-        <p style="font-size:12px; color:#666; margin:0 0 8px;">In demo mode (no login) limited to 5 responses before sign-up prompt for full trial.</p>
+        <p style="font-size:12px; color:#666; margin:0 0 8px;">In demo mode (no login) limited to a few responses (default 10, configurable via DEMO_LIMIT env) before sign-up prompt for full trial.</p>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Bible Scripture Text (English + Original Languages)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
@@ -506,7 +511,7 @@
         <p id="account-status" style="font-size:13px; margin:4px 0; color:#2c3e50;"></p>
         <button id="logout-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; margin-top:10px;">Log out</button>
         <p style="font-size:11px; margin-top:12px; opacity:0.7;">
-          3-day free trial or active subscription required. We will never sell your information. 
+          Free trial (length set by TRIAL_DAYS env, default 7) or active subscription required. We will never sell your information. 
           Payment handled securely by Stripe. Your chats stay only in this browser.
         </p>
         <p style="font-size:11px; opacity:0.6; margin-top:8px;">
@@ -631,9 +636,84 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let handsFreeEnabled = localStorage.getItem('handsfree_enabled') === 'true';
     let continuousMode = false;
 
-    // Demo / free tier limiting (for "Try the app" without login)
-    const DEMO_RESPONSE_LIMIT = 5;
+    // Demo / free tier limiting (for "Try the App" button — unauthenticated visitors get just a few responses)
+    // Defaults overridden at runtime from /api/config (env-driven on server)
+    let DEMO_RESPONSE_LIMIT = 10;
+    let TRIAL_DAYS = 7;
+    const today = new Date().toISOString().slice(0,10);
+    if (localStorage.getItem('demo_last_date') !== today) {
+      localStorage.setItem('demo_responses_used', '0');
+      localStorage.setItem('demo_last_date', today);
+    }
     let demoResponsesUsed = parseInt(localStorage.getItem('demo_responses_used') || '0');
+
+    // Support ?demo=1 from landing "Try the App" links even if a previous login left an auth_token in localStorage.
+    // This lets you (and testers) easily exercise the limited demo flow without clearing storage.
+    const urlParams = new URLSearchParams(window.location.search);
+    const demoParam = urlParams.get('demo');
+    const forceDemoMode = demoParam != null && (demoParam === '1' || demoParam === '' || demoParam === 'true');
+    if (forceDemoMode) {
+      console.log('[demo] forceDemoMode active via ?demo param - resetting count for testing');
+      // For easy testing of the limit flow from "Try the App", reset the counter when ?demo=1
+      localStorage.setItem('demo_responses_used', '0');
+      demoResponsesUsed = 0;
+
+      // Make the demo banner visible immediately (initial content), full update in enforce later
+      const b = document.getElementById('demo-banner');
+      if (b) b.style.display = 'block';
+    }
+
+    function getEffectiveAuthToken() {
+      if (forceDemoMode) return null;
+      return localStorage.getItem('auth_token');
+    }
+
+    function enforceDemoLimit() {
+      const token = getEffectiveAuthToken();
+      if (token) return;
+      const over = demoResponsesUsed >= DEMO_RESPONSE_LIMIT;
+      const input = document.getElementById('user-input');
+      const send = document.getElementById('send-btn');
+      const mic = document.getElementById('mic-btn');
+      const banner = document.getElementById('demo-banner');
+      if (over) {
+        if (input) {
+          input.disabled = true;
+          input.placeholder = 'Demo limit reached — start a free trial for unlimited access';
+        }
+        if (send) send.disabled = true;
+        if (mic) {
+          mic.disabled = true;
+          mic.style.opacity = '0.35';
+          mic.title = 'Demo limit reached';
+        }
+        if (banner) {
+          banner.style.display = 'block';
+          banner.style.background = '#f8d7da';
+          banner.style.color = '#721c24';
+          banner.innerHTML = `Demo limit reached (${DEMO_RESPONSE_LIMIT} responses). <a href="/" style="color:#721c24;font-weight:600;text-decoration:underline;">Start your ${TRIAL_DAYS}-day free trial</a> for full access + original language study.`;
+        }
+        // Also surface a clear prompt in chat if not already
+        showDemoSignupPrompt();
+      } else if (banner) {
+        banner.style.display = 'block';
+        banner.style.background = '#fff3cd';
+        banner.style.color = '#664d03';
+        const left = Math.max(0, DEMO_RESPONSE_LIMIT - demoResponsesUsed);
+        banner.innerHTML = `Demo mode — ${left} response${left === 1 ? '' : 's'} left for trying the app. <a href="/" style="color:#664d03;font-weight:600;text-decoration:underline;">Start ${TRIAL_DAYS}-day free trial</a> for unlimited.`;
+      }
+    }
+
+    function showDemoSignupPrompt() {
+      // Avoid spamming multiple prompts
+      if (document.querySelector('.demo-signup-prompt')) return;
+      const div = document.createElement('div');
+      div.className = 'demo-signup-prompt';
+      div.style.cssText = 'margin:12px 0; padding:10px 14px; background:#f8f1e3; border:1px solid #c9a227; border-radius:8px; font-size:13px;';
+      div.innerHTML = `Demo limited to ${DEMO_RESPONSE_LIMIT} responses. <a href="/" target="_blank" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day free trial</a> (or log in) for full hands-free study with no limits.`;
+      messagesContainer.appendChild(div);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
 
     let pendingTranscript = null;
     let commitTimeout = null;
@@ -668,6 +748,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
     let wakeWord = (localStorage.getItem('wake_word') || 'John').toLowerCase().trim();
+    // Migration: force old "holy grok" (from early versions) to the neutral "John" default
+    if (wakeWord === 'holy grok' || wakeWord === 'holy-grok' || wakeWord === 'holy_grok') {
+      wakeWord = 'john';
+      localStorage.setItem('wake_word', 'John');
+    }
     let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
     const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
     const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
@@ -1579,23 +1664,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const loadingMsg = addMessage("Thinking...", false, true);
       userInput.value = "";
 
-      // Demo limit for unauthenticated "Try the app"
-      const token = localStorage.getItem('auth_token');
+      // Demo limit for unauthenticated "Try the App" (just a few passages/responses)
+      const token = getEffectiveAuthToken();
       if (!token) {
         if (demoResponsesUsed >= DEMO_RESPONSE_LIMIT) {
           removeLoadingMessage();
-          addMessage("Demo limit reached (" + DEMO_RESPONSE_LIMIT + " responses). Sign up on the landing page to start your 3-day free trial or log in for full access.", false);
+          addMessage("Demo limit reached (" + DEMO_RESPONSE_LIMIT + " responses). Start a " + TRIAL_DAYS + "-day free trial on the landing page for unlimited access.", false);
           conversation.pop();
           autoSaveCurrentChat();
           updateHeaderForCurrentChat();
           renderSidebarChats(currentSearchTerm || '');
-          const modal = document.getElementById('subscribe-modal');
-          if (modal) modal.style.display = 'flex';
+          enforceDemoLimit();
+          // no modal popup for demo - the red banner + in-chat prompt + disabled inputs are sufficient
           return;
         }
         demoResponsesUsed++;
         localStorage.setItem('demo_responses_used', demoResponsesUsed);
         updateDemoStatus();
+        enforceDemoLimit();
       }
 
       try {
@@ -1618,7 +1704,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           autoSaveCurrentChat();
           updateHeaderForCurrentChat();
           renderSidebarChats(currentSearchTerm || '');
-          if (response.status === 401 || response.status === 403) {
+          if ((response.status === 401 || response.status === 403) && token) {
+            // Only auto-prompt login modal for real accounts; demo uses the banner + Account button
             const modal = document.getElementById('subscribe-modal');
             if (modal) modal.style.display = 'flex';
           }
@@ -1646,6 +1733,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       updateHeaderForCurrentChat();
       renderSidebarChats(currentSearchTerm || '');
         isAwaitingResponse = false;
+
+        // Refresh demo banner count / disabled state (in case this was a demo response)
+        enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
           // Always speak the full reply now, even for ElevenLabs voices.
@@ -2198,11 +2288,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const modal = document.getElementById('subscribe-modal');
         if (modal) {
           modal.style.display = 'flex';
-          const token = localStorage.getItem('auth_token');
+          const token = getEffectiveAuthToken();
           const emailEl = document.getElementById('account-email');
           const statusEl = document.getElementById('account-status');
           if (token) {
             // Try to fetch status
+            const lb = document.getElementById('logout-btn');
+            if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
             fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
               .then(r => r.json())
               .then(data => {
@@ -2219,17 +2311,31 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                 if (statusEl) statusEl.textContent = 'Active';
               });
           } else {
-            if (emailEl) emailEl.textContent = 'Not logged in';
-            if (statusEl) statusEl.textContent = 'Please log in via the landing page to start your 3-day trial.';
+            if (emailEl) emailEl.textContent = 'Demo mode (no account)';
+            if (statusEl) statusEl.textContent = `Limited to ${DEMO_RESPONSE_LIMIT} responses. Start your ${TRIAL_DAYS}-day free trial for full access.`;
+            // Listener on logoutBtn already handles !token by navigating to #signup (repurposes the button label below if desired)
+            const lb = document.getElementById('logout-btn');
+            if (lb) {
+              lb.textContent = `Start ${TRIAL_DAYS}-Day Free Trial`;
+              lb.style.background = '#c9a227';
+              lb.style.color = '#1a252f';
+            }
           }
         }
       });
     }
 
-    // Logout
+    // Logout (or for demo visitors, acts as trial signup CTA when Account opened in demo)
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
+        const tokenNow = getEffectiveAuthToken();
+        if (!tokenNow) {
+          // Demo visitor clicking the repurposed button
+          document.getElementById('subscribe-modal').style.display = 'none';
+          window.location.href = '/#signup';
+          return;
+        }
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_email');
         document.getElementById('subscribe-modal').style.display = 'none';
@@ -2239,7 +2345,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     // On load, if no token but we have old beta, clean it
-    if (!localStorage.getItem('auth_token') && localStorage.getItem('beta_subscribed')) {
+    if (!getEffectiveAuthToken() && localStorage.getItem('beta_subscribed')) {
       // optional: localStorage.removeItem('beta_subscribed');
     }
 
@@ -2649,7 +2755,7 @@ Click the 📚 Sources button (or the link in the note below) for the full list 
 
 Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.
 
-Note: In demo mode (no login), limited to 5 responses before sign-up prompt for full trial access.`;
+Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) before sign-up prompt for full trial access.`;
 
       const welcomeEl = addMessage(welcome, false);
       const speakWelcome = document.createElement("button");
@@ -2739,7 +2845,7 @@ Click the 📚 Sources button (or the link in the note below) for the full list 
 
 Hands-free mode uses a wake word by default ("John", or your custom name if changed in Voice Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in 🔊 Voice Settings.
 
-Note: In demo mode (no login), limited to 5 responses before sign-up prompt for full trial access.`;
+Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) before sign-up prompt for full trial access.`;
 
         const welcomeEl = addMessage(welcome, false);
         const speakWelcome = document.createElement("button");
@@ -2774,20 +2880,40 @@ Note: In demo mode (no login), limited to 5 responses before sign-up prompt for 
         }
       }).catch(() => {});
 
-      const authToken = localStorage.getItem('auth_token');
+      // Load dynamic config (demo limit + trial days) from server so we can tune via env without rebuild
+      fetch('/api/config').then(r => r.json()).then(cfg => {
+        if (cfg && typeof cfg.demoLimit === 'number' && cfg.demoLimit > 0) {
+          DEMO_RESPONSE_LIMIT = cfg.demoLimit;
+        }
+        if (cfg && typeof cfg.trialDays === 'number' && cfg.trialDays > 0) {
+          TRIAL_DAYS = cfg.trialDays;
+        }
+        updateDemoStatus();
+        enforceDemoLimit();
+      }).catch(() => {
+        // fallback to defaults already set
+        updateDemoStatus();
+        enforceDemoLimit();
+      });
+
+      const authToken = getEffectiveAuthToken();
       if (authToken) {
-        // Clear demo counter once logged in with real account
-        localStorage.removeItem('demo_responses_used');
-        demoResponsesUsed = 0;
+        // Clear demo counter once logged in with real account (but not when ?demo=1 is forcing demo view)
+        if (!forceDemoMode) {
+          localStorage.removeItem('demo_responses_used');
+          demoResponsesUsed = 0;
+        }
       }
 
+      // Initial call (config fetch above will also call, this covers sync path)
       updateDemoStatus();
+      enforceDemoLimit();
     }
 
     function updateDemoStatus() {
       const el = document.getElementById('demo-status');
       if (!el) return;
-      const token = localStorage.getItem('auth_token');
+      const token = getEffectiveAuthToken();
       if (token) {
         el.style.display = 'none';
         return;
@@ -2795,9 +2921,7 @@ Note: In demo mode (no login), limited to 5 responses before sign-up prompt for 
       const left = Math.max(0, DEMO_RESPONSE_LIMIT - demoResponsesUsed);
       el.style.display = 'inline';
       el.textContent = `Demo: ${left} response${left === 1 ? '' : 's'} left`;
-      if (left === 0) {
-        el.style.color = '#c94e4e';
-      }
+      el.style.color = (left === 0 ? '#c94e4e' : '#c9a227');
     }
 
     init();

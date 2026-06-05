@@ -4,6 +4,10 @@ node_modules/
 # Environment secrets (never commit your keys)
 .env
 
+# Local database (user accounts, trials, etc. - on Render this lives on persistent disk if enabled)
+users.db
+*.db
+
 # OS / editor
 .DS_Store
 *.swp

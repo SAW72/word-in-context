@@ -43,7 +43,7 @@
         <div>
           <a href="#features" style="color:white; margin-right:20px; text-decoration:none;">Features</a>
           <a href="#pricing" style="color:white; margin-right:20px; text-decoration:none;">Pricing</a>
-          <a href="/app" class="btn" style="padding:8px 20px; font-size:14px;">Try the App</a>
+          <a href="/app?demo=1" class="btn" style="padding:8px 20px; font-size:14px;">Try the App (demo)</a>
         </div>
       </nav>
     </div>
@@ -53,8 +53,8 @@
     <div class="container">
       <h1>The Word in Context<br>Voice-first study of Scripture<br>in original languages + literary context</h1>
       <p>Speak naturally with "John". Hear precise, citable text from the Greek New Testament (SBL) and Hebrew Old Testament (WLC) — fetched live and spoken back to you. Low monthly fee. Excellent free local voices.</p>
-      <a href="#signup" class="btn">Join the Beta — First 3 Months Free</a>
-      <a href="/app" class="btn btn-outline">Open the Chat App</a>
+      <a href="#signup" class="btn">Start 7-Day Free Trial</a>
+      <a href="/app?demo=1" class="btn btn-outline">Try the App (limited demo)</a>
       <div class="social-proof">Trusted by Bible students, pastors, and scholars • 100% private chats • No data sold</div>
     </div>
   </div>
@@ -94,18 +94,19 @@
     <h2>Simple, affordable pricing</h2>
     <div class="pricing">
       <div class="plan">
-        <h3>Free</h3>
+        <h3>Free / Tester</h3>
         <div class="price">$0<span>/mo</span></div>
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
           <li>Full access to local voices</li>
-          <li>Basic chat with Grok</li>
-          <li>Try the app: limited to 5 responses (demo mode)</li>
+          <li>Quick demo: limited to a few responses (no signup, default 10)</li>
+          <li><strong>Tester access (email signup)</strong>: 14 days full unlimited access, no card, ends automatically</li>
           <li>Public Bible sources</li>
         </ul>
-        <a href="/app" class="btn" style="width:100%; box-sizing:border-box;">Try Free (5 responses demo)</a>
+        <a href="/app?demo=1" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Try limited demo (instant)</a>
+        <small style="display:block; font-size:11px; opacity:0.7;">Or use the tester form below for full card-free access (ends automatically).</small>
       </div>
       <div class="plan popular">
-        <h3>Beta Pro</h3>
+        <h3>Pro</h3>
         <div class="price">$4.99<span>/mo</span></div>
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
           <li>Unlimited messages</li>
@@ -115,11 +116,11 @@
           <li>Priority support</li>
           <li>Bring your own ElevenLabs key</li>
         </ul>
-        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box;">Join Beta — 3 Months Free</a>
-        <small style="display:block; margin-top:8px; opacity:0.7;">Then $4.99/mo. Cancel anytime.</small>
+        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box;">Start 7-Day Free Trial</a>
+        <small style="display:block; margin-top:8px; opacity:0.7;">7-day trial then $4.99/mo. Cancel anytime.</small>
       </div>
     </div>
-    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">No credit card for beta. We’re looking for 50–100 serious testers to shape v1.</p>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: sign up with just email for 14 days full access (no card required, ends automatically after).</p>
   </section>
 
   <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
@@ -130,19 +131,32 @@
   </section>
 
   <section id="signup" class="container">
-    <h2 style="text-align:center;">Start your 3-day free trial</h2>
+    <h2 style="text-align:center;">Start your free trial</h2>
     <div class="signup-form">
       <form id="trial-form">
         <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%;">Start 3-Day Free Trial (then $4.99/mo)</button>
+        <button type="submit" class="btn" style="width:100%;">Start 7-Day Free Trial (card required after trial ends)</button>
         <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">
-          No card required to start trial. We’ll send a secure login link after checkout.<br>
+          Card details collected securely by Stripe for after the trial (no charge during trial). We’ll send a login link after checkout.<br>
           <strong>We will never sell your information.</strong> Payment details handled securely by Stripe. Your chats stay private in your browser only. Full account control — we can grant free access or cut off access at any time.
         </p>
       </form>
+
+      <!-- Separate card-free tester path: email only, full access for 14 days, ends automatically. No Stripe. -->
+      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e8d9c2; text-align: center;">
+        <p style="font-size:13px; margin-bottom:8px;"><strong>For testers &amp; early feedback (no card, full unlimited access):</strong></p>
+        <form id="tester-form" style="max-width: 400px; margin: 0 auto;">
+          <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Sign up for 14-day tester access (email only, no card)</button>
+        </form>
+        <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
+          Check your email for the secure login link. Your tester access (full features, no card) is now active and will end after the configured period.
+        </div>
+        <p style="font-size:11px; opacity:0.7; margin-top:6px;">Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
+      </div>
       <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
         <h3>Check your email!</h3>
-        <p>Complete payment to activate your 3-day trial. Then use the login link we send.</p>
+        <p>Complete payment to activate your trial. Then use the login link we send.</p>
       </div>
 
       <hr style="margin:30px 0;">
@@ -165,14 +179,14 @@
 
   <footer>
     <div class="container">
-      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/app" style="color:#c9a227;">Open the app</a><br>
+      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/app?demo=1" style="color:#c9a227;">Try the app (demo)</a><br>
       <small>© 2026 • Private by design • No ads • Your data stays yours</small><br>
       <small style="opacity:0.6;">Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.</small>
     </div>
   </footer>
 
   <script>
-    // New 3-day trial + Stripe flow
+    // New configurable trial (TRIAL_DAYS env) + Stripe flow; tester path is separate no-card
     document.getElementById('trial-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('trial-email').value;
@@ -185,6 +199,28 @@
         const data = await res.json();
         if (data.url) {
           window.location.href = data.url; // go to Stripe Checkout
+        } else {
+          alert(data.error || 'Something went wrong.');
+        }
+      } catch (err) {
+        alert('Network error. Please try again later.');
+      }
+    });
+
+    // New card-free tester signup (14 days full access, no Stripe, ends automatically)
+    document.getElementById('tester-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const email = document.getElementById('tester-email').value;
+      try {
+        const res = await fetch('/api/tester-signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('tester-form').style.display = 'none';
+          document.getElementById('tester-success').style.display = 'block';
         } else {
           alert(data.error || 'Something went wrong.');
         }
@@ -214,6 +250,23 @@
         alert('Network error. Please try again later.');
       }
     });
+
+    // Pull current trial lengths from server so marketing text matches your env
+    fetch('/api/config').then(r => r.json()).then(c => {
+      const normal = c.trialDays || 7;
+      const tester = c.testerTrialDays || 14;
+      // Update main trial button if present
+      const trialBtn = document.querySelector('#trial-form button');
+      if (trialBtn) trialBtn.textContent = `Start ${normal}-Day Free Trial (card required after)`;
+      // Update tester texts
+      const testerP = document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
+      if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${tester} days unless we extend it for you.`;
+      const testerBtn = document.querySelector('#tester-form button');
+      if (testerBtn) testerBtn.textContent = `Sign up for ${tester}-day tester access (email only, no card)`;
+      // Update the h2 if present
+      const h2 = document.querySelector('h2');
+      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normal} days normal / ${tester} for testers)`;
+    }).catch(() => {});
   </script>
 </body>
 </html>

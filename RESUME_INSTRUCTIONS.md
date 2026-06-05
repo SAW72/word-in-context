@@ -46,11 +46,20 @@ The full conversation history, all tool results, file edits, TODO state, etc. ar
 
 (Full details: `~/.grok/docs/user-guide/17-sessions.md`)
 
-## 2. Project State Right Now (as of last session)
-- **Landing page** (marketing + beta signup): `public/landing.html` — served at `http://localhost:8787/`
-  - Beautiful hero, features, pricing, beta form that writes to `betas.json`
-  - New section: "Web App First — Mobile Coming Later"
-  - Mentions NDAs for early testers
+## 2. Project State Right Now (latest refinements)
+- **Tester access (new, card-free)**: Separate "Sign up for 14-day tester access (email only, no card)" form on landing. Calls `/api/tester-signup` → creates user with `status=trialing`, `trial_end=+14d` (TESTER_TRIAL_DAYS env), sends magic login link. Full unlimited access during the period, then auto-expires. No Stripe at all for these users. Normal paid path remains Stripe with TRIAL_DAYS (default 7, card for after trial).
+- **"Try the App" limited demo**: Landing "Try the App" / Free plan buttons go to `/app?demo=1`. Unauthenticated users get **exactly 3 responses** (configurable via `DEMO_LIMIT` env). 
+  - Prominent yellow/red demo banner + count, disables input/mic/send after limit, in-chat + modal CTAs to the trial form.
+  - Full quality experience during the 3 (voice "John", hands-free, live Greek/Hebrew sources).
+  - Server allows demo calls (no JWT) but has IP-based throttle + client daily reset.
+- **Configurable trial**: `TRIAL_DAYS` env (default 7 for normal Stripe path). `TESTER_TRIAL_DAYS` (default 14) for the no-card tester path. Used in DB + Stripe. UI texts are dynamic where possible.
+- **Admin UI**: Visit `/admin` (or yourdomain/admin). Enter `ADMIN_PASSWORD`. Lists all users, one-click grant/revoke access, "make free forever" (manual_free), remove free. Uses the existing `/api/admin/*` routes. Much better than curls.
+- **/api/config**: Public endpoint returning `{demoLimit, trialDays, testerTrialDays}` so UI and admin reflect current env.
+- **Landing + app**: All Try buttons, pricing, texts updated for the 3-response demo limit. "The Word in Context" branding everywhere. Wake word default "John".
+- **Auth/Stripe still full**: Configurable trial (default 7 days via TRIAL_DAYS env) via Stripe Checkout for normal (card for after), plus no-card 14-day tester signup via email. Magic link login via Resend. You control everything via admin or DB.
+- **Files**: server.js (main logic + new /admin + /api/config + throttle), public/landing.html, public/index.html (demo UX + dynamic limit).
+
+**Pro tip for next session**: "ok let doit" or "continue with admin UI + docs" etc. will pick this up.
 - **Main chat app**: `public/index.html` — served at `http://localhost:8787/app`
   - Full features: Grok chat, voice (local + ElevenLabs BYOK), hands-free with customizable wake word ("John" default, can turn off or change name), live sources with Greek (SBL etc.) + Hebrew (WLC), per-message sources UI, etc.
 - **Server**: `server.js`

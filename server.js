@@ -44,6 +44,11 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 
+// Configurable for easy tuning without code changes (set in Render env)
+const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
+const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
+const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
+
 // Production note: When deploying (Render, Railway, etc.), set NODE_ENV=production
 // and provide XAI_API_KEY + any future keys via the platform's environment variables.
 // Free tiers may sleep the service — that's fine for early beta.
@@ -53,6 +58,24 @@ const xai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
 });
+
+// Very lightweight in-memory demo throttle (protects the xAI key from scrapers/bots hitting /app?demo=1)
+// No extra deps. For production you can later add express-rate-limit + helmet.
+const demoUsage = new Map(); // ip -> array of timestamps (last hour)
+function checkDemoThrottle(ip) {
+  const now = Date.now();
+  const hour = 60 * 60 * 1000;
+  if (!ip) return true;
+  let times = demoUsage.get(ip) || [];
+  times = times.filter(t => now - t < hour);
+  if (times.length >= 50) { // max 50 demo chats per IP per hour (very generous for real users, stops bots)
+    demoUsage.set(ip, times);
+    return false;
+  }
+  times.push(now);
+  demoUsage.set(ip, times);
+  return true;
+}
 
 // === Strong System Prompt for "The Word in Context" ===
 const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages and literary contexts.
@@ -251,6 +274,9 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
 
 app.use(express.json({ limit: '1mb' }));
 
+// Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
+app.set('trust proxy', 1);
+
 // Raw body for Stripe webhook
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
@@ -335,6 +361,13 @@ app.get('/app', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Admin control panel - explicit route so /admin serves the panel (password protected inside via ADMIN_PASSWORD env)
+// Must be before static middleware.
+app.get('/admin', (req, res) => {
+  console.log('[admin] serving admin panel page');
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 // Static assets (for any future images/css if split)
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -378,22 +411,29 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   }
 });
 
-// === NEW: User login / account system with 3-day trial + Stripe ===
+// === NEW: User login / account system with configurable trial (TRIAL_DAYS env) + Stripe ===
 
 // Helper: send magic link email (or log in dev)
-async function sendMagicLink(email, token) {
+// options: { subject?, htmlPrefix?, isTester? }
+async function sendMagicLink(email, token, options = {}) {
   const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
+  const isTester = !!options.isTester;
+  const subject = options.subject || (isTester ? 'Your tester access to The Word in Context (14 days)' : 'Log in to The Word in Context');
+  const prefix = options.htmlPrefix || (isTester 
+    ? `<p>Welcome to <strong>The Word in Context</strong> as a tester!</p>
+       <p>Your <strong>14-day tester access</strong> (no credit card required) has been activated. It ends automatically after 14 days unless extended.</p>`
+    : `<p>Click to log in to <strong>The Word in Context</strong>:</p>`);
   const html = `
-    <p>Click to log in to <strong>The Word in Context</strong>:</p>
+    ${prefix}
     <p><a href="${loginUrl}">Log in to your account</a></p>
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
-    <p><small>We will never sell your information. All chats are stored only in your browser. Payment info is handled securely by Stripe. Your conversations never leave your device.</small></p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? 'This is tester access and will expire after the trial period.' : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
   `;
   if (resend) {
     await resend.emails.send({
       from: 'The Word in Context <no-reply@thewordincontext.org>',
       to: email,
-      subject: 'Log in to The Word in Context',
+      subject,
       html
     });
   } else {
@@ -401,11 +441,15 @@ async function sendMagicLink(email, token) {
   }
 }
 
-// Create or get user + start 3-day trial via Stripe Checkout
+// Create or get user + start configurable trial via Stripe Checkout
 app.post('/api/create-checkout', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, trialDays: requestedTrialDays } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+    const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
+      ? requestedTrialDays
+      : TRIAL_DAYS;
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
@@ -413,12 +457,12 @@ app.post('/api/create-checkout', async (req, res) => {
       const customer = await stripe.customers.create({ email });
       db.prepare(`
         INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
-        VALUES (?, ?, 'trialing', datetime('now', '+3 days'), 1)
+        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1)
       `).run(email, customer.id);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     }
 
-    // Create Checkout for subscription with 3-day trial
+    // Create Checkout for subscription with trial
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: user.stripe_customer_id,
@@ -427,7 +471,7 @@ app.post('/api/create-checkout', async (req, res) => {
         quantity: 1,
       }],
       subscription_data: {
-        trial_period_days: 3,
+        trial_period_days: effectiveTrialDays,
       },
       success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
@@ -441,6 +485,48 @@ app.post('/api/create-checkout', async (req, res) => {
   }
 });
 
+// Tester signup: email-only, no card, full access for TESTER_TRIAL_DAYS (default 14), then expires automatically.
+// No Stripe involved. Sends magic login link immediately.
+app.post('/api/tester-signup', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const trialEndExpr = `datetime('now', '+${TESTER_TRIAL_DAYS} days')`;
+
+    if (!user) {
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted)
+        VALUES (?, 'trialing', ${trialEndExpr}, 1)
+      `).run(email);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    } else {
+      // Re-activate / extend as tester trial if they already exist
+      db.prepare(`
+        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1
+        WHERE email = ?
+      `).run(email);
+    }
+
+    // Create short-lived magic token (same as normal login)
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+    // Send custom tester magic link email
+    await sendMagicLink(email, token, { isTester: true });
+
+    res.json({ 
+      success: true, 
+      message: `Check your email for the secure login link. Your ${TESTER_TRIAL_DAYS}-day tester access (full features, no card) is now active and will end automatically.` 
+    });
+  } catch (err) {
+    console.error('tester-signup error:', err);
+    res.status(500).json({ error: 'Could not create tester access. Please try again.' });
+  }
+});
+
 // Magic link login request
 app.post('/api/request-login', async (req, res) => {
   try {
@@ -448,7 +534,7 @@ app.post('/api/request-login', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) return res.status(404).json({ error: 'No account with that email. Start a trial first.' });
+    if (!user) return res.status(404).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
 
     // Create short-lived token
     const token = require('crypto').randomBytes(32).toString('hex');
@@ -505,7 +591,16 @@ app.get('/api/me', requireAuth, (req, res) => {
   });
 });
 
-// Simple admin (password protected, for your full control)
+// Public config for client (demo limit, trial length, etc.). No secrets.
+app.get('/api/config', (req, res) => {
+  res.json({
+    demoLimit: DEMO_LIMIT,
+    trialDays: TRIAL_DAYS,
+    testerTrialDays: TESTER_TRIAL_DAYS
+  });
+});
+
+// Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
 app.post('/api/admin/login', (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Bad password' });
   const adminToken = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '4h' });
@@ -582,14 +677,15 @@ app.get('/success', (req, res) => {
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
-    <p>Your 3-day trial has started (or subscription activated).</p>
+    <p>Your ${TRIAL_DAYS}-day trial has started (or subscription activated).</p>
     <p>Check your email for a secure login link.</p>
-    <p><a href="/app">Open the App</a> (you may need to log in first)</p>
+    <p><a href="/app">Open the App</a> (log in with the link we emailed you)</p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
     </body></html>
   `);
 });
+
 
 // Login page that handles magic token and stores it for the app
 app.get('/login', (req, res) => {
@@ -619,9 +715,29 @@ app.get('/login', (req, res) => {
   `);
 });
 
-// === Main chat endpoint (secure proxy) - now requires login ===
-app.post('/api/chat', requireAuth, async (req, res) => {
+// === Main chat endpoint (secure proxy) ===
+// Supports both authenticated users (full trial/sub access via JWT) AND limited demo mode
+// for the "Try the App" button on landing (no token = demo, client-enforced small limit).
+// Demo requests bypass user DB/trial checks but still get full Bible-grounded Grok replies.
+app.post('/api/chat', (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Demo / try-the-app limited mode (no login token). Client limits to a few responses.
+    req.demo = true;
+    return next();
+  }
+  // Has token: run the full auth + trial/sub access checks
+  requireAuth(req, res, next);
+}, async (req, res) => {
   try {
+    if (req.demo) {
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      if (!checkDemoThrottle(ip)) {
+        console.warn('[demo] throttle hit for', ip);
+        return res.status(429).json({ error: 'Too many demo requests from this IP. Please try the full trial.' });
+      }
+      console.log('[demo] limited demo chat request (client should enforce small response cap)');
+    }
     const { messages } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
