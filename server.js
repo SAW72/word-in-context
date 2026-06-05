@@ -418,16 +418,17 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 async function sendMagicLink(email, token, options = {}) {
   const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
   const isTester = !!options.isTester;
-  const subject = options.subject || (isTester ? 'Your tester access to The Word in Context (14 days)' : 'Log in to The Word in Context');
+  const days = isTester ? TESTER_TRIAL_DAYS : TRIAL_DAYS;
+  const subject = options.subject || (isTester ? `Your tester access to The Word in Context (${days} days)` : 'Log in to The Word in Context');
   const prefix = options.htmlPrefix || (isTester 
     ? `<p>Welcome to <strong>The Word in Context</strong> as a tester!</p>
-       <p>Your <strong>14-day tester access</strong> (no credit card required) has been activated. It ends automatically after 14 days unless extended.</p>`
+       <p>Your <strong>${days}-day tester access</strong> (no credit card required) has been activated. It ends automatically after ${days} days unless extended.</p>`
     : `<p>Click to log in to <strong>The Word in Context</strong>:</p>`);
   const html = `
     ${prefix}
     <p><a href="${loginUrl}">Log in to your account</a></p>
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
-    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? 'This is tester access and will expire after the trial period.' : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? `This is tester access and will expire after ${days} days.` : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
   `;
   if (resend) {
     await resend.emails.send({
@@ -438,6 +439,7 @@ async function sendMagicLink(email, token, options = {}) {
     });
   } else {
     console.log(`[MAGIC LINK for ${email}] ${loginUrl}`);
+    throw new Error('RESEND_API_KEY not configured on server - cannot send magic links');
   }
 }
 
@@ -459,6 +461,11 @@ app.post('/api/create-checkout', async (req, res) => {
         INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
         VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1)
       `).run(email, customer.id);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    } else if (!user.stripe_customer_id) {
+      // Upgrade existing user (e.g. previous tester signup with no card) to have a Stripe customer
+      const customer = await stripe.customers.create({ email });
+      db.prepare(`UPDATE users SET stripe_customer_id = ? WHERE email = ?`).run(customer.id, email);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     }
 
