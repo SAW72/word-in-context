@@ -521,6 +521,10 @@
       <div style="margin-top:16px; font-size:11px; opacity:0.6;">
         Full admin control: we can grant free access or cut off any account at any time.
       </div>
+
+      <div style="margin-top:14px; text-align:right;">
+        <button id="close-account-btn" style="background:#777">Close</button>
+      </div>
     </div>
   </div>
 
@@ -2275,10 +2279,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     stopBtn.addEventListener("click", stopSpeaking);
     voiceBtn.addEventListener('click', openVoiceSettings);
 
+    // Backdrop click to close voice modal
+    const voiceModalEl = document.getElementById('voice-modal');
+    if (voiceModalEl) {
+      voiceModalEl.addEventListener('click', (e) => {
+        if (e.target === voiceModalEl) voiceModalEl.style.display = 'none';
+      });
+    }
+
     if (sourcesBtn) {
       sourcesBtn.addEventListener('click', () => {
         const modal = document.getElementById('sources-modal');
         if (modal) modal.style.display = 'flex';
+      });
+    }
+
+    // Backdrop click to close sources modal
+    const sourcesModalEl = document.getElementById('sources-modal');
+    if (sourcesModalEl) {
+      sourcesModalEl.addEventListener('click', (e) => {
+        if (e.target === sourcesModalEl) sourcesModalEl.style.display = 'none';
       });
     }
 
@@ -2324,6 +2344,35 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
     }
+
+    // Close button for Account modal (the modal had no way to close except logout or refresh)
+    const closeAccountBtn = document.getElementById('close-account-btn');
+    if (closeAccountBtn) {
+      closeAccountBtn.addEventListener('click', () => {
+        document.getElementById('subscribe-modal').style.display = 'none';
+      });
+    }
+
+    // Also allow clicking the backdrop (the .modal itself) to close the account modal
+    const accountModal = document.getElementById('subscribe-modal');
+    if (accountModal) {
+      accountModal.addEventListener('click', (e) => {
+        if (e.target === accountModal) {
+          accountModal.style.display = 'none';
+        }
+      });
+    }
+
+    // Global ESC key support for any open modal (good UX, consistent with modern apps)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const openModals = document.querySelectorAll('.modal[style*="flex"], .modal[style*="block"]');
+        if (openModals.length > 0) {
+          // close the last/top one
+          openModals[openModals.length - 1].style.display = 'none';
+        }
+      }
+    });
 
     // Logout (or for demo visitors, acts as trial signup CTA when Account opened in demo)
     const logoutBtn = document.getElementById('logout-btn');
