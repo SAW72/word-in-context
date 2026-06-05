@@ -169,6 +169,7 @@
       <div id="login-success" style="display:none; text-align:center; color:#2c3e50; margin-top:10px;">
         <p>Check your email for the secure login link.</p>
       </div>
+      <div id="login-error" style="display:none; text-align:center; color:#c0392b; font-size:13px; margin-top:8px; font-weight:500;"></div>
     </div>
   </section>
 
@@ -246,14 +247,19 @@
           body: JSON.stringify({ email })
         });
         const data = await res.json();
+        const errDiv = document.getElementById('login-error');
+        errDiv.style.display = 'none';
         if (res.ok) {
           document.getElementById('login-form').style.display = 'none';
           document.getElementById('login-success').style.display = 'block';
         } else {
-          alert(data.error || 'No account found with that email. Start a trial first.');
+          errDiv.textContent = data.error || 'No account found with that email. Start a trial first.';
+          errDiv.style.display = 'block';
         }
       } catch (err) {
-        alert('Network error. Please try again later.');
+        const errDiv = document.getElementById('login-error');
+        errDiv.textContent = 'Network error. Please try again later.';
+        errDiv.style.display = 'block';
       }
     });
 
