@@ -152,6 +152,7 @@
         <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
           Check your email for the secure login link. Your tester access (full features, no card) is now active and will end after the configured period.
         </div>
+        <div id="tester-error" style="display:none; margin-top:8px; color:#c0392b; font-size:13px; font-weight:500;"></div>
         <p style="font-size:11px; opacity:0.7; margin-top:6px;">Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
       </div>
       <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
@@ -218,14 +219,19 @@
           body: JSON.stringify({ email })
         });
         const data = await res.json();
+        const errDiv = document.getElementById('tester-error');
+        errDiv.style.display = 'none';
         if (res.ok) {
           document.getElementById('tester-form').style.display = 'none';
           document.getElementById('tester-success').style.display = 'block';
         } else {
-          alert(data.error || 'Something went wrong.');
+          errDiv.textContent = data.error || 'Something went wrong.';
+          errDiv.style.display = 'block';
         }
       } catch (err) {
-        alert('Network error. Please try again later.');
+        const errDiv = document.getElementById('tester-error');
+        errDiv.textContent = 'Network error. Please try again later.';
+        errDiv.style.display = 'block';
       }
     });
 
