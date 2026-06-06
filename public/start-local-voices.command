@@ -30,7 +30,7 @@ echo "✅ Docker is ready."
 docker rm -f local-voices 2>/dev/null || true
 
 echo "📥 Pulling and starting the voice container (this may take a minute the first time)..."
-docker run -d --name local-voices -p 5050:5050 --restart unless-stopped travisvn/openai-edge-tts:latest
+docker run -d --name local-voices -p 5050:5050 -e REQUIRE_API_KEY=False --restart unless-stopped travisvn/openai-edge-tts:latest
 
 echo ""
 echo "🎉 Success! Local voices are now running."
