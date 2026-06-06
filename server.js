@@ -929,6 +929,22 @@ app.post('/api/chat', (req, res, next) => {
       t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
       t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
       t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
+
+      // Gospel of John chapters: "john one" etc. (distinct from "one john" = 1 John epistle)
+      t = t.replace(/\bjohn\s+chapter\s+(one|first)\b/gi, 'John 1');
+      t = t.replace(/\bjohn\s+chapter\s+(two|second)\b/gi, 'John 2');
+      t = t.replace(/\bjohn\s+chapter\s+(three|third)\b/gi, 'John 3');
+      t = t.replace(/\bjohn\s+(one|first)\b/gi, 'John 1');
+      t = t.replace(/\bjohn\s+(two|second)\b/gi, 'John 2');
+      t = t.replace(/\bjohn\s+(three|third)\b/gi, 'John 3');
+      t = t.replace(/\bjohn\s+four\b/gi, 'John 4');
+      t = t.replace(/\bjohn\s+five\b/gi, 'John 5');
+      t = t.replace(/\bjohn\s+six\b/gi, 'John 6');
+      t = t.replace(/\bjohn\s+seven\b/gi, 'John 7');
+      t = t.replace(/\bjohn\s+eight\b/gi, 'John 8');
+      t = t.replace(/\bjohn\s+nine\b/gi, 'John 9');
+      t = t.replace(/\bjohn\s+ten\b/gi, 'John 10');
+
       t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
       t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
       t = t.replace(/\b(one|1st|first)\s+corinthians\b/gi, ' 1 Corinthians ');
