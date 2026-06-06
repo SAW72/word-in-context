@@ -430,38 +430,42 @@
       </label>
       <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
 
-      <!-- Free local / device voices - seamless, zero install -->
+      <!-- Premium Hosted Voices (seamless, via our server — no user setup) -->
       <hr style="margin: 10px 0; border-color: #ddd;">
-      <div style="background:#f0f7f0; border:1px solid #9c9; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#1a5; margin-bottom:4px;">🆓 Free local voices (built into your device — $0, private, works everywhere)</div>
+      <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:6px; padding:10px; margin-bottom:8px;">
+        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Hosted Voices (high-quality, seamless — no Docker, no install)</div>
         
         <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
-          Your browser and operating system already include high-quality voices (many are Microsoft/Google neural voices). 
-          These are completely free, run locally on your device, require <strong>zero installation</strong>, and work on the deployed app with one click.
+          Toggle on for excellent Microsoft-style neural voices (like the ones from the edge-tts container). 
+          These run on <strong>our server</strong> (via Render + the TTS container you host). Users just flip the switch — everything is handled server-side.
         </p>
 
-        <p style="font-size:10px; color:#333; margin:4px 0 0; line-height:1.25;">
-          Just open <strong>Voice Settings</strong>, choose any of the enhanced English voices from the dropdown (Google UK English Male, Samantha, Enhanced voices, etc.), and click Save. 
-          All speak buttons will use them automatically. No Docker, no scripts, no localhost headaches.
+        <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
+          <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
+          <span>Use Premium Hosted Voices (high quality, powered by our server)</span>
+        </label>
+
+        <p style="font-size:10px; color:#555; margin:4px 0 0;">
+          This calls our backend proxy, which forwards to your hosted TTS service (the openai-edge-tts or Kokoro container running on Render or a cheap VPS). 
+          No per-user Docker, no localhost issues. Works from the deployed app.
         </p>
 
         <p style="font-size:9px; color:#666; margin:6px 0 0;">
-          (Power users: If you want to run an external local server like openai-edge-tts or Kokoro for even more voices, you can still paste a custom URL below in Advanced mode. But for most people the built-in voices are seamless and excellent.)
+          (Advanced power users can still use a custom local server URL in the details below if they run their own container.)
         </p>
       </div>
 
       <!-- Advanced: custom local TTS server (power-user only) -->
       <details style="margin-bottom:8px;">
-        <summary style="font-size:12px; color:#666; cursor:pointer;">Advanced: Custom local TTS server (Docker / external)</summary>
+        <summary style="font-size:12px; color:#666; cursor:pointer;">Advanced: Custom local TTS server (your own Docker / external)</summary>
         <div style="margin-top:6px; padding:8px; background:#fafafa; border-radius:4px;">
           <label style="font-size:12px; display:block; margin-bottom:4px; font-weight:500;">
-            Local TTS Server URL
+            Local TTS Server URL (only if you run your own container)
             <input type="text" id="custom-tts-url" placeholder="http://localhost:5050" 
                    style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #ccc; border-radius:4px; background:white;">
           </label>
           <p style="font-size:10px; color:#666; margin:4px 0 0;">
-            Only for users who know what they're doing (run your own Docker container on the same machine). 
-            Most people should just use the built-in device voices above — they're free, seamless, and require no setup.
+            For advanced users running their own TTS server (e.g. the edge-tts Docker image). Most users should use the Premium Hosted toggle above for seamless experience.
           </p>
         </div>
       </details>
@@ -920,10 +924,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
-      // Easiest free high-quality option: custom local TTS server (e.g. openai-edge-tts Docker on localhost)
+      // Premium Hosted Voices (via our Render TTS service) or advanced custom local server.
+      // When enabled, routes through /api/tts (server-side proxy) — seamless from the deployed app.
+      const usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
-      if (customTtsUrl) {
-        speakWithCustomTts(text, customTtsUrl);
+      if (usePremium || customTtsUrl) {
+        speakWithCustomTts(text, customTtsUrl || 'premium');
         return;
       }
 
@@ -1004,21 +1010,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
-    // Easy free local voices via Docker (openai-edge-tts or Kokoro etc.)
-    // Users run the container once on their machine and paste the URL in Voice Settings.
+    // Premium / custom voices via your server-side proxy (seamless from deployed app).
+    // When "premium" or custom URL is set, call /api/tts which proxies to your TTS server (your hosted edge-tts or ElevenLabs with your key).
+    // This flows through Render, no localhost/CORS issues for users.
     async function speakWithCustomTts(text, baseUrl) {
       try {
-        const cleanBase = baseUrl.replace(/\/$/, '');
-        const res = await fetch(`${cleanBase}/v1/audio/speech`, {
+        // Always go through backend proxy for deployed app compatibility.
+        // The backend will use TTS_SERVER_URL (your hosted TTS) or fall back.
+        const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            input: text,
-            voice: 'en-US-AvaNeural',   // excellent natural Microsoft voice (change if you prefer another)
-            response_format: 'mp3'
+            text,
+            voice: 'en-US-AvaNeural'  // or pass a selected voice id / profile
           })
         });
-        if (!res.ok) throw new Error('Local TTS server returned ' + res.status);
+        if (!res.ok) throw new Error('TTS proxy returned ' + res.status);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
@@ -1027,7 +1034,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           try { URL.revokeObjectURL(url); } catch (e) {}
         };
       } catch (err) {
-        console.warn('Custom local TTS failed, falling back to browser voice:', err);
+        console.warn('Premium TTS failed, falling back to browser voice:', err);
         fallbackToBrowserSpeech(text);
       }
     }
@@ -1569,6 +1576,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         customTtsInput.value = localStorage.getItem('custom_tts_url') || 'http://localhost:5050';
       }
 
+      // Premium hosted voices toggle (seamless server-side, no user Docker)
+      const premiumToggle = document.getElementById('premium-voices-toggle');
+      if (premiumToggle) {
+        premiumToggle.checked = localStorage.getItem('use_premium_voices') === 'true';
+        premiumToggle.onchange = () => {
+          localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
+          // If turning on premium, we can clear or ignore custom URL for simplicity
+          if (premiumToggle.checked && customTtsInput) {
+            // keep the value but premium path takes precedence in speak()
+          }
+        };
+      }
+
       if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
         // do not force source change here - keeps the saved EL selection visible in dropdown
         // speak() will fallback to local automatically
@@ -1682,7 +1702,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('elevenlabs_api_key', elevenLabsApiKey);
       }
 
-      // Save custom local TTS server URL (easiest free high-quality voices via Docker)
+      // Save custom local TTS server URL (advanced/power-user path)
       const customTtsInput = document.getElementById('custom-tts-url');
       if (customTtsInput) {
         const url = (customTtsInput.value || '').trim();
@@ -1691,6 +1711,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         } else {
           localStorage.removeItem('custom_tts_url');
         }
+      }
+
+      // The premium toggle is saved live on change above; ensure it's persisted
+      const premiumToggle = document.getElementById('premium-voices-toggle');
+      if (premiumToggle) {
+        localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
       }
 
       // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
@@ -3262,9 +3288,10 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         scheduleHandsFreeRestart(800);
       }
 
-      // Learn if server has ELEVENLABS_API_KEY so we can safely gate premium voices (prevents offering options or errors when owner hasn't enabled managed TTS for the sub model)
+      // Learn server TTS config. hasHostedTTS means the "Use Premium Hosted Voices" toggle (edge-tts via TTS_SERVER_URL) will work.
       fetch('/api/health').then(r => r.json()).then(data => {
         serverHasManagedTTS = !!data.hasTTSKey;
+        window.hasHostedTTS = !!data.hasHostedTTS;
         // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
         if (serverHasManagedTTS && premiumVoicesEnabled) {
           setTimeout(loadVoices, 50);

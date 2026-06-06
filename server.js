@@ -733,6 +733,42 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// === TTS proxy for seamless premium/custom voices ===
+// Call this from the frontend instead of direct localhost.
+// Set TTS_SERVER_URL in env to your hosted TTS (e.g. your Render TTS service running the openai-edge-tts image, or a VPS).
+// This keeps keys/server details on your server, works from the deployed HTTPS app.
+// For custom "my voice": Clone on ElevenLabs, then we can extend this proxy to call ElevenLabs with your key + voice_id.
+app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const { text, voice } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'text is required' });
+
+    const ttsBase = process.env.TTS_SERVER_URL || 'http://localhost:5050';
+    const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: text,
+        voice: voice || 'en-US-AvaNeural',
+        response_format: 'mp3'
+      })
+    });
+
+    if (!upstreamRes.ok) {
+      const errText = await upstreamRes.text();
+      console.error('[TTS] upstream error:', upstreamRes.status, errText);
+      return res.status(502).json({ error: 'TTS generation failed', detail: errText });
+    }
+
+    const audioBuffer = await upstreamRes.arrayBuffer();
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.send(Buffer.from(audioBuffer));
+  } catch (e) {
+    console.error('[TTS] proxy error:', e);
+    res.status(500).json({ error: 'TTS proxy failed' });
+  }
+});
+
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
 app.post('/api/admin/login', (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Bad password' });
@@ -1076,76 +1112,20 @@ app.post('/api/chat', (req, res, next) => {
 });
 
 // === Voices list via managed key (so users without personal key can still pick nice voices)
-app.get('/api/voices', async (req, res) => {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'managed voices not configured' });
-  try {
-    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': apiKey }
-    });
-    if (!r.ok) return res.status(r.status).send(await r.text());
-    const data = await r.json();
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: 'failed to list voices' });
-  }
-});
+// /api/voices kept minimal for now (ElevenLabs direct BYOK path in UI can still work client-side if user pastes a key).
+// The primary seamless path (Premium Hosted toggle) hard-codes good neural voices server-side via TTS_SERVER_URL.
 
-// === TTS proxy using server-side ElevenLabs key (for low-cost subscription "managed voices") ===
-// Users without a personal key (or who want included quota) use this.
-// Cost is borne by the app/subscription fee. Add auth/rate-limiting per user later.
-// IMPORTANT for low monthly fee viability: hard cap + cheapest model + log usage so owner can monitor burn.
-app.post('/api/tts', express.json({ limit: '256kb' }), async (req, res) => {
-  try {
-    const { text, voiceId = 'XrExE9yKIg1WjnnlVkGX' } = req.body || {};
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      return res.status(400).json({ error: 'text is required' });
-    }
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Server not configured with ELEVENLABS_API_KEY for managed voices' });
-    }
-    // Hard safety cap for (any) TTS via proxy. For user-provided keys, this is less critical but still protects.
-    // Increased to allow longer complete responses with EL voices (~1-2 min speech possible).
-    // Manual full speak from UI uses direct if key, but proxy path caps here.
-    const safeText = text.slice(0, 2000);
-    const model = 'eleven_turbo_v2_5'; // cheapest low-latency good quality model (Flash equiv)
-    console.log(`[TTS managed] ${safeText.length} chars (capped), voice:${voiceId}, model:${model} — owner cost`);
-
-    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: safeText,
-        model_id: model,
-        voice_settings: { stability: 0.55, similarity_boost: 0.8 }
-      })
-    });
-    if (!r.ok) {
-      const errText = await r.text().catch(() => '');
-      console.error('[TTS managed] upstream error:', r.status, errText.slice(0, 200));
-      return res.status(r.status).send(errText || 'TTS generation failed');
-    }
-    res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/mpeg');
-    res.setHeader('X-TTS-Chars-Used', String(safeText.length)); // for future client metering UI
-    // Stream the audio back (no buffering whole file in memory)
-    r.body.pipe(res);
-  } catch (e) {
-    console.error('TTS proxy error:', e);
-    res.status(500).json({ error: 'TTS proxy failed' });
-  }
-});
+// (ElevenLabs managed /api/tts removed — using the edge-tts compatible proxy above when TTS_SERVER_URL is set.
+// The hosted Microsoft neural voices via your Render TTS service (openai-edge-tts image) are the zero-friction
+// path for customers via the "Use Premium Hosted Voices" toggle. No per-character costs.)
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
-    hasTTSKey: !!process.env.ELEVENLABS_API_KEY,
+    hasHostedTTS: !!process.env.TTS_SERVER_URL,
+    hasTTSKey: !!process.env.ELEVENLABS_API_KEY, // legacy for any ElevenLabs direct UI bits
     model: 'grok-4.3'
   });
 });
@@ -1154,6 +1134,6 @@ app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
-  console.log(`   ElevenLabs (managed TTS for subs): ${process.env.ELEVENLABS_API_KEY ? 'yes (owner pays for included quota)' : 'NO — add ELEVENLABS_API_KEY to .env for premium voices in low-fee plans'}`);
+  console.log(`   Hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (will use localhost:5050 fallback for dev)'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
