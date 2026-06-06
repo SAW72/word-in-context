@@ -430,39 +430,46 @@
       </label>
       <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
 
-      <!-- Free local OpenAI-compatible TTS server promo (openai-edge-tts / similar) -->
+      <!-- Free local TTS (openai-edge-tts via Docker) - fully functional -->
       <hr style="margin: 10px 0; border-color: #ddd;">
       <div style="background:#f0f7f0; border:1px solid #9c9; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#1a5; margin-bottom:4px;">🆓 Free local voices — run on your own computer ($0 forever)</div>
-        <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
-          Add a tiny local server to your system using excellent Microsoft neural voices (or fully-offline models like Kokoro). 
-          No subscription, unlimited use, great quality. OpenAI-compatible so it will work directly in the app soon.
+        <div style="font-size:13px; font-weight:600; color:#1a5; margin-bottom:4px;">🆓 Free local high-quality voices (run on YOUR computer — $0 forever)</div>
+        
+        <label style="font-size:12px; display:block; margin-bottom:4px; font-weight:500;">
+          Local TTS Server URL (paste after starting Docker)
+          <input type="text" id="custom-tts-url" placeholder="http://localhost:5050" 
+                 style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #9c9; border-radius:4px; background:white;">
+        </label>
+
+        <div style="margin:6px 0;">
+          <div style="font-size:11px; color:#333; margin-bottom:3px;"><strong>Easiest way (recommended for Mac):</strong></div>
+          <a href="/start-local-voices.command" download 
+             style="display:inline-block; background:#1a5; color:white; padding:6px 12px; border-radius:4px; text-decoration:none; font-size:12px; margin-bottom:6px;">
+            ⬇️ Download Mac Helper Script (double-click after download)
+          </a>
+          <div style="font-size:10px; color:#555;">
+            The script will start everything automatically and tell you the URL.
+          </div>
+
+          <div style="margin-top:8px; font-size:11px; color:#333;">Or run manually in Terminal:</div>
+          <div style="background:white; border:1px solid #ccc; border-radius:4px; padding:5px 6px; font-family:ui-monospace, monospace; font-size:11px; color:#222; display:flex; align-items:center; gap:6px;">
+            <code style="flex:1; overflow:auto;">docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest</code>
+            <button onclick="navigator.clipboard.writeText('docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest'); this.textContent='Copied!'; setTimeout(()=>{this.textContent='Copy'}, 1400)" 
+                    style="font-size:10px; padding:2px 6px; background:#c9a227; color:white; border:none; border-radius:3px; cursor:pointer; white-space:nowrap;">
+              Copy
+            </button>
+          </div>
+          <div style="font-size:10px; color:#555; margin-top:2px;">
+            <a href="https://www.docker.com/products/docker-desktop/" target="_blank" style="color:#0366d6;">Download Docker Desktop</a>
+          </div>
+        </div>
+
+        <p style="font-size:10px; color:#333; margin:4px 0 0; line-height:1.25;">
+          2. Paste the URL above (usually <strong>http://localhost:5050</strong>) and click <strong>Save Settings</strong>.<br>
+          A natural Microsoft neural voice will be used automatically for all speaking. No cost, unlimited.
         </p>
-
-        <div style="background:#fff; border:1px solid #ccc; border-radius:4px; padding:6px 8px; font-family:ui-monospace, monospace; font-size:12px; color:#222; margin:6px 0; white-space:nowrap; overflow:auto;">
-          docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest
-        </div>
-
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button onclick="navigator.clipboard.writeText('docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy command',1200)})" 
-                  style="font-size:11px; padding:4px 10px; background:#c9a227; color:#fff; border:none; border-radius:4px; cursor:pointer;">
-            Copy command
-          </button>
-
-          <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener"
-             style="font-size:11px; padding:4px 10px; background:#0366d6; color:#fff; text-decoration:none; border-radius:4px; display:inline-flex; align-items:center;">
-            Download Docker Desktop (free)
-          </a>
-
-          <a href="https://github.com/travisvn/openai-edge-tts" target="_blank" rel="noopener"
-             style="font-size:11px; padding:4px 10px; background:#24292f; color:#fff; text-decoration:none; border-radius:4px; display:inline-flex; align-items:center;">
-            OpenAI Edge TTS project (full instructions)
-          </a>
-        </div>
-
-        <p style="font-size:10px; color:#555; margin:6px 0 0;">
-          Alternative fully-local neural option: <a href="https://github.com/remsky/Kokoro-FastAPI" target="_blank" style="color:#1a5;">Kokoro FastAPI</a> (also Docker, same /v1/audio/speech shape).
-          <br>We'll add a "Custom local TTS server URL" field here soon so you can select it directly for speaking replies.
+        <p style="font-size:9px; color:#666; margin:3px 0 0;">
+          (Alternative: <a href="https://github.com/remsky/Kokoro-FastAPI" target="_blank" style="color:#1a5;">Kokoro FastAPI</a> — also works with the same URL field)
         </p>
       </div>
 
@@ -920,6 +927,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
+      // Easiest free high-quality option: custom local TTS server (e.g. openai-edge-tts Docker on localhost)
+      const customTtsUrl = localStorage.getItem('custom_tts_url');
+      if (customTtsUrl) {
+        speakWithCustomTts(text, customTtsUrl);
+        return;
+      }
+
       // For hands-free + wake word, we LEAVE the recognition object running (even though
       // our isListening flag is false). This lets onresult still fire so we can detect
       // "John" as a barge-in / interrupt while the AI is speaking.
@@ -995,6 +1009,34 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
+    }
+
+    // Easy free local voices via Docker (openai-edge-tts or Kokoro etc.)
+    // Users run the container once on their machine and paste the URL in Voice Settings.
+    async function speakWithCustomTts(text, baseUrl) {
+      try {
+        const cleanBase = baseUrl.replace(/\/$/, '');
+        const res = await fetch(`${cleanBase}/v1/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: text,
+            voice: 'en-US-AvaNeural',   // excellent natural Microsoft voice (change if you prefer another)
+            response_format: 'mp3'
+          })
+        });
+        if (!res.ok) throw new Error('Local TTS server returned ' + res.status);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play().catch(e => console.warn('Audio playback blocked or failed', e));
+        audio.onended = () => {
+          try { URL.revokeObjectURL(url); } catch (e) {}
+        };
+      } catch (err) {
+        console.warn('Custom local TTS failed, falling back to browser voice:', err);
+        fallbackToBrowserSpeech(text);
+      }
     }
 
     function startElevenLabsRequest(textToSpeak, voiceIdToUse) {
@@ -1528,6 +1570,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const quotaWarning = document.getElementById('elevenlabs-quota-warning');
       if (quotaWarning) quotaWarning.style.display = elevenLabsQuotaExceeded ? 'block' : 'none';
 
+      // Prefill custom local TTS URL (free Docker server)
+      const customTtsInput = document.getElementById('custom-tts-url');
+      if (customTtsInput) {
+        customTtsInput.value = localStorage.getItem('custom_tts_url') || 'http://localhost:5050';
+      }
+
       if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
         // do not force source change here - keeps the saved EL selection visible in dropdown
         // speak() will fallback to local automatically
@@ -1641,6 +1689,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('elevenlabs_api_key', elevenLabsApiKey);
       }
 
+      // Save custom local TTS server URL (easiest free high-quality voices via Docker)
+      const customTtsInput = document.getElementById('custom-tts-url');
+      if (customTtsInput) {
+        const url = (customTtsInput.value || '').trim();
+        if (url) {
+          localStorage.setItem('custom_tts_url', url);
+        } else {
+          localStorage.removeItem('custom_tts_url');
+        }
+      }
+
       // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
       // This prevents accidental burn of owner's managed credits.
       if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
@@ -1715,6 +1774,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         setTimeout(() => {
           if (saveBtn) saveBtn.textContent = old;
         }, 900);
+      }
+
+      // Quick status hint if local TTS server is configured (easiest free option)
+      const customUrlAfterSave = localStorage.getItem('custom_tts_url');
+      if (customUrlAfterSave) {
+        console.log('[Voice] Custom local TTS server active:', customUrlAfterSave);
       }
 
       // Try to select the newly saved voice in the dropdown (for immediate feedback if modal re-opened quickly)
