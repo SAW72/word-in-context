@@ -445,8 +445,19 @@
           <span>Use Premium Hosted Voices (high quality, powered by our server)</span>
         </label>
 
+        <div style="margin:6px 0 4px;">
+          <label style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose hosted voice:</label>
+          <select id="hosted-voice-select" style="width:100%; padding:5px; font-size:13px; border:1px solid #4caf50; border-radius:4px; background:white;">
+            <option value="en-US-AvaNeural">Ava (Female) — natural &amp; recommended</option>
+            <option value="en-US-GuyNeural">Guy (Male)</option>
+            <option value="en-US-JennyNeural">Jenny (Female) — clear &amp; expressive</option>
+            <option value="en-US-AndrewNeural">Andrew (Male)</option>
+            <option value="en-US-EmmaNeural">Emma (Female)</option>
+          </select>
+        </div>
+
         <p style="font-size:10px; color:#555; margin:4px 0 0;">
-          This calls our backend proxy, which forwards to your hosted TTS service (the openai-edge-tts or Kokoro container running on Render or a cheap VPS). 
+          This calls our backend proxy, which forwards to your hosted TTS service (the openai-edge-tts container). 
           No per-user Docker, no localhost issues. Works from the deployed app.
         </p>
 
@@ -1017,12 +1028,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       try {
         // Always go through backend proxy for deployed app compatibility.
         // The backend will use TTS_SERVER_URL (your hosted TTS) or fall back.
+        const hostedVoice = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text,
-            voice: 'en-US-AvaNeural'  // or pass a selected voice id / profile
+            voice: hostedVoice
           })
         });
         if (!res.ok) throw new Error('TTS proxy returned ' + res.status);
@@ -1589,6 +1601,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
+      // Hosted voice picker (shown under the premium toggle)
+      const hostedVoiceSelect = document.getElementById('hosted-voice-select');
+      if (hostedVoiceSelect) {
+        hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
+        hostedVoiceSelect.onchange = () => {
+          localStorage.setItem('hosted_voice', hostedVoiceSelect.value);
+        };
+      }
+
       if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
         // do not force source change here - keeps the saved EL selection visible in dropdown
         // speak() will fallback to local automatically
@@ -1717,6 +1738,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const premiumToggle = document.getElementById('premium-voices-toggle');
       if (premiumToggle) {
         localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
+      }
+
+      // Persist chosen hosted neural voice (used by the /api/tts proxy when toggle is on)
+      const hostedVoiceSelect = document.getElementById('hosted-voice-select');
+      if (hostedVoiceSelect) {
+        localStorage.setItem('hosted_voice', hostedVoiceSelect.value || 'en-US-AvaNeural');
       }
 
       // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
