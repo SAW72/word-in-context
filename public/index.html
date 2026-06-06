@@ -430,52 +430,41 @@
       </label>
       <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
 
-      <!-- Free local TTS (openai-edge-tts via Docker) - fully functional -->
+      <!-- Free local / device voices - seamless, zero install -->
       <hr style="margin: 10px 0; border-color: #ddd;">
       <div style="background:#f0f7f0; border:1px solid #9c9; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#1a5; margin-bottom:4px;">🆓 Free local high-quality voices (run on YOUR computer — $0 forever)</div>
+        <div style="font-size:13px; font-weight:600; color:#1a5; margin-bottom:4px;">🆓 Free local voices (built into your device — $0, private, works everywhere)</div>
         
-        <label style="font-size:12px; display:block; margin-bottom:4px; font-weight:500;">
-          Local TTS Server URL (paste after starting Docker)
-          <input type="text" id="custom-tts-url" placeholder="http://localhost:5050" 
-                 style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #9c9; border-radius:4px; background:white;">
-        </label>
-
-        <div style="margin:6px 0;">
-          <div style="font-size:11px; color:#333; margin-bottom:3px;"><strong>Easiest way (recommended for Mac):</strong></div>
-          <a href="/start-local-voices.command" download 
-             style="display:inline-block; background:#1a5; color:white; padding:6px 12px; border-radius:4px; text-decoration:none; font-size:12px; margin-bottom:6px;">
-            ⬇️ Download Mac Helper Script (double-click after download)
-          </a>
-          <div style="font-size:10px; color:#c94e4e; margin-bottom:4px;">
-            macOS may warn “cannot be opened because Apple cannot check it for malicious software”.<br>
-            <strong>Fix:</strong> Right-click the file → Open, or go to System Settings → Privacy & Security → “Open Anyway”.
-          </div>
-          <div style="font-size:10px; color:#555;">
-            The script will start everything automatically and tell you the URL.
-          </div>
-
-          <div style="margin-top:8px; font-size:11px; color:#333;">Or run manually in Terminal:</div>
-          <div style="background:white; border:1px solid #ccc; border-radius:4px; padding:5px 6px; font-family:ui-monospace, monospace; font-size:11px; color:#222; display:flex; align-items:center; gap:6px;">
-            <code style="flex:1; overflow:auto;">docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest</code>
-            <button onclick="navigator.clipboard.writeText('docker run -d -p 5050:5050 travisvn/openai-edge-tts:latest'); this.textContent='Copied!'; setTimeout(()=>{this.textContent='Copy'}, 1400)" 
-                    style="font-size:10px; padding:2px 6px; background:#c9a227; color:white; border:none; border-radius:3px; cursor:pointer; white-space:nowrap;">
-              Copy
-            </button>
-          </div>
-          <div style="font-size:10px; color:#555; margin-top:2px;">
-            <a href="https://www.docker.com/products/docker-desktop/" target="_blank" style="color:#0366d6;">Download Docker Desktop</a>
-          </div>
-        </div>
+        <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
+          Your browser and operating system already include high-quality voices (many are Microsoft/Google neural voices). 
+          These are completely free, run locally on your device, require <strong>zero installation</strong>, and work on the deployed app with one click.
+        </p>
 
         <p style="font-size:10px; color:#333; margin:4px 0 0; line-height:1.25;">
-          2. Paste the URL above (usually <strong>http://localhost:5050</strong>) and click <strong>Save Settings</strong>.<br>
-          A natural Microsoft neural voice will be used automatically for all speaking. No cost, unlimited.
+          Just open <strong>Voice Settings</strong>, choose any of the enhanced English voices from the dropdown (Google UK English Male, Samantha, Enhanced voices, etc.), and click Save. 
+          All speak buttons will use them automatically. No Docker, no scripts, no localhost headaches.
         </p>
-        <p style="font-size:9px; color:#666; margin:3px 0 0;">
-          (Alternative: <a href="https://github.com/remsky/Kokoro-FastAPI" target="_blank" style="color:#1a5;">Kokoro FastAPI</a> — also works with the same URL field)
+
+        <p style="font-size:9px; color:#666; margin:6px 0 0;">
+          (Power users: If you want to run an external local server like openai-edge-tts or Kokoro for even more voices, you can still paste a custom URL below in Advanced mode. But for most people the built-in voices are seamless and excellent.)
         </p>
       </div>
+
+      <!-- Advanced: custom local TTS server (power-user only) -->
+      <details style="margin-bottom:8px;">
+        <summary style="font-size:12px; color:#666; cursor:pointer;">Advanced: Custom local TTS server (Docker / external)</summary>
+        <div style="margin-top:6px; padding:8px; background:#fafafa; border-radius:4px;">
+          <label style="font-size:12px; display:block; margin-bottom:4px; font-weight:500;">
+            Local TTS Server URL
+            <input type="text" id="custom-tts-url" placeholder="http://localhost:5050" 
+                   style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #ccc; border-radius:4px; background:white;">
+          </label>
+          <p style="font-size:10px; color:#666; margin:4px 0 0;">
+            Only for users who know what they're doing (run your own Docker container on the same machine). 
+            Most people should just use the built-in device voices above — they're free, seamless, and require no setup.
+          </p>
+        </div>
+      </details>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
         <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
