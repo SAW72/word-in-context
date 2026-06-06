@@ -33,7 +33,8 @@ services:
       #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
       #   JWT_SECRET
       #   ADMIN_PASSWORD
-      #   (ELEVENLABS_API_KEY if using managed TTS)
+      #   TTS_SERVER_URL   (URL of your hosted TTS service, e.g. https://openai-edge-tts-wtcd.onrender.com — enables the "Use Premium Hosted Voices" toggle with zero setup for users)
+      #   (ELEVENLABS_API_KEY if using managed TTS for an alternate path)
       #
       # This file defines the service + safe defaults.
       # Real secrets are injected by the platform at runtime as process.env.
