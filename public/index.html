@@ -1928,7 +1928,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           })
         });
 
-        const data = await response.json();
+        // Robust parse: protect against platform HTML error pages (e.g. Render cold-start 503/502 pages
+        // or misconfigured deploys) which start with <!DOCTYPE and cause the classic "Unexpected token '<'" JSON error.
+        let data;
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          data = await response.json();
+        } else {
+          const txt = await response.text().catch(() => '');
+          throw new Error(`Server returned non-JSON (status ${response.status}). ${txt.slice(0, 150)}`);
+        }
         removeLoadingMessage();
 
         if (!response.ok) {
