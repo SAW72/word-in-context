@@ -2755,6 +2755,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
       t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
 
+      // Direct rescue for the exact jumbled STT output the user is seeing on voice:
+      // "John tell me about John two" comes out as "two John two cell", "second John 2 cell", "john two cell"
+      t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
+      t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
+      t = t.replace(/\b2\s+john\s+2\b/gi, 'John 2');
+      t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
+      t = t.replace(/\bcell\b/gi, ''); // strip common garbage that STT inserts after Bible refs
+      t = t.replace(/\btwo\s+john\s+two\s+cell\b/gi, 'John 2');
+      t = t.replace(/\bsecond\s+john\s+2\s+cell\b/gi, 'John 2');
+
       // Gospel of John references first ( "john one", "john 1", "john chapter one", "the book of john 1" etc.)
       // This must come before the epistle "one john" rules so "John one" becomes the Gospel, not 1 John.
       t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
@@ -2831,6 +2841,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       t = t.replace(/\bjohn\s+(eight|8)\b/gi, 'John 8');
       t = t.replace(/\bjohn\s+(nine|9)\b/gi, 'John 9');
       t = t.replace(/\bjohn\s+(ten|10)\b/gi, 'John 10');
+
+      // Final stabilization pass: re-apply the most important gospel John fixes and clean any remaining junk.
+      // This rescues cases where STT produces very jumbled output like "two John two cell".
+      for (let pass = 0; pass < 2; pass++) {
+        t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
+        t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
+        t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
+        t = t.replace(/\bcell\b/gi, '');
+        t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
+      }
 
       return t;
     }

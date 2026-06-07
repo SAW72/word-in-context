@@ -826,17 +826,23 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
 
     // Bible-specific keyterm boosting — this is magic for your ref problems.
     // The model will strongly prefer these tokens when they sound similar.
+    // Heavily boost "John 2" / "John two" variants because STT keeps mangling "John tell me about John two"
+    // into things like "two John two cell", "second John 2 cell", "2 John 2".
     const bibleKeyterms = [
-      'John', '1 John', '2 John', '3 John', 'Romans', 'Corinthians',
+      'John', 'John 2', 'John two', 'John chapter two', 'Gospel of John two', 'the gospel of John 2',
+      'John 2 tell me', 'tell me about John two', 'John tell me about John two',
+      '1 John', '2 John', '3 John', 'Romans', 'Romans 5', 'Romans five',
       '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians',
       'Colossians', 'Thessalonians', '1 Thessalonians', '2 Thessalonians',
       'Timothy', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
       'James', 'Peter', '1 Peter', '2 Peter', 'Jude', 'Revelation',
       'chapter', 'verse', 'one', 'two', 'three', 'four', 'five', 'six',
-      'first', 'second', 'third', 'Gospel of John', 'book of Romans'
+      'first', 'second', 'third', 'Gospel of John', 'book of Romans',
+      'John 2 cell', 'two John two', 'second John two', '2 John 2'
     ];
     for (const kt of bibleKeyterms) {
       form.append('keyterm', kt);
+      form.append('keyterm', kt); // repeat critical ones
     }
 
     const upstream = await fetch('https://api.x.ai/v1/stt', {
@@ -1029,6 +1035,16 @@ app.post('/api/chat', (req, res, next) => {
       t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
       t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
 
+      // Direct rescue for the exact jumbled STT output the user is seeing:
+      // "John tell me about John two" → "two John two cell", "second John 2 cell", "2 John 2 cell", "john two cell"
+      t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
+      t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
+      t = t.replace(/\b2\s+john\s+2\b/gi, 'John 2');
+      t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
+      t = t.replace(/\bcell\b/gi, ''); // remove common STT garbage word that appears after refs
+      t = t.replace(/\btwo\s+john\s+two\s+cell\b/gi, 'John 2');
+      t = t.replace(/\bsecond\s+john\s+2\s+cell\b/gi, 'John 2');
+
       // Gospel of John first (strong patterns for "john one", "john 1", "the book of john one" etc.)
       // to ensure "John one" is the Gospel, not turned into 1 John.
       t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
@@ -1078,6 +1094,16 @@ app.post('/api/chat', (req, res, next) => {
       t = t.replace(/\bjohn\s+(eight|8)\b/gi, 'John 8');
       t = t.replace(/\bjohn\s+(nine|9)\b/gi, 'John 9');
       t = t.replace(/\bjohn\s+(ten|10)\b/gi, 'John 10');
+
+      // Final stabilization pass: re-apply the most important gospel John fixes and clean any remaining junk.
+      // This rescues cases where STT produces very jumbled output like "two John two cell".
+      for (let pass = 0; pass < 2; pass++) {
+        t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
+        t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
+        t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
+        t = t.replace(/\bcell\b/gi, '');
+        t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
+      }
 
       return t;
     }
