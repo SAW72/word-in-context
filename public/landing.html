@@ -103,7 +103,7 @@
           <li>Public Bible sources</li>
         </ul>
         <a href="/app?demo=1" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Try limited demo (instant)</a>
-        <small style="display:block; font-size:11px; opacity:0.7;">Or use the tester form below for full card-free access (ends automatically).</small>
+        <small style="display:block; font-size:11px; opacity:0.7;">Testers use the dedicated Tester Sign Up &amp; Login form in the section below (14 days, card-free).</small>
       </div>
       <div class="plan popular">
         <h3>Pro</h3>
@@ -120,7 +120,7 @@
         <small style="display:block; margin-top:8px; opacity:0.7;">7-day trial then $4.99/mo. Cancel anytime.</small>
       </div>
     </div>
-    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: sign up with just email for 14 days full access (no card required, ends automatically after).</p>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> section below for 14 days full access (no card, ends automatically).</p>
   </section>
 
   <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
@@ -131,7 +131,7 @@
   </section>
 
   <section id="signup" class="container">
-    <h2 style="text-align:center;">Start your free trial</h2>
+    <h2 style="text-align:center;">Start your free trial or tester access</h2>
     <div class="signup-form">
       <form id="trial-form">
         <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
@@ -145,17 +145,18 @@
 
       <!-- Separate card-free tester path: email only, full access for 14 days, ends automatically. No Stripe. -->
       <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e8d9c2; text-align: center;">
-        <p style="font-size:13px; margin-bottom:8px;"><strong>For testers &amp; early feedback (no card, full unlimited access):</strong></p>
+        <p style="font-size:13px; margin-bottom:8px;"><strong>Tester Sign Up &amp; Login (14-day card-free access):</strong><br>
+        <span style="font-size:12px; opacity:0.8;">Use this for new testers or to log back in with your tester email + password.</span></p>
         <form id="tester-form" style="max-width: 400px; margin: 0 auto;">
           <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
           <input type="password" id="tester-password" placeholder="Choose password (min 8 chars — saved by browser)" required minlength="8" style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
-          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Sign up for 14-day tester access (email only, no card)</button>
+          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Tester Sign Up or Login (14 days, email only, no card)</button>
         </form>
         <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Check your email for the secure login link. Your tester access (full features, no card) is now active and will end automatically after the configured period.
+          Tester account ready. Check your email for the secure login link (or you should be logged in automatically if password was accepted). Your 14-day tester access is now active and will end automatically.
         </div>
         <div id="tester-error" style="display:none; margin-top:8px; color:#c0392b; font-size:13px; font-weight:500;"></div>
-        <p style="font-size:11px; opacity:0.7; margin-top:6px;">Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
+        <p style="font-size:11px; opacity:0.7; margin-top:6px;">Testers: use the email + password fields above for both sign up and login. Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
       </div>
       <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
         <h3>Check your email!</h3>
@@ -164,13 +165,15 @@
 
       <hr style="margin:30px 0;">
       <div style="text-align:center; margin-bottom:8px;">
-        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Already have an account? Log in with email</button>
+        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Regular users: Already have an account? Log in here</button>
       </div>
+      <p style="text-align:center; font-size:12px; opacity:0.7; margin-bottom:8px;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> form above (or the general login below also works once you have a password set).</p>
       <form id="login-form" style="max-width:400px;margin:0 auto;">
         <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <input type="password" id="login-password" placeholder="Your password" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <button type="submit" class="btn" style="width:100%; background:#555;">Log in with password</button>
       </form>
+      <p style="text-align:center; font-size:11px; opacity:0.65; margin-top:4px;">(Works for both regular accounts and testers who set a password during tester sign up.)</p>
       <p style="text-align:center; font-size:12px; margin-top:8px; opacity:0.7;">
         Forgot password or never set one? <a href="#" id="use-magic-link" style="color:inherit; text-decoration:underline;">Send magic login link instead</a>
       </p>
@@ -218,7 +221,7 @@
       }
     });
 
-    // New card-free tester signup (14 days full access, no Stripe, ends automatically)
+    // New card-free tester sign up / login (14 days full access, no Stripe, ends automatically). The same form handles both new testers and returning tester logins via password.
     document.getElementById('tester-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('tester-email').value;
@@ -236,7 +239,7 @@
           document.getElementById('tester-form').style.display = 'none';
           const successDiv = document.getElementById('tester-success');
           const days = (typeof getTesterDays === 'function' ? getTesterDays() : 14);
-          successDiv.innerHTML = `Account created with password! Logging you in... (or check email for magic link). Your <strong>${days}-day</strong> tester access is active.`;
+          successDiv.innerHTML = `Tester account ready (sign up or login). Logging you in if possible... or check email for magic link. Your <strong>${days}-day</strong> tester access is active.`;
           successDiv.style.display = 'block';
 
           if (data.token) {
@@ -335,11 +338,11 @@
       // Update main trial button if present
       const trialBtn = document.querySelector('#trial-form button');
       if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
-      // Update tester texts
+      // Update tester texts (now emphasizes Tester Sign Up & Login for both new and returning testers)
       const testerP = document.querySelector('#tester-error + p') || document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
-      if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${testerDays} days unless we extend it for you.`;
+      if (testerP) testerP.innerHTML = `Testers: use email + password above for sign up <strong>or login</strong>. Full features (unlimited messages, hands-free, sources). Access ends automatically after ${testerDays} days unless we extend it for you.`;
       const testerBtn = document.querySelector('#tester-form button');
-      if (testerBtn) testerBtn.textContent = `Sign up for ${testerDays}-day tester access (email only, no card)`;
+      if (testerBtn) testerBtn.textContent = `Tester Sign Up or Login (${testerDays} days, email only, no card)`;
       // Update the h2 if present
       const h2 = document.querySelector('h2');
       if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normalDays} days normal / ${testerDays} for testers)`;
