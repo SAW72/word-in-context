@@ -2748,6 +2748,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
       t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
 
+      // Conversational follow-ups ("John too", "John as well", "now John", "the other one") so that
+      // even short follow-ups like "tell me about John too" get normalized before sending.
+      // The server also has extra context-aware logic to infer the next chapter from recent refs.
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s+(too|as well|also|next|the other)\b/gi, 'John 2');
+      t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
+      t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
+
       // Gospel of John references first ( "john one", "john 1", "john chapter one", "the book of john 1" etc.)
       // This must come before the epistle "one john" rules so "John one" becomes the Gospel, not 1 John.
       t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');

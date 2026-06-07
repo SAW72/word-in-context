@@ -131,13 +131,19 @@ CORE COMMITMENTS (never violate these):
      "John 3:16 (Literal Standard Version or your chosen default) says: 'For God so loved the world...'"
      "According to the Berean Standard Bible, Galatians 6:7 states..."
      "In the Greek, John 1:1 (SBL Greek New Testament) reads: 'Ἐν ἀρχῇ ἦν ὁ λόγος...'"
-     "The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) begins: 'בְּרֵאשִׁית בָּרָא אֱלֹהִים...'"
+     "The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) begins: 'בְּרֵאשִׁית בָ̄רָא אֱלֹהִים...'"
    - If [ACCURATE BIBLE TEXT — ...], [ORIGINAL GREEK TEXT — ...], or [ORIGINAL HEBREW TEXT — ...] grounding data is provided, quote or stay extremely faithful to that exact text and use the listed source in the citation.
    - For the New Testament, when discussing wording, grammar, or key terms, quote the Greek from the SBL Greek New Testament (or Byzantine/Majority Text when relevant), citing "SBL Greek New Testament".
    - For the Old Testament / Hebrew Bible, quote the Hebrew from the Westminster Leningrad Codex (WLC), citing "Westminster Leningrad Codex".
    - Prefer literal English translations (user's chosen default, e.g. LSV/NASB-style or BSB, ESV, NASB, NKJV, LSB, etc.).
    - Because answers are frequently spoken, make the citations flow naturally in the spoken sentence so the listener hears the source (English or original language) clearly.
    - Never leave a scripture reference or quote without an immediate source citation.
+
+7. CONVERSATIONAL USE (important for natural flow)
+   - The user wants a natural, back-and-forth conversation. They will jump around ("tell me about John too", "now Romans", "the next chapter", "what about the Greek in that verse").
+   - The server attempts to detect these follow-ups and supply fresh [ACCURATE BIBLE TEXT] blocks for the new passage on every turn.
+   - When the relevant literal grounding block is supplied for the passage the user is currently asking about, use it exclusively for quotes and close analysis.
+   - If a passage is clearly referenced but no fresh block arrived for this exact turn, give a helpful high-level answer and note that detailed verse-level literal work is based on the live sources provided for the current question. Do not refuse or say "I do not have the materials" for obvious follow-ups — stay in conversation.
 
 You are speaking with someone who wants to get as close as possible to what the original authors wrote and meant. All scripture discussed must be traceable to a specific, cited literal source.`;
 
@@ -1015,6 +1021,14 @@ app.post('/api/chat', (req, res, next) => {
       t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
       t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
 
+      // Conversational follow-ups in the same thread ("John too", "John as well", "now John", "the other John")
+      // after the user has been discussing John 1 (or Romans 5 etc.). This helps extractRefs produce
+      // a usable ref so we fetch the literal + Greek for the new passage instead of the model saying
+      // "I do not have the materials".
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s+(too|as well|also|next|the other)\b/gi, 'John 2');
+      t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
+      t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
+
       // Gospel of John first (strong patterns for "john one", "john 1", "the book of john one" etc.)
       // to ensure "John one" is the Gospel, not turned into 1 John.
       t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
@@ -1129,6 +1143,64 @@ app.post('/api/chat', (req, res, next) => {
     for (const m of recent) {
       if (m.content) allRefs.push(...extractRefs(m.content));
     }
+    allRefs = [...new Set(allRefs)];
+
+    // === Conversational follow-up / anaphora support ===
+    // Users say things like "John too", "John as well", "now John", "the other one", "next chapter"
+    // after previously discussing "John 1" or "Romans 5". We want seamless jumping without
+    // the model saying "I don't have the materials for John 2".
+    // Detect this in the latest user message and infer the logical next / related chapter
+    // from what was already referenced in this conversation.
+    try {
+      const lastUser = [...recent].reverse().find(m => m.role === 'user' && m.content);
+      if (lastUser && lastUser.content) {
+        const lastNorm = normalizeBibleTranscriptForRefs(lastUser.content).toLowerCase();
+        const isFollowUp = /\b(too|as well|also|next|other|following|as well|now|the other)\b/.test(lastNorm);
+
+        if (isFollowUp) {
+          // Build map of most recent chapter seen per book in this thread
+          const lastChapterByBook = {};
+          for (const r of allRefs) {
+            const m = r.match(/^((?:1|2|3)?\s*[A-Za-z]+)\s+(\d+)/i);
+            if (m) {
+              const bookKey = m[1].toLowerCase().replace(/\s+/g, '');
+              const ch = parseInt(m[2], 10);
+              lastChapterByBook[bookKey] = Math.max(lastChapterByBook[bookKey] || 0, ch);
+            }
+          }
+
+          // If user is saying "John too" / "John as well" etc. and we saw John 1 (or any John chapter), add John 2
+          if ((lastNorm.includes('john') || lastNorm.includes('jhn')) && !lastNorm.match(/john\s*\d/)) {
+            const prev = lastChapterByBook['john'] || lastChapterByBook['1john'] || lastChapterByBook['jhn'] || 1;
+            const nextCh = prev + 1;
+            allRefs.push(`John ${nextCh}`);
+          }
+
+          // Similar for other common books the user jumps between
+          if ((lastNorm.includes('romans') || lastNorm.includes('rom')) && !lastNorm.match(/romans?\s*\d/)) {
+            const prev = lastChapterByBook['romans'] || lastChapterByBook['rom'] || 5;
+            allRefs.push(`Romans ${prev + 1}`);
+          }
+
+          // Add a couple more common ones for robustness (1 John, etc.)
+          if (lastNorm.includes('1 john') || lastNorm.includes('first john') || lastNorm.includes('i john')) {
+            // if they say "1 John too" after 1 John 1, go to 1 John 2, etc.
+            const prev = lastChapterByBook['1john'] || lastChapterByBook['1 john'] || 1;
+            allRefs.push(`1 John ${prev + 1}`);
+          }
+        }
+
+        // Also catch bare "John 2", "chapter 2" etc. that might have been missed in a short follow-up
+        // (the main extractRefs should catch most, but this is a safety net for very conversational phrasing)
+        const extra = extractRefs(lastUser.content);
+        for (const e of extra) {
+          if (!allRefs.includes(e)) allRefs.push(e);
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
     allRefs = [...new Set(allRefs)];
 
     // Translation display names for citations and UI
