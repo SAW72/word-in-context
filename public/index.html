@@ -441,7 +441,7 @@
 
         <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
           <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
-          <span>Use Premium Grok Voices (xAI powered, high quality) — manual speak only (hands-free always uses local system voices for reliability)</span>
+          <span>Use Premium Grok Voices (xAI powered, high quality). When on: manual 🔊 + hands-free auto-speak use xAI voices (highest tier). When off: fast local system voices (recommended for hands-free reliability + zero cost).</span>
         </label>
 
         <div style="margin:6px 0 4px;">
@@ -933,16 +933,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('use_premium_voices', 'false');
       }
 
-      // Premium Grok Voices (xAI TTS) or advanced custom local server.
-      // When enabled (and not hands-free auto-speak), routes through /api/tts (now uses xAI by default) — seamless from the deployed app.
+      // Premium Grok Voices (xAI TTS via same XAI_API_KEY) or custom.
+      // The "Use Premium Grok Voices" toggle means xAI path (highest tier).
+      // Legacy TTS_SERVER_URL (if set) is only for manual non-hands-free when no premium toggle.
       let usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
-      if (!window.hasHostedTTS) {
-        // If hosted premium is disabled at server level, completely shut it off here too.
-        usePremium = false;
-      }
       if (usePremium || customTtsUrl) {
-        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl);
+        // Always pass 'xai' provider for the Grok premium toggle so server uses xAI TTS
+        // (not the legacy TTS_SERVER_URL forwarding which may 502 if that service is down/unset).
+        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl, usePremium ? 'xai' : null);
         return;
       }
 
@@ -1046,20 +1045,31 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           hostedAudio = null;
         }
 
-        // Always go through backend proxy for deployed app compatibility.
-        // The backend will use TTS_SERVER_URL (your hosted TTS) or fall back.
-        const hostedVoice = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
+        // Always go through backend proxy.
+        // For the "Premium Grok Voices" toggle (xaiProvider or base 'premium'), we force the xAI path
+        // + a known-good xAI voice name (Ara/Eve/Leo/Rex/Sal). This prevents falling through to a
+        // possibly-misconfigured or down legacy TTS_SERVER_URL (which was causing the 502s).
+        let hostedVoice = localStorage.getItem('hosted_voice') || 'Ara';
 
-        // Add timeout so slow/cold TTS service doesn't hang forever (common on Hobby even after upgrade).
-        // Increased to 30s to give the separate Render Hobby TTS service more time before falling back.
+        // If this call is for Grok xAI premium, sanitize the voice to something the xAI audio endpoint accepts.
+        // Old lingering values like "en-US-AvaNeural" will cause upstream errors → 502 from our proxy.
+        const isXaiIntent = (xaiProvider === 'xai') || (baseUrl === 'premium');
+        if (isXaiIntent) {
+          const looksLegacy = !hostedVoice || /[- ]|Neural|en-|Ava|Jenny|Guy|Davis|Christopher/i.test(hostedVoice);
+          if (looksLegacy) {
+            hostedVoice = 'Ara';  // safe, natural default for xAI TTS
+          }
+        }
+
+        // Add timeout so slow/cold services (xAI or legacy hosted) don't hang the UI.
         const controller = new AbortController();
-        ttsTimeout = setTimeout(() => controller.abort(), 30000); // 30s – Hobby TTS synthesis can be slow/cold; fallback to local instead of hanging
+        ttsTimeout = setTimeout(() => controller.abort(), 30000);
 
         const body = {
           text,
           voice: hostedVoice
         };
-        if (xaiProvider === 'xai') {
+        if (isXaiIntent || xaiProvider === 'xai') {
           body.provider = 'xai';
         }
         const res = await fetch('/api/tts', {
@@ -1072,7 +1082,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         clearTimeout(ttsTimeout);
         ttsTimeout = null;
 
-        if (!res.ok) throw new Error('TTS proxy returned ' + res.status);
+        if (!res.ok) {
+          // Try to get a bit more detail for debugging (xAI errors, legacy upstream, etc.)
+          let detail = '';
+          try { const j = await res.json(); detail = j?.detail || j?.error || ''; } catch (_) {}
+          const msg = 'TTS proxy returned ' + res.status + (detail ? ' - ' + detail : '');
+          throw new Error(msg);
+        }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
@@ -1114,20 +1130,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // Only log the first time per page load to avoid spamming the console during hands-free.
           if (!window.__premiumTtsTimedOutOnce) {
             window.__premiumTtsTimedOutOnce = true;
-            console.warn('Premium TTS timed out after 30s (cold start or slow on the Hobby TTS service). Falling back to local browser voice so you still get audio.');
+            console.warn('Premium TTS (xAI or legacy) timed out after 30s (cold start or slow). Falling back to local browser voice.');
           }
           // Add visible feedback
           if (voiceNoteEl && voiceNoteEl.parentNode) {
             voiceNoteEl.textContent = ' (voice slow – using local instead)';
           } else {
-            // For manual speaks or if no note, append a small note to the last message if possible.
-            // This note should now only appear if a premium attempt actually happened (the guards above
-            // prevent it when the toggle is off).
             const lastMsg = document.querySelector('.messages .message:last-child');
             if (lastMsg) {
               const fb = document.createElement('span');
               fb.className = 'voice-generating-note';
-              fb.textContent = ' (premium Grok voice slow – fell back to local)';
+              fb.textContent = ' (premium voice slow – fell back to local)';
               lastMsg.appendChild(fb);
             }
           }
@@ -3403,26 +3416,19 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         scheduleHandsFreeRestart(800);
       }
 
-      // Learn server TTS config. hasHostedTTS means the "Use Premium Hosted Voices" toggle (edge-tts via TTS_SERVER_URL) will work.
+      // Learn server TTS config.
+      // hasHostedTTS = legacy free hosted (TTS_SERVER_URL, edge-tts style) is available for manual speak only.
+      // xAI premium (the "Use Premium Grok Voices" toggle) works independently via the main XAI_API_KEY.
       fetch('/api/health').then(r => r.json()).then(data => {
         serverHasManagedTTS = !!data.hasTTSKey;
         window.hasHostedTTS = !!data.hasHostedTTS;
         serverHasSTT = !!data.hasSTT;
-        // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
-        if (serverHasManagedTTS && premiumVoicesEnabled) {
-          setTimeout(loadVoices, 50);
-        }
-        // Completely isolate/shut off hosted premium if no TTS_SERVER_URL configured on server.
-        // Hides the toggle and hosted voice select, forces local always. Allows removing the
-        // extra Render service entirely without breaking the app.
+        // If no legacy TTS_SERVER_URL, hide only the old hosted voice picker.
+        // Do NOT hide or force-off the xAI Grok premium toggle (it uses the chat key, not the legacy service).
         if (!window.hasHostedTTS) {
-          const premiumToggle = document.getElementById('premium-voices-toggle');
-          if (premiumToggle && premiumToggle.parentElement) {
-            premiumToggle.parentElement.style.display = 'none';
-          }
           const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
           if (hostedDiv) hostedDiv.style.display = 'none';
-          localStorage.setItem('use_premium_voices', 'false');
+          // Keep the premium Grok toggle visible and functional for xAI voices.
         }
       }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
