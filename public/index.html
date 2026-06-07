@@ -209,6 +209,13 @@
       cursor: pointer; opacity: 0.55; padding: 2px;
     }
     .speak-btn:hover { opacity: 1; }
+
+    .voice-generating-note {
+      margin-left: 6px;
+      font-size: 11px;
+      opacity: 0.65;
+      color: #666;
+    }
     .input-area {
       display: flex; padding: 14px 16px; background: white;
       border-top: 1px solid #eee; gap: 10px; align-items: center;
@@ -459,6 +466,7 @@
         <p style="font-size:10px; color:#555; margin:4px 0 0;">
           This calls our backend proxy, which forwards to your hosted TTS service (the openai-edge-tts container). 
           No per-user Docker, no localhost issues. Works from the deployed app.
+          (For faster voice generation on the hosted path, the TTS service benefits from more CPU — Hobby is fine for always-on; Standard reduces synthesis latency.)
         </p>
 
         <p style="font-size:9px; color:#666; margin:6px 0 0;">
@@ -929,7 +937,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       msgEl.appendChild(wrap);
     }
 
-    function speak(text) {
+    function speak(text, voiceNoteEl = null) {
       stopSpeaking();
 
       // Make sure we're not listening while the AI is speaking its reply.
@@ -941,7 +949,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
       if (usePremium || customTtsUrl) {
-        speakWithCustomTts(text, customTtsUrl || 'premium');
+        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl);
         return;
       }
 
@@ -1033,7 +1041,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Premium / custom voices via your server-side proxy (seamless from deployed app).
     // When "premium" or custom URL is set, call /api/tts which proxies to your TTS server (your hosted edge-tts or ElevenLabs with your key).
     // This flows through Render, no localhost/CORS issues for users.
-    async function speakWithCustomTts(text, baseUrl) {
+    async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null) {
       try {
         // Stop any previous hosted audio (prevents overlapping voices when clicking multiple speakers quickly)
         if (hostedAudio) {
@@ -1057,6 +1065,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         hostedAudio = audio;
+
+        // Remove the "generating voice…" note as soon as we have the audio and start playback.
+        // This makes the extra latency of the hosted path feel intentional.
+        if (voiceNoteEl && voiceNoteEl.parentNode) {
+          voiceNoteEl.parentNode.removeChild(voiceNoteEl);
+        }
+
         audio.play().catch(e => console.warn('Audio playback blocked or failed', e));
 
         audio.onended = () => {
@@ -1065,17 +1080,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // In hands-free mode, after the AI finishes speaking, auto-restart listening
           // so the user can speak the next command without pressing anything.
           if (handsFreeEnabled && !isListening) {
-            scheduleHandsFreeRestart(700);
+            scheduleHandsFreeRestart(450);
           }
         };
 
         audio.onerror = () => {
           hostedAudio = null;
           try { URL.revokeObjectURL(url); } catch (e) {}
+          if (voiceNoteEl && voiceNoteEl.parentNode) {
+            voiceNoteEl.parentNode.removeChild(voiceNoteEl);
+          }
           fallbackToBrowserSpeech(text);
         };
       } catch (err) {
         hostedAudio = null;
+        if (voiceNoteEl && voiceNoteEl.parentNode) {
+          voiceNoteEl.parentNode.removeChild(voiceNoteEl);
+        }
         console.warn('Premium TTS failed, falling back to browser voice:', err);
         fallbackToBrowserSpeech(text);
       }
@@ -1107,7 +1128,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         elevenLabsAudio.onended = () => {
           elevenLabsAudio = null;
           if (handsFreeEnabled && !isListening) {
-            scheduleHandsFreeRestart(700);
+            scheduleHandsFreeRestart(450);
           }
         };
         elevenLabsAudio.play().catch((e) => {
@@ -1236,7 +1257,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           }
           if (thisRequestId === elevenLabsCurrentRequestId && handsFreeEnabled && !isListening) {
             // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
-            scheduleHandsFreeRestart(700);
+            scheduleHandsFreeRestart(450);
           }
         };
 
@@ -2082,11 +2103,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // (Previously truncated for cost, but that caused "stops after 30s" with EL.
           //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
           //  Manual 🔊 on messages also full.)
-          speak(reply);
+          const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
+          if (usePremiumHosted) {
+            // Give immediate feedback for the extra latency of remote neural TTS
+            // (text is shown right away; voice generation has network + synthesis cost).
+            const voiceNote = document.createElement('span');
+            voiceNote.className = 'voice-generating-note';
+            voiceNote.textContent = ' 🎙️ generating voice…';
+            voiceNote.style.fontSize = '11px';
+            voiceNote.style.opacity = '0.7';
+            msgEl.appendChild(voiceNote);
+
+            // The speak() below will start the /api/tts fetch; we'll remove the note when audio actually plays.
+            // (see speakWithCustomTts onplay / play start)
+            speak(reply, voiceNote);  // pass note so it can be removed on actual playback
+          } else {
+            speak(reply);
+          }
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
-          scheduleHandsFreeRestart(650);
+          scheduleHandsFreeRestart(400);
         }
       } catch (err) {
         removeLoadingMessage();
@@ -2094,7 +2131,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         addMessage("Connection error: " + err.message, false);
         conversation.pop();
         if (handsFreeEnabled) {
-          scheduleHandsFreeRestart(900);
+          scheduleHandsFreeRestart(600);
         }
       }
     }
@@ -2453,7 +2490,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Centralized restart scheduler for hands-free to avoid overlapping timers that cause
     // "Recognition already started" + laggy / noisy behavior.
-    function scheduleHandsFreeRestart(delayMs = 900) {
+    function scheduleHandsFreeRestart(delayMs = 600) {
       if (restartTimer) {
         clearTimeout(restartTimer);
       }
@@ -2646,7 +2683,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           spoken.includes(heard.slice(0, 20))
         );
         if (isEcho) {
-          scheduleHandsFreeRestart(900);
+          scheduleHandsFreeRestart(600);
           return;
         }
       }

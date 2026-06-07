@@ -393,6 +393,14 @@ app.get('/', (req, res) => {
 
 // Serve the full chat app at /app (so landing can promote signups)
 app.get('/app', (req, res) => {
+  // Strong no-cache for the SPA entry point so deploys are picked up reliably
+  // (browsers can still be stubborn — users should hard-refresh after deploys).
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -738,6 +746,11 @@ app.get('/api/config', (req, res) => {
 // Set TTS_SERVER_URL in env to your hosted TTS (e.g. your Render TTS service running the openai-edge-tts image, or a VPS).
 // This keeps keys/server details on your server, works from the deployed HTTPS app.
 // For custom "my voice": Clone on ElevenLabs, then we can extend this proxy to call ElevenLabs with your key + voice_id.
+//
+// Latency note: The extra hop + remote synthesis is the main source of "text appears, then delay before voice starts".
+// Both services on Hobby ($7/mo) removes sleeping, but for noticeably faster voice generation (lower synthesis time)
+// consider upgrading *just the TTS service* to Standard tier (more CPU helps edge-tts generation a lot).
+// Main app can often stay on Hobby.
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
     const { text, voice } = req.body || {};
