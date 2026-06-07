@@ -1451,6 +1451,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (premiumToggle) {
         if (xaiUnavailable) {
           premiumToggle.parentElement.style.display = 'none';
+          // Add a prominent reset link so user can re-enable after fixing access in xAI console
+          const resetNote = document.createElement('div');
+          resetNote.style.cssText = 'font-size:11px; color:#c94e4e; margin:4px 0 8px;';
+          resetNote.innerHTML = 'xAI TTS was previously unavailable. If you now have access in the <a href="https://console.x.ai/team/default/voice/text-to-speech" target="_blank">Voice playground</a>, <a href="#" style="color:#c9a227; font-weight:bold;" onclick="localStorage.removeItem(\'xai_audio_unavailable\'); location.reload(); return false;">click here to re-enable the Grok voices option</a> and refresh.';
+          premiumToggle.parentElement.parentElement.insertBefore(resetNote, premiumToggle.parentElement);
         } else {
           premiumToggle.checked = localStorage.getItem('use_premium_voices') === 'true';
           premiumToggle.onchange = () => {
