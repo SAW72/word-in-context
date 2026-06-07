@@ -750,12 +750,12 @@ app.get('/api/config', (req, res) => {
 // Latency note: When "Use Premium Hosted Voices" is on, the reply text appears as soon as /api/chat finishes,
 // but the voice audio requires a second round-trip: main app -> this proxy -> your TTS service (the separate
 // openai-edge-tts container) -> synthesis -> MP3 back.
-// Even on Hobby, the TTS service can take 10-60s+ for the first request after idle (Render spin-up) or for longer
-// text. This is the #1 source of "text is there but voice is silent or very delayed".
-// Recommendation: Keep main app on Hobby if you want. Upgrade *only the TTS service* (the one pointed to by
-// TTS_SERVER_URL) to Standard tier for much faster synthesis (more vCPU). That usually brings hosted voice
-// start time down to a few seconds once warm. The timeout + fallback in speakWithCustomTts will now save the
-// user if it takes too long.
+// Even on Hobby for the TTS service, cold starts + limited CPU commonly cause 15s–3min+ delays (or "text is there
+// but voice never plays"). This exactly matches your report, and you noted it started after adding the hosted TTS
+// (before that, pure local system voices were snappy). The 15s timeout + fallback to local (with visible note)
+// is the current mitigation so it doesn't hang. Since you don't want to upgrade the TTS service, turning the
+// premium toggle OFF will give you the fast local voices again. If you ever do upgrade, do it on the TTS service
+// only (more CPU = much faster synthesis).
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
     const { text, voice } = req.body || {};

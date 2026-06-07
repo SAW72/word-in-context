@@ -1069,7 +1069,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         // Add timeout so slow/cold TTS service doesn't hang forever (common on Hobby even after upgrade).
         const controller = new AbortController();
-        ttsTimeout = setTimeout(() => controller.abort(), 45000); // 45s generous timeout
+        ttsTimeout = setTimeout(() => controller.abort(), 15000); // 15s – on Hobby the hosted TTS can be slow/cold; fallback to local instead of hanging 3min+
 
         const res = await fetch('/api/tts', {
           method: 'POST',
@@ -1123,7 +1123,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           voiceNoteEl.parentNode.removeChild(voiceNoteEl);
         }
         if (err.name === 'AbortError') {
-          console.warn('Premium TTS timed out (likely cold start or slow synthesis on the hosted service). Falling back to browser voice.');
+          console.warn('Premium TTS timed out after 15s (cold start or slow on the Hobby TTS service). Falling back to local browser voice so you still get audio.');
+          // Add visible feedback
+          if (voiceNoteEl && voiceNoteEl.parentNode) {
+            voiceNoteEl.textContent = ' (voice slow – using local instead)';
+          } else {
+            // For manual speaks or if no note, append a small note to the last message if possible
+            const lastMsg = document.querySelector('.messages .message:last-child');
+            if (lastMsg) {
+              const fb = document.createElement('span');
+              fb.className = 'voice-generating-note';
+              fb.textContent = ' (premium voice slow on current tier – fell back to local)';
+              lastMsg.appendChild(fb);
+            }
+          }
           fallbackToBrowserSpeech(text);
         } else {
           console.warn('Premium TTS failed, falling back to browser voice:', err);
@@ -2197,7 +2210,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             // On Hobby this can be 10-60s+ on cold starts or long text; the note is removed when audio starts.
             const voiceNote = document.createElement('span');
             voiceNote.className = 'voice-generating-note';
-            voiceNote.textContent = ' 🎙️ generating voice (may take 10-45s on first use after idle)…';
+            voiceNote.textContent = ' 🎙️ generating premium voice (Hobby can take 15-60s+ on cold start or long text; will auto-fallback to local if slow)…';
             voiceNote.style.fontSize = '11px';
             voiceNote.style.opacity = '0.7';
             msgEl.appendChild(voiceNote);
