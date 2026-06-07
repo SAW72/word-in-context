@@ -2510,15 +2510,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       recognition.onerror = (event) => {
-        // Suppress the extremely common "no-speech" spam in hands-free mode.
-        // Only log actual problems.
-        if (event.error !== 'no-speech') {
-          console.warn("Speech recognition error:", event);
+        const errType = event.error;
+        // Suppress very common benign errors in hands-free to avoid console spam.
+        // 'aborted' is common when we stop/restart the recognizer.
+        // 'no-speech' is handled with restart.
+        if (errType !== 'no-speech' && errType !== 'aborted') {
+          console.warn("Speech recognition error:", errType, event.message || '');
         }
 
         stopListeningUI();
 
-        if (event.error === "no-speech") {
+        if (errType === "no-speech" || errType === "aborted") {
           if (handsFreeEnabled && !startingRecognition) {
             // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
             scheduleHandsFreeRestart(1400);
@@ -2527,7 +2529,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
 
         // Handle real problems
-        if (event.error === 'network' || event.error === 'audio-capture' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        if (errType === 'network' || errType === 'audio-capture' || errType === 'not-allowed' || errType === 'service-not-allowed') {
           const isNetwork = event.error === 'network';
           if (handsFreeEnabled) {
             // Tell the user once (avoid spam)
@@ -2560,7 +2562,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           return;
         }
 
-        // For other errors (aborted, etc.), just let the onend handler decide whether to restart.
+        // For other unexpected errors, let the onend handler decide restart (with the safeguards above).
       };
 
       recognition.onend = () => {
