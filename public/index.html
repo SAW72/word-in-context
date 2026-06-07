@@ -400,7 +400,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (full text for local/system voices, ElevenLabs if key, and premium hosted voices)
+        Auto-speak AI replies (full text for local/system voices, ElevenLabs if key, and premium Grok/xAI voices for manual speak)
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -440,7 +440,7 @@
       <!-- Premium Hosted Voices (seamless, via our server — no user setup) -->
       <hr style="margin: 10px 0; border-color: #ddd;">
       <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Hosted Voices (high-quality, seamless — no Docker, no install)</div>
+        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Grok Voices (xAI powered, high-quality, seamless — no Docker, no install)</div>
         
         <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
           Toggle on for excellent Microsoft-style neural voices (like the ones from the edge-tts container). 
@@ -449,17 +449,17 @@
 
         <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
           <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
-          <span>Use Premium Hosted Voices (high quality, powered by our server)</span>
+          <span>Use Premium Grok Voices (xAI powered, high quality) — manual speak only (hands-free always uses local system voices for reliability)</span>
         </label>
 
         <div style="margin:6px 0 4px;">
-          <label for="hosted-voice-select" style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose hosted voice:</label>
+          <label for="hosted-voice-select" style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose Grok voice (xAI):</label>
           <select id="hosted-voice-select" style="width:100%; padding:5px; font-size:13px; border:1px solid #4caf50; border-radius:4px; background:white;">
-            <option value="en-US-AvaNeural">Ava (Female) — natural &amp; recommended</option>
-            <option value="en-US-GuyNeural">Guy (Male)</option>
-            <option value="en-US-JennyNeural">Jenny (Female) — clear &amp; expressive</option>
-            <option value="en-US-AndrewNeural">Andrew (Male)</option>
-            <option value="en-US-EmmaNeural">Emma (Female)</option>
+            <option value="Ara">Ara (Female) — natural &amp; recommended</option>
+            <option value="Eve">Eve (Female)</option>
+            <option value="Leo">Leo (Male)</option>
+            <option value="Rex">Rex (Male)</option>
+            <option value="Sal">Sal (Male)</option>
           </select>
         </div>
 
@@ -484,7 +484,7 @@
                    style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #ccc; border-radius:4px; background:white;">
           </label>
           <p style="font-size:10px; color:#666; margin:4px 0 0;">
-            For advanced users running their own TTS server (e.g. the edge-tts Docker image). Most users should use the Premium Hosted toggle above for seamless experience.
+            For advanced users running their own TTS server (e.g. the edge-tts Docker image). Most users should use the Premium Grok Voices toggle above (now powered by xAI) for seamless experience.
           </p>
         </div>
       </details>
@@ -962,13 +962,38 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('use_premium_voices', 'false');
       }
 
-      // Premium Hosted Voices (via our Render TTS service) or advanced custom local server.
-      // When enabled, routes through /api/tts (server-side proxy) — seamless from the deployed app.
-      const usePremium = localStorage.getItem('use_premium_voices') === 'true';
+      // Premium Grok Voices (xAI TTS) or advanced custom local server.
+      // When enabled (and not hands-free auto-speak), routes through /api/tts (now uses xAI by default) — seamless from the deployed app.
+      let usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
+      if (!window.hasHostedTTS) {
+        // If hosted premium is disabled at server level, completely shut it off here too.
+        usePremium = false;
+      }
       if (usePremium || customTtsUrl) {
         speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl);
         return;
+      }
+
+      // When premium is off, force local voice settings and resolution so the main dropdown
+      // selection is always honored and we don't fall back to default Mac voice.
+      if (!usePremium) {
+        if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
+          voiceSettings.voiceSource = 'local';
+          localStorage.setItem('voice_source', 'local');
+        }
+        if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+          voiceSettings.voiceId = 'Google UK English Male';
+          localStorage.setItem('voice_id', voiceSettings.voiceId);
+        }
+        // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
+        // user's chosen local voice (e.g. the English male from the dropdown).
+        if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
+          const resolved = findLocalVoiceById(voiceSettings.voiceId);
+          if (resolved) {
+            selectedVoice = resolved;
+          }
+        }
       }
 
       // Clean any stale "premium voice slow" or "generating premium" notes that may have been
@@ -1179,7 +1204,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             if (lastMsg) {
               const fb = document.createElement('span');
               fb.className = 'voice-generating-note';
-              fb.textContent = ' (premium attempt was slow – fell back to local)';
+              fb.textContent = ' (premium Grok voice slow – fell back to local)';
               lastMsg.appendChild(fb);
             }
           }
@@ -2073,7 +2098,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Quick status hint if local TTS server is configured (easiest free option)
       const customUrlAfterSave = localStorage.getItem('custom_tts_url');
       if (customUrlAfterSave) {
-        console.log('[Voice] Custom local TTS server active:', customUrlAfterSave);
+        // Only log at info level if it's not the default localhost (to reduce noise in normal use)
+        if (!customUrlAfterSave.includes('localhost:5050')) {
+          console.log('[Voice] Custom local TTS server active:', customUrlAfterSave);
+        } else {
+          console.debug('[Voice] Custom local TTS server active (localhost test):', customUrlAfterSave);
+        }
       }
 
       // Try to select the newly saved voice in the dropdown (for immediate feedback if modal re-opened quickly)
@@ -2265,36 +2295,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
           //  Manual 🔊 on messages also full.)
 
-          // Defensive sync same as in speak(): prevent stale premium flag from causing
-          // "generating premium voice" note + slow path when user has the toggle off.
-          const pt = document.getElementById('premium-voices-toggle');
-          if (pt && !pt.checked) {
-            localStorage.setItem('use_premium_voices', 'false');
-          }
+          // IMPORTANT: For hands-free auto-speak, ALWAYS use local system voices.
+          // Premium hosted voices are isolated to manual speak only (click 🔊 speaker button or
+          // mic button when hands-free is off). This completely avoids the toggle bugs, lag,
+          // and timeout issues that have plagued hands-free + premium.
+          // Premium toggle only affects manual speak paths.
 
-          const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
-          if (usePremiumHosted) {
-            // Give immediate feedback for the extra latency of remote neural TTS
-            // (text is shown right away; voice generation has network + synthesis cost on the separate TTS service).
-            // On Hobby this can be 10-60s+ on cold starts or long text; the note is removed when audio starts.
-            const voiceNote = document.createElement('span');
-            voiceNote.className = 'voice-generating-note';
-            voiceNote.textContent = ' 🎙️ generating premium voice (Hobby TTS can take 20-45s+ on cold start or long text; will auto-fallback to local after ~30s if still slow)…';
-            voiceNote.style.fontSize = '11px';
-            voiceNote.style.opacity = '0.7';
-            msgEl.appendChild(voiceNote);
-
-            // The speak() below will start the /api/tts fetch; we'll remove the note when audio actually plays.
-            // (see speakWithCustomTts)
-            speak(reply, voiceNote);  // pass note so it can be removed on actual playback
-          } else {
-            // Clean stale premium notes before local speak in hands-free auto-speak.
-            const lastMsgForClean = document.querySelector('.messages .message:last-child');
-            if (lastMsgForClean) {
-              lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-            }
-            speak(reply);
+          // Clean stale premium notes before local speak in hands-free auto-speak.
+          const lastMsgForClean = document.querySelector('.messages .message:last-child');
+          if (lastMsgForClean) {
+            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
           }
+          // Force local settings so the user's chosen voice from the main dropdown is used.
+          if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
+            voiceSettings.voiceSource = 'local';
+            localStorage.setItem('voice_source', 'local');
+          }
+          if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+            voiceSettings.voiceId = 'Google UK English Male';
+            localStorage.setItem('voice_id', voiceSettings.voiceId);
+          }
+          speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
@@ -2515,7 +2536,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // 'aborted' is common when we stop/restart the recognizer.
         // 'no-speech' is handled with restart.
         if (errType !== 'no-speech' && errType !== 'aborted') {
-          console.warn("Speech recognition error:", errType, event.message || '');
+          const logKey = 'sr-log-' + errType;
+          window._srLogCount = window._srLogCount || {};
+          window._srLogCount[logKey] = (window._srLogCount[logKey] || 0) + 1;
+          if (window._srLogCount[logKey] <= 5) {
+            console.warn("Speech recognition error:", errType, event.message || '');
+          }
         }
 
         stopListeningUI();
@@ -3844,6 +3870,18 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
         if (serverHasManagedTTS && premiumVoicesEnabled) {
           setTimeout(loadVoices, 50);
+        }
+        // Completely isolate/shut off hosted premium if no TTS_SERVER_URL configured on server.
+        // Hides the toggle and hosted voice select, forces local always. Allows removing the
+        // extra Render service entirely without breaking the app.
+        if (!window.hasHostedTTS) {
+          const premiumToggle = document.getElementById('premium-voices-toggle');
+          if (premiumToggle && premiumToggle.parentElement) {
+            premiumToggle.parentElement.style.display = 'none';
+          }
+          const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
+          if (hostedDiv) hostedDiv.style.display = 'none';
+          localStorage.setItem('use_premium_voices', 'false');
         }
       }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 

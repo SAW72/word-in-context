@@ -74,6 +74,18 @@ const xai = new OpenAI({
   baseURL: 'https://api.x.ai/v1',
 });
 
+// Log the models your xAI key/account has access to.
+// This is the easiest way to see "what model my api key is for".
+// The key itself doesn't lock you to one model — you specify the model in each request
+// (e.g. "grok-4.3" for chat, or specific audio models for TTS/STT/Voice Agent).
+// Check your console.x.ai dashboard or these logs after deploy.
+xai.models.list().then((list) => {
+  const ids = list.data?.map(m => m.id) || [];
+  console.log('xAI models available to this key:', ids.length ? ids : list);
+}).catch((e) => {
+  console.log('Could not list xAI models (check key permissions):', e.message);
+});
+
 // Very lightweight in-memory demo throttle (protects the xAI key from scrapers/bots hitting /app?demo=1)
 // No extra deps. For production you can later add express-rate-limit + helmet.
 const demoUsage = new Map(); // ip -> array of timestamps (last hour)
@@ -774,6 +786,36 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
     const { text, voice } = req.body || {};
     if (!text) return res.status(400).json({ error: 'text is required' });
 
+    // Prefer xAI TTS for "Premium Grok Voices" (xAI powered, for paid tier or manual speak).
+    // Same XAI_API_KEY as chat — no new API key needed.
+    // This replaces/augments the old hosted Microsoft neural (via TTS_SERVER_URL / edge-tts).
+    // xAI TTS: $15/1M chars. Voices: Ara, Eve, Leo, Rex, Sal (or your cloned custom voice ID).
+    // To completely shut off old hosted: unset TTS_SERVER_URL and the UI will hide the old toggle.
+    // Hands-free auto-speak always uses local system voices (isolated for reliability).
+    if (process.env.XAI_API_KEY) {
+      const xaiRes = await fetch('https://api.x.ai/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          input: text,
+          voice: voice || 'Ara',  // xAI default female; change to 'Leo' etc or cloned ID
+          response_format: 'mp3'
+        })
+      });
+      if (!xaiRes.ok) {
+        const errText = await xaiRes.text();
+        console.error('[TTS] xAI upstream error:', xaiRes.status, errText);
+        return res.status(502).json({ error: 'xAI TTS generation failed', detail: errText });
+      }
+      const audioBuffer = await xaiRes.arrayBuffer();
+      res.setHeader('Content-Type', 'audio/mpeg');
+      return res.send(Buffer.from(audioBuffer));
+    }
+
+    // Fallback to old hosted (if TTS_SERVER_URL still set for legacy/manual use)
     const ttsBase = process.env.TTS_SERVER_URL || 'http://localhost:5050';
     const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
       method: 'POST',
@@ -1346,18 +1388,29 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
-    hasHostedTTS: !!process.env.TTS_SERVER_URL,
+    hasHostedTTS: !!process.env.TTS_SERVER_URL, // legacy/old hosted; premium now uses xAI TTS by default (same key)
     hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
     hasTTSKey: !!process.env.ELEVENLABS_API_KEY, // legacy for any ElevenLabs direct UI bits
     model: 'grok-4.3'
   });
 });
 
+// Quick way to see what models your xAI key has access to (chat models mainly).
+// For audio/voice (TTS/STT/Voice Agent) the models are on separate endpoints or specified differently — see x.ai docs or console.x.ai.
+app.get('/api/models', async (req, res) => {
+  try {
+    const list = await xai.models.list();
+    res.json({ models: list.data?.map(m => m.id) || list });
+  } catch (e) {
+    res.status(500).json({ error: 'Could not list models', detail: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
-  console.log(`   Hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (will use localhost:5050 fallback for dev)'}`);
+  console.log(`   Legacy hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (premium now uses xAI TTS via your XAI_API_KEY)'}`);
   console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
