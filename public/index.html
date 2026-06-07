@@ -2477,28 +2477,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (!text) return text;
       let t = ' ' + text + ' ';
 
+      // Gospel of John references first ( "john one", "john 1", "john chapter one", "the book of john 1" etc.)
+      // This must come before the epistle "one john" rules so "John one" becomes the Gospel, not 1 John.
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(two|2|second)\b/gi, 'John 2');
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(three|3|third)\b/gi, 'John 3');
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(four|4)\b/gi, 'John 4');
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(five|5)\b/gi, 'John 5');
+      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(\d+)\b/gi, 'John $3');
+
       // Numbered books - very common STT mistakes for "1 John", "2 Peter" etc.
       t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
       t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
       t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
-
-      // Gospel of John (book of John) + chapter number. "john one", "john 1", "john chapter one"
-      // must be kept separate from the "one john" = 1 John (epistle) rules above.
-      t = t.replace(/\bjohn\s+chapter\s+(one|first)\b/gi, 'John 1');
-      t = t.replace(/\bjohn\s+chapter\s+(two|second)\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+chapter\s+(three|third)\b/gi, 'John 3');
-      t = t.replace(/\bjohn\s+(one|first)\b/gi, 'John 1');
-      t = t.replace(/\bjohn\s+(two|second)\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+(three|third)\b/gi, 'John 3');
-      t = t.replace(/\bjohn\s+four\b/gi, 'John 4');
-      t = t.replace(/\bjohn\s+five\b/gi, 'John 5');
-      t = t.replace(/\bjohn\s+six\b/gi, 'John 6');
-      t = t.replace(/\bjohn\s+seven\b/gi, 'John 7');
-      t = t.replace(/\bjohn\s+eight\b/gi, 'John 8');
-      t = t.replace(/\bjohn\s+nine\b/gi, 'John 9');
-      t = t.replace(/\bjohn\s+ten\b/gi, 'John 10');
-      t = t.replace(/\bjohn\s+(eleven)\b/gi, 'John 11');
-      t = t.replace(/\bjohn\s+(twelve)\b/gi, 'John 12');
 
       t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
       t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
