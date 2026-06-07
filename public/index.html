@@ -462,20 +462,7 @@
         </p>
       </div>
 
-      <!-- Advanced: custom local TTS server (power-user only) -->
-      <details style="margin-bottom:8px;">
-        <summary style="font-size:12px; color:#666; cursor:pointer;">Advanced: Custom local TTS server (your own Docker / external)</summary>
-        <div style="margin-top:6px; padding:8px; background:#fafafa; border-radius:4px;">
-          <label style="font-size:12px; display:block; margin-bottom:4px; font-weight:500;">
-            Local TTS Server URL (only if you run your own container)
-            <input type="text" id="custom-tts-url" placeholder="http://localhost:5050" 
-                   style="width:100%; padding:6px; margin-top:3px; font-size:13px; border:1px solid #ccc; border-radius:4px; background:white;">
-          </label>
-          <p style="font-size:10px; color:#666; margin:4px 0 0;">
-            For advanced users running their own TTS server (e.g. the edge-tts Docker image). Most users should use the Premium Grok Voices toggle above (now powered by xAI) for seamless experience.
-          </p>
-        </div>
-      </details>
+      <!-- Advanced custom local TTS UI removed (was clutter; the custom_tts_url localStorage key is still respected in code for power users if needed) -->
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
         <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
@@ -935,9 +922,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
       if (usePremium || customTtsUrl) {
-        // Always pass 'xai' provider for the Grok premium toggle so server uses xAI TTS
-        // (not the legacy TTS_SERVER_URL forwarding which may 502 if that service is down/unset).
-        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl, usePremium ? 'xai' : null);
+        const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
+        // Only force xai provider if the toggle is on AND we haven't seen an auth error for xAI audio.
+        // If xAI is not authorized, fall back to legacy hosted path (if TTS_SERVER_URL is configured on server)
+        // so the "premium" toggle can still give you the old free hosted neural voices for manual use.
+        const provider = (usePremium && !xaiUnavailable) ? 'xai' : null;
+        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl, provider);
         return;
       }
 
@@ -1150,6 +1140,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const isXaiAuthError = /not authorized|Team is not authorized|permission/i.test(msg);
           if (isXaiAuthError) {
             // Special clear handling for xAI permission issue (common when audio/TTS not enabled for the key/team yet)
+            localStorage.setItem('xai_audio_unavailable', 'true');
             if (!window.__xaiTtsAuthErrorShown) {
               window.__xaiTtsAuthErrorShown = true;
               const lastMsg = document.querySelector('.messages .message:last-child');
@@ -1439,39 +1430,74 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // Premium hosted voices toggle (seamless server-side, no user Docker)
+      const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
       const premiumToggle = document.getElementById('premium-voices-toggle');
       if (premiumToggle) {
-        premiumToggle.checked = localStorage.getItem('use_premium_voices') === 'true';
-        premiumToggle.onchange = () => {
-          localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
-          if (!premiumToggle.checked) {
-            // Force back to local voices so the dropdown works and speak uses system voices immediately
-            voiceSettings.voiceSource = 'local';
-            voiceSettings.voiceId = '';
-            localStorage.setItem('voice_source', voiceSettings.voiceSource);
-            localStorage.setItem('voice_id', voiceSettings.voiceId);
-            localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
-            // Refresh dropdown to show local voices
-            setTimeout(loadVoices, 30);
+        if (xaiUnavailable) {
+          premiumToggle.parentElement.style.display = 'none';
+        } else {
+          premiumToggle.checked = localStorage.getItem('use_premium_voices') === 'true';
+          premiumToggle.onchange = () => {
+            localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
+            if (!premiumToggle.checked) {
+              // Force back to local voices so the dropdown works and speak uses system voices immediately
+              voiceSettings.voiceSource = 'local';
+              voiceSettings.voiceId = '';
+              localStorage.setItem('voice_source', voiceSettings.voiceSource);
+              localStorage.setItem('voice_id', voiceSettings.voiceId);
+              localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
+              // Refresh dropdown to show local voices
+              setTimeout(loadVoices, 30);
 
-            // Clean any "premium voice slow" or "generating premium" notes from the last message
-            // so they don't linger when user switches to local.
-            const lastMsg = document.querySelector('.messages .message:last-child');
-            if (lastMsg) {
-              lastMsg.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+              // Clean any "premium voice slow" or "generating premium" notes from the last message
+              // so they don't linger when user switches to local.
+              const lastMsg = document.querySelector('.messages .message:last-child');
+              if (lastMsg) {
+                lastMsg.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+              }
             }
-          }
-          // If turning on premium, we can clear or ignore custom URL for simplicity
-          if (premiumToggle.checked && customTtsInput) {
-            // keep the value but premium path takes precedence in speak()
-          }
-        };
+            // If turning on premium, we can clear or ignore custom URL for simplicity
+            if (premiumToggle.checked && customTtsInput) {
+              // keep the value but premium path takes precedence in speak()
+            }
+          };
+        }
       }
 
       // Hosted voice picker (shown under the premium toggle)
       const hostedVoiceSelect = document.getElementById('hosted-voice-select');
+      const xaiUnavailableForVoices = localStorage.getItem('xai_audio_unavailable') === 'true';
       if (hostedVoiceSelect) {
-        hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
+        if (xaiUnavailableForVoices && window.hasHostedTTS) {
+          // Repopulate with common legacy Microsoft voices so the "premium" toggle can still
+          // give you the old free hosted neural for manual (non-hands-free) use.
+          hostedVoiceSelect.innerHTML = '';
+          const legacyVoices = [
+            {id: 'en-US-AvaNeural', label: 'Ava (US Female) — recommended'},
+            {id: 'en-US-GuyNeural', label: 'Guy (US Male)'},
+            {id: 'en-US-JennyNeural', label: 'Jenny (US Female)'},
+            {id: 'en-US-DavisNeural', label: 'Davis (US Male)'},
+            {id: 'en-GB-SoniaNeural', label: 'Sonia (UK Female)'},
+            {id: 'en-GB-RyanNeural', label: 'Ryan (UK Male)'}
+          ];
+          legacyVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.label;
+            hostedVoiceSelect.appendChild(opt);
+          });
+          // Update the label above it if present
+          const label = document.querySelector('label[for="hosted-voice-select"]');
+          if (label) label.textContent = 'Choose voice (legacy hosted):';
+          const saved = localStorage.getItem('hosted_voice');
+          const looksLikeXai = saved && !saved.includes('Neural') && !saved.includes('en-');
+          if (looksLikeXai) {
+            localStorage.setItem('hosted_voice', 'en-US-AvaNeural');
+          }
+          hostedVoiceSelect.value = (saved && legacyVoices.some(v => v.id === saved) && !looksLikeXai) ? saved : 'en-US-AvaNeural';
+        } else {
+          hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'Ara';
+        }
         hostedVoiceSelect.onchange = () => {
           localStorage.setItem('hosted_voice', hostedVoiceSelect.value);
         };
@@ -3444,17 +3470,23 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
       // Learn server TTS config.
       // hasHostedTTS = legacy free hosted (TTS_SERVER_URL, edge-tts style) is available for manual speak only.
-      // xAI premium (the "Use Premium Grok Voices" toggle) works independently via the main XAI_API_KEY.
+      // xAI premium (the "Use Premium Grok Voices" toggle) works independently via the main XAI_API_KEY, but
+      // falls back gracefully (and hides the xAI picker) if your key/team lacks audio authorization.
       fetch('/api/health').then(r => r.json()).then(data => {
         serverHasManagedTTS = !!data.hasTTSKey;
         window.hasHostedTTS = !!data.hasHostedTTS;
         serverHasSTT = !!data.hasSTT;
-        // If no legacy TTS_SERVER_URL, hide only the old hosted voice picker.
-        // Do NOT hide or force-off the xAI Grok premium toggle (it uses the chat key, not the legacy service).
-        if (!window.hasHostedTTS) {
+        const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
+        if (!window.hasHostedTTS || xaiUnavailable) {
           const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
           if (hostedDiv) hostedDiv.style.display = 'none';
-          // Keep the premium Grok toggle visible and functional for xAI voices.
+        }
+        if (xaiUnavailable) {
+          const premiumToggle = document.getElementById('premium-voices-toggle');
+          if (premiumToggle && premiumToggle.parentElement) {
+            premiumToggle.parentElement.style.display = 'none';
+          }
+          // Show a small note somewhere if desired, but the per-message note + auto-disable is sufficient.
         }
       }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
