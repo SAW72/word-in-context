@@ -453,7 +453,7 @@
         </label>
 
         <div style="margin:6px 0 4px;">
-          <label style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose hosted voice:</label>
+          <label for="hosted-voice-select" style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose hosted voice:</label>
           <select id="hosted-voice-select" style="width:100%; padding:5px; font-size:13px; border:1px solid #4caf50; border-radius:4px; background:white;">
             <option value="en-US-AvaNeural">Ava (Female) — natural &amp; recommended</option>
             <option value="en-US-GuyNeural">Guy (Male)</option>
@@ -1685,6 +1685,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             // Force back to local voices so the dropdown works and speak uses system voices immediately
             voiceSettings.voiceSource = 'local';
             voiceSettings.voiceId = '';
+            localStorage.setItem('voice_source', voiceSettings.voiceSource);
+            localStorage.setItem('voice_id', voiceSettings.voiceId);
             localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
             // Refresh dropdown to show local voices
             setTimeout(loadVoices, 30);
@@ -1716,7 +1718,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             voiceSettings.voiceId = selVal.replace('local:', '');
             // Sync selectedVoice right away so fallbackToBrowserSpeech uses it
             const voices = synth.getVoices();
-            selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+            selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) ||
+                          voices.find(v => v.name.toLowerCase().includes(voiceSettings.voiceId.toLowerCase()));
+            localStorage.setItem('voice_source', voiceSettings.voiceSource);
+            localStorage.setItem('voice_id', voiceSettings.voiceId);
           } else if (selVal.startsWith('elevenlabs:')) {
             voiceSettings.voiceSource = 'elevenlabs';
             voiceSettings.voiceId = selVal.replace('elevenlabs:', '');
@@ -3528,6 +3533,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
           voiceSettings.voiceSource = 'local';
           voiceSettings.voiceId = '';
+          localStorage.setItem('voice_source', voiceSettings.voiceSource);
+          localStorage.setItem('voice_id', voiceSettings.voiceId);
           localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
         }
       }
