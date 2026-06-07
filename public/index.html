@@ -1919,11 +1919,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
+        // Strip 'sources' (which contain full Bible chapter text) from the history we send to the server.
+        // Server only needs the text content to re-extract refs + for model context.
+        // Full sources are kept locally for the UI "Sources" panel and persistence.
+        const payloadMessages = conversation.map(m => {
+          if (m.sources) {
+            const { sources, ...rest } = m;
+            return rest;
+          }
+          return m;
+        });
+
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers,
           body: JSON.stringify({ 
-            messages: conversation,
+            messages: payloadMessages,
             defaultTranslation: localStorage.getItem('default_english_trans') || 'eng_lsv'
           })
         });
