@@ -954,6 +954,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
+      // Defensive sync: if the premium toggle UI is present and unchecked, force the storage flag to false.
+      // This prevents stale 'use_premium_voices=true' (from previous sessions, saves, or race conditions)
+      // from causing the premium path (and its timeout + fallback note) even when the user has toggled it off.
+      const pt = document.getElementById('premium-voices-toggle');
+      if (pt && !pt.checked) {
+        localStorage.setItem('use_premium_voices', 'false');
+      }
+
       // Premium Hosted Voices (via our Render TTS service) or advanced custom local server.
       // When enabled, routes through /api/tts (server-side proxy) — seamless from the deployed app.
       const usePremium = localStorage.getItem('use_premium_voices') === 'true';
@@ -961,6 +969,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (usePremium || customTtsUrl) {
         speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl);
         return;
+      }
+
+      // Clean any stale "premium voice slow" or "generating premium" notes that may have been
+      // left from a previous speak that went through the premium path (e.g. before flag was forced off).
+      const lastMsgForClean = document.querySelector('.messages .message:last-child');
+      if (lastMsgForClean) {
+        lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
       }
 
       // For hands-free + wake word, we LEAVE the recognition object running (even though
@@ -1064,7 +1079,21 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Premium / custom voices via your server-side proxy (seamless from deployed app).
     // When "premium" or custom URL is set, call /api/tts which proxies to your TTS server (your hosted edge-tts or ElevenLabs with your key).
     // This flows through Render, no localhost/CORS issues for users.
+    // 30s timeout + local fallback is the current mitigation while staying on Hobby for the TTS service.
     async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null) {
+      // Hard guard: if this was called but the current flag no longer says premium (stale call,
+      // race after toggle off, or storage fixed), immediately fallback to local.
+      // This stops the "premium voice slow on current tier – fell back to local" note
+      // from appearing when the user has explicitly toggled premium off and is on local/system voices.
+      if (baseUrl === 'premium' && localStorage.getItem('use_premium_voices') !== 'true') {
+        fallbackToBrowserSpeech(text);
+        return;
+      }
+      if (baseUrl && baseUrl !== 'premium' && !localStorage.getItem('custom_tts_url')) {
+        fallbackToBrowserSpeech(text);
+        return;
+      }
+
       let ttsTimeout = null;
       try {
         // Stop any previous hosted audio (prevents overlapping voices when clicking multiple speakers quickly)
@@ -1078,8 +1107,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const hostedVoice = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
 
         // Add timeout so slow/cold TTS service doesn't hang forever (common on Hobby even after upgrade).
+        // Increased to 30s to give the separate Render Hobby TTS service more time before falling back.
         const controller = new AbortController();
-        ttsTimeout = setTimeout(() => controller.abort(), 15000); // 15s – on Hobby the hosted TTS can be slow/cold; fallback to local instead of hanging 3min+
+        ttsTimeout = setTimeout(() => controller.abort(), 30000); // 30s – Hobby TTS synthesis can be slow/cold; fallback to local instead of hanging
 
         const res = await fetch('/api/tts', {
           method: 'POST',
@@ -1133,17 +1163,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           voiceNoteEl.parentNode.removeChild(voiceNoteEl);
         }
         if (err.name === 'AbortError') {
-          console.warn('Premium TTS timed out after 15s (cold start or slow on the Hobby TTS service). Falling back to local browser voice so you still get audio.');
+          // Only log the first time per page load to avoid spamming the console during hands-free.
+          if (!window.__premiumTtsTimedOutOnce) {
+            window.__premiumTtsTimedOutOnce = true;
+            console.warn('Premium TTS timed out after 30s (cold start or slow on the Hobby TTS service). Falling back to local browser voice so you still get audio.');
+          }
           // Add visible feedback
           if (voiceNoteEl && voiceNoteEl.parentNode) {
             voiceNoteEl.textContent = ' (voice slow – using local instead)';
           } else {
-            // For manual speaks or if no note, append a small note to the last message if possible
+            // For manual speaks or if no note, append a small note to the last message if possible.
+            // This note should now only appear if a premium attempt actually happened (the guards above
+            // prevent it when the toggle is off).
             const lastMsg = document.querySelector('.messages .message:last-child');
             if (lastMsg) {
               const fb = document.createElement('span');
               fb.className = 'voice-generating-note';
-              fb.textContent = ' (premium voice slow on current tier – fell back to local)';
+              fb.textContent = ' (premium attempt was slow – fell back to local)';
               lastMsg.appendChild(fb);
             }
           }
@@ -1758,6 +1794,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
             // Refresh dropdown to show local voices
             setTimeout(loadVoices, 30);
+
+            // Clean any "premium voice slow" or "generating premium" notes from the last message
+            // so they don't linger when user switches to local.
+            const lastMsg = document.querySelector('.messages .message:last-child');
+            if (lastMsg) {
+              lastMsg.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+            }
           }
           // If turning on premium, we can clear or ignore custom URL for simplicity
           if (premiumToggle.checked && customTtsInput) {
@@ -2221,6 +2264,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // (Previously truncated for cost, but that caused "stops after 30s" with EL.
           //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
           //  Manual 🔊 on messages also full.)
+
+          // Defensive sync same as in speak(): prevent stale premium flag from causing
+          // "generating premium voice" note + slow path when user has the toggle off.
+          const pt = document.getElementById('premium-voices-toggle');
+          if (pt && !pt.checked) {
+            localStorage.setItem('use_premium_voices', 'false');
+          }
+
           const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
           if (usePremiumHosted) {
             // Give immediate feedback for the extra latency of remote neural TTS
@@ -2228,7 +2279,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             // On Hobby this can be 10-60s+ on cold starts or long text; the note is removed when audio starts.
             const voiceNote = document.createElement('span');
             voiceNote.className = 'voice-generating-note';
-            voiceNote.textContent = ' 🎙️ generating premium voice (Hobby can take 15-60s+ on cold start or long text; will auto-fallback to local if slow)…';
+            voiceNote.textContent = ' 🎙️ generating premium voice (Hobby TTS can take 20-45s+ on cold start or long text; will auto-fallback to local after ~30s if still slow)…';
             voiceNote.style.fontSize = '11px';
             voiceNote.style.opacity = '0.7';
             msgEl.appendChild(voiceNote);
@@ -2237,6 +2288,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             // (see speakWithCustomTts)
             speak(reply, voiceNote);  // pass note so it can be removed on actual playback
           } else {
+            // Clean stale premium notes before local speak in hands-free auto-speak.
+            const lastMsgForClean = document.querySelector('.messages .message:last-child');
+            if (lastMsgForClean) {
+              lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+            }
             speak(reply);
           }
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
