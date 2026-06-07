@@ -985,12 +985,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
-      // If the live dropdown selected a local voice (modal was open), sync selectedVoice
-      // so the actual synth utterance uses the chosen one (the live override was not fully
-      // propagating to fallbackToBrowserSpeech before).
+      // Always resolve the local voice name (from settings or live dropdown) to the live
+      // SpeechSynthesisVoice object. This must happen for persisted settings (modal closed)
+      // and when voices load async.
       if (currentVoiceSource === 'local' && currentVoiceId) {
-        const voices = synth.getVoices();
-        selectedVoice = voices.find(v => v.name === currentVoiceId) || selectedVoice;
+        let voices = synth.getVoices();
+        let match = voices.find(v => v.name === currentVoiceId) ||
+                    voices.find(v => v.name.toLowerCase().includes(currentVoiceId.toLowerCase()));
+        if (match) {
+          selectedVoice = match;
+        } else if (voices.length === 0) {
+          // Voices not ready yet (common on first load or some browsers). Listen once.
+          const origOnChange = synth.onvoiceschanged;
+          synth.onvoiceschanged = () => {
+            voices = synth.getVoices();
+            match = voices.find(v => v.name === currentVoiceId) ||
+                    voices.find(v => v.name.toLowerCase().includes(currentVoiceId.toLowerCase()));
+            if (match) selectedVoice = match;
+            if (origOnChange) synth.onvoiceschanged = origOnChange;
+          };
+        }
       }
 
       if (elevenLabsQuotaExceeded && currentVoiceSource === 'elevenlabs') {
@@ -1364,19 +1378,35 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       currentUtterance.rate = voiceSettings.rate || 0.95;
       currentUtterance.pitch = voiceSettings.pitch || 1.0;
 
-      if (selectedVoice && selectedVoice.voiceURI) {
-        currentUtterance.voice = selectedVoice;
-      } else {
+      // Always prefer the explicitly chosen local voice from settings/dropdown first.
+      // This fixes cases where selectedVoice is stale (e.g. Karen fallback) even though
+      // the dropdown and voiceSettings say "Google UK English Male".
+      let usedVoice = null;
+      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
         const voices = synth.getVoices();
-        const fallback = voices.find(v =>
-          v.name.includes('Samantha') || v.name.includes('Karen') ||
-          v.name.includes('Daniel') || v.name.includes('Serena') ||
-          (v.lang.includes('en') && v.localService)
-        ) || voices.find(v => v.lang.includes('en'));
+        usedVoice = voices.find(v => v.name === voiceSettings.voiceId) ||
+                    voices.find(v => v.name.toLowerCase().includes(voiceSettings.voiceId.toLowerCase()));
+        if (usedVoice) {
+          currentUtterance.voice = usedVoice;
+          selectedVoice = usedVoice;
+        }
+      }
 
-        if (fallback) {
-          currentUtterance.voice = fallback;
-          selectedVoice = fallback;
+      if (!usedVoice) {
+        if (selectedVoice && selectedVoice.voiceURI) {
+          currentUtterance.voice = selectedVoice;
+        } else {
+          const voices = synth.getVoices();
+          const fallback = voices.find(v =>
+            v.name.includes('Samantha') || v.name.includes('Karen') ||
+            v.name.includes('Daniel') || v.name.includes('Serena') ||
+            (v.lang.includes('en') && v.localService)
+          ) || voices.find(v => v.lang.includes('en'));
+
+          if (fallback) {
+            currentUtterance.voice = fallback;
+            selectedVoice = fallback;
+          }
         }
       }
 
@@ -1779,6 +1809,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       } else if (selectedValue.startsWith('local:')) {
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = selectedValue.replace('local:', '');
+        // Resolve to actual voice object now (so speak uses it even if modal closes)
+        const voices = synth.getVoices();
+        const match = voices.find(v => v.name === voiceSettings.voiceId);
+        if (match) selectedVoice = match;
       } else {
         // Fallback
         voiceSettings.voiceSource = 'local';
