@@ -889,7 +889,7 @@ app.get('/login', (req, res) => {
 // Supports both authenticated users (full trial/sub access via JWT) AND limited demo mode
 // for the "Try the App" button on landing (no token = demo, client-enforced small limit).
 // Demo requests bypass user DB/trial checks but still get full Bible-grounded Grok replies.
-app.post('/api/chat', (req, res, next) => {
+app.post('/api/chat', express.json({ limit: '5mb' }), (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     // Demo / try-the-app limited mode (no login token). Client limits to a few responses.
