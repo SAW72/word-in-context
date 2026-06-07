@@ -747,10 +747,15 @@ app.get('/api/config', (req, res) => {
 // This keeps keys/server details on your server, works from the deployed HTTPS app.
 // For custom "my voice": Clone on ElevenLabs, then we can extend this proxy to call ElevenLabs with your key + voice_id.
 //
-// Latency note: The extra hop + remote synthesis is the main source of "text appears, then delay before voice starts".
-// Both services on Hobby ($7/mo) removes sleeping, but for noticeably faster voice generation (lower synthesis time)
-// consider upgrading *just the TTS service* to Standard tier (more CPU helps edge-tts generation a lot).
-// Main app can often stay on Hobby.
+// Latency note: When "Use Premium Hosted Voices" is on, the reply text appears as soon as /api/chat finishes,
+// but the voice audio requires a second round-trip: main app -> this proxy -> your TTS service (the separate
+// openai-edge-tts container) -> synthesis -> MP3 back.
+// Even on Hobby, the TTS service can take 10-60s+ for the first request after idle (Render spin-up) or for longer
+// text. This is the #1 source of "text is there but voice is silent or very delayed".
+// Recommendation: Keep main app on Hobby if you want. Upgrade *only the TTS service* (the one pointed to by
+// TTS_SERVER_URL) to Standard tier for much faster synthesis (more vCPU). That usually brings hosted voice
+// start time down to a few seconds once warm. The timeout + fallback in speakWithCustomTts will now save the
+// user if it takes too long.
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
     const { text, voice } = req.body || {};

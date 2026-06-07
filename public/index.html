@@ -1055,6 +1055,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // When "premium" or custom URL is set, call /api/tts which proxies to your TTS server (your hosted edge-tts or ElevenLabs with your key).
     // This flows through Render, no localhost/CORS issues for users.
     async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null) {
+      let ttsTimeout = null;
       try {
         // Stop any previous hosted audio (prevents overlapping voices when clicking multiple speakers quickly)
         if (hostedAudio) {
@@ -1065,14 +1066,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Always go through backend proxy for deployed app compatibility.
         // The backend will use TTS_SERVER_URL (your hosted TTS) or fall back.
         const hostedVoice = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
+
+        // Add timeout so slow/cold TTS service doesn't hang forever (common on Hobby even after upgrade).
+        const controller = new AbortController();
+        ttsTimeout = setTimeout(() => controller.abort(), 45000); // 45s generous timeout
+
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text,
             voice: hostedVoice
-          })
+          }),
+          signal: controller.signal
         });
+
+        clearTimeout(ttsTimeout);
+        ttsTimeout = null;
+
         if (!res.ok) throw new Error('TTS proxy returned ' + res.status);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -1106,12 +1117,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           fallbackToBrowserSpeech(text);
         };
       } catch (err) {
+        if (ttsTimeout) clearTimeout(ttsTimeout);
         hostedAudio = null;
         if (voiceNoteEl && voiceNoteEl.parentNode) {
           voiceNoteEl.parentNode.removeChild(voiceNoteEl);
         }
-        console.warn('Premium TTS failed, falling back to browser voice:', err);
-        fallbackToBrowserSpeech(text);
+        if (err.name === 'AbortError') {
+          console.warn('Premium TTS timed out (likely cold start or slow synthesis on the hosted service). Falling back to browser voice.');
+          fallbackToBrowserSpeech(text);
+        } else {
+          console.warn('Premium TTS failed, falling back to browser voice:', err);
+          fallbackToBrowserSpeech(text);
+        }
       }
     }
 
@@ -2176,16 +2193,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
           if (usePremiumHosted) {
             // Give immediate feedback for the extra latency of remote neural TTS
-            // (text is shown right away; voice generation has network + synthesis cost).
+            // (text is shown right away; voice generation has network + synthesis cost on the separate TTS service).
+            // On Hobby this can be 10-60s+ on cold starts or long text; the note is removed when audio starts.
             const voiceNote = document.createElement('span');
             voiceNote.className = 'voice-generating-note';
-            voiceNote.textContent = ' 🎙️ generating voice…';
+            voiceNote.textContent = ' 🎙️ generating voice (may take 10-45s on first use after idle)…';
             voiceNote.style.fontSize = '11px';
             voiceNote.style.opacity = '0.7';
             msgEl.appendChild(voiceNote);
 
             // The speak() below will start the /api/tts fetch; we'll remove the note when audio actually plays.
-            // (see speakWithCustomTts onplay / play start)
+            // (see speakWithCustomTts)
             speak(reply, voiceNote);  // pass note so it can be removed on actual playback
           } else {
             speak(reply);
