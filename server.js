@@ -1330,7 +1330,7 @@ app.post('/api/chat', (req, res, next) => {
       model: 'grok-4.3',
       input: apiMessages,
       temperature: 0.55,
-      max_tokens: 1600,
+      max_output_tokens: 1600,
     });
 
     const reply = completion.output_text || 'No response generated.';
