@@ -103,7 +103,7 @@
           <li>Public Bible sources</li>
         </ul>
         <a href="/app?demo=1" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Try limited demo (instant)</a>
-        <small style="display:block; font-size:11px; opacity:0.7;">Testers use the dedicated Tester Sign Up &amp; Login form in the section below (14 days, card-free).</small>
+        <small style="display:block; font-size:11px; opacity:0.7;">Testers: dedicated Sign Up &amp; Login form below (14 days, card-free, works for returning logins too).</small>
       </div>
       <div class="plan popular">
         <h3>Pro</h3>
@@ -120,7 +120,7 @@
         <small style="display:block; margin-top:8px; opacity:0.7;">7-day trial then $4.99/mo. Cancel anytime.</small>
       </div>
     </div>
-    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> section below for 14 days full access (no card, ends automatically).</p>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> section below (supports both new signups and returning logins, no card, ends automatically after 14 days).</p>
   </section>
 
   <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
@@ -165,15 +165,15 @@
 
       <hr style="margin:30px 0;">
       <div style="text-align:center; margin-bottom:8px;">
-        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Regular users: Already have an account? Log in here</button>
+        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Already have an account? Log in with email</button>
       </div>
-      <p style="text-align:center; font-size:12px; opacity:0.7; margin-bottom:8px;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> form above (or the general login below also works once you have a password set).</p>
+      <p style="text-align:center; font-size:12px; opacity:0.7; margin-bottom:8px;">Testers (14-day): the form above supports both sign up and login. The login below also works for testers (once you have set a password).</p>
       <form id="login-form" style="max-width:400px;margin:0 auto;">
         <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <input type="password" id="login-password" placeholder="Your password" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
         <button type="submit" class="btn" style="width:100%; background:#555;">Log in with password</button>
       </form>
-      <p style="text-align:center; font-size:11px; opacity:0.65; margin-top:4px;">(Works for both regular accounts and testers who set a password during tester sign up.)</p>
+      <p style="text-align:center; font-size:11px; opacity:0.65; margin-top:4px;">Works for regular accounts and 14-day testers.</p>
       <p style="text-align:center; font-size:12px; margin-top:8px; opacity:0.7;">
         Forgot password or never set one? <a href="#" id="use-magic-link" style="color:inherit; text-decoration:underline;">Send magic login link instead</a>
       </p>
@@ -221,7 +221,7 @@
       }
     });
 
-    // New card-free tester sign up / login (14 days full access, no Stripe, ends automatically). The same form handles both new testers and returning tester logins via password.
+    // New card-free tester sign up / login (14 days full access, no Stripe, ends automatically). The same form handles both new signups and returning logins for testers (the general login form below also works for them).
     document.getElementById('tester-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       const email = document.getElementById('tester-email').value;
@@ -338,14 +338,14 @@
       // Update main trial button if present
       const trialBtn = document.querySelector('#trial-form button');
       if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
-      // Update tester texts (now emphasizes Tester Sign Up & Login for both new and returning testers)
+      // Update tester texts (the tester section supports both new signups and returning logins for 14-day testers; general login below also works)
       const testerP = document.querySelector('#tester-error + p') || document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
-      if (testerP) testerP.innerHTML = `Testers: use email + password above for sign up <strong>or login</strong>. Full features (unlimited messages, hands-free, sources). Access ends automatically after ${testerDays} days unless we extend it for you.`;
+      if (testerP) testerP.innerHTML = `Testers: use the email + password fields above for sign up <strong>or login</strong>. (The login form at the bottom also works for testers.) Access ends automatically after ${testerDays} days unless we extend it for you.`;
       const testerBtn = document.querySelector('#tester-form button');
       if (testerBtn) testerBtn.textContent = `Tester Sign Up or Login (${testerDays} days, email only, no card)`;
       // Update the h2 if present
       const h2 = document.querySelector('h2');
-      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normalDays} days normal / ${testerDays} for testers)`;
+      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial or tester access (${normalDays} days / ${testerDays} for testers)`;
     }).catch(() => {});
 
     // Helper to get live tester days for success message
