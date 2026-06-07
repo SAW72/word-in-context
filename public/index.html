@@ -459,6 +459,7 @@
           Uses xAI Grok voices (Ara, Eve, Leo, Rex, Sal) through our backend proxy (same XAI_API_KEY as chat). 
           Requires audio/TTS access enabled on your xAI team/key. When the toggle is on, both manual 🔊 and hands-free use these voices.
           If xAI audio is not yet authorized for your key you will automatically fall back to fast local system voices.
+          <br><small>To enable: log into <a href="https://console.x.ai" target="_blank">console.x.ai</a>, switch to the correct <strong>Team</strong>, go to Voice / TTS playground, and make sure your plan/tier includes Voice API access. Then in this app's console run <code>localStorage.removeItem('xai_audio_unavailable')</code> and refresh.</small>
         </p>
       </div>
 
@@ -1138,6 +1139,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           console.warn('Premium TTS failed, falling back to browser voice:', err);
           const msg = (err && err.message) || '';
           const isXaiAuthError = /not authorized|Team is not authorized|permission/i.test(msg);
+          const isRateLimit = /429|rate limit|too many requests/i.test(msg) || err.message.includes('429');
           if (isXaiAuthError) {
             // Special clear handling for xAI permission issue (common when audio/TTS not enabled for the key/team yet)
             localStorage.setItem('xai_audio_unavailable', 'true');
@@ -1156,6 +1158,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             localStorage.setItem('use_premium_voices', 'false');
             const pt = document.getElementById('premium-voices-toggle');
             if (pt) pt.checked = false;
+          } else if (isRateLimit) {
+            // xAI tier rate limit (RPM/TPM). Tell user and fallback. Limits scale with spend tier.
+            if (!window.__xaiRateLimitShown) {
+              window.__xaiRateLimitShown = true;
+              const lastMsg = document.querySelector('.messages .message:last-child');
+              if (lastMsg) {
+                const fb = document.createElement('span');
+                fb.className = 'voice-generating-note';
+                fb.style.color = '#c94e4e';
+                fb.textContent = ' (xAI rate limited — your tier caps RPM/TPM. Using local voice. Limits increase with spend on xAI.)';
+                lastMsg.appendChild(fb);
+              }
+            }
+            // Don't disable toggle permanently for rate limits, just this time
           } else {
             fallbackToBrowserSpeech(text);
           }
@@ -1930,7 +1946,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       } catch (err) {
         removeLoadingMessage();
         isAwaitingResponse = false;
-        addMessage("Connection error: " + err.message, false);
+        const isRate = /429|rate limit|too many requests/i.test(err.message || '');
+        const niceMsg = isRate 
+          ? "xAI is rate limiting right now (tier RPM/TPM cap). Using local fallback if speaking. Try again soon — limits grow with usage."
+          : "Connection error: " + err.message;
+        addMessage(niceMsg, false);
         conversation.pop();
         if (handsFreeEnabled) {
           scheduleHandsFreeRestart(800);

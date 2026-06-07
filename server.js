@@ -799,7 +799,9 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
       if (!xaiRes.ok) {
         const errText = await xaiRes.text();
         console.error('[TTS] xAI upstream error:', xaiRes.status, errText);
-        return res.status(502).json({ error: 'xAI TTS generation failed', detail: errText });
+        // Forward real status for client handling (429 rate limit from xAI tiers, 403 auth, etc.)
+        const status = xaiRes.status === 429 ? 429 : 502;
+        return res.status(status).json({ error: 'xAI TTS generation failed', detail: errText, status: xaiRes.status });
       }
       const audioBuffer = await xaiRes.arrayBuffer();
       res.setHeader('Content-Type', 'audio/mpeg');
@@ -821,7 +823,8 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
     if (!upstreamRes.ok) {
       const errText = await upstreamRes.text();
       console.error('[TTS] upstream error:', upstreamRes.status, errText);
-      return res.status(502).json({ error: 'TTS generation failed', detail: errText });
+      const status = upstreamRes.status === 429 ? 429 : 502;
+      return res.status(status).json({ error: 'TTS generation failed', detail: errText, status: upstreamRes.status });
     }
 
     const audioBuffer = await upstreamRes.arrayBuffer();
@@ -1360,8 +1363,13 @@ app.post('/api/chat', (req, res, next) => {
     res.json({ reply, sources });
   } catch (err) {
     console.error('xAI proxy error:', err);
-    const status = err.status || 500;
-    const message = err.message || 'Unknown error calling xAI';
+    let status = err.status || 500;
+    let message = err.message || 'Unknown error calling xAI';
+    // Handle xAI tier rate limits (RPM/TPM) gracefully
+    if (status === 429 || /429|rate limit|too many requests/i.test(message)) {
+      status = 429;
+      message = 'xAI rate limited (your API tier caps RPM/TPM for the model). Please wait a moment and try again. Limits increase with cumulative spend on xAI.';
+    }
     res.status(status).json({ error: message });
   }
 });
