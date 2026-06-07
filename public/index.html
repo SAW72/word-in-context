@@ -989,21 +989,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // SpeechSynthesisVoice object. This must happen for persisted settings (modal closed)
       // and when voices load async.
       if (currentVoiceSource === 'local' && currentVoiceId) {
-        let voices = synth.getVoices();
-        let match = voices.find(v => v.name === currentVoiceId) ||
-                    voices.find(v => v.name.toLowerCase().includes(currentVoiceId.toLowerCase()));
+        let match = findLocalVoiceById(currentVoiceId);
         if (match) {
           selectedVoice = match;
-        } else if (voices.length === 0) {
-          // Voices not ready yet (common on first load or some browsers). Listen once.
-          const origOnChange = synth.onvoiceschanged;
-          synth.onvoiceschanged = () => {
-            voices = synth.getVoices();
-            match = voices.find(v => v.name === currentVoiceId) ||
-                    voices.find(v => v.name.toLowerCase().includes(currentVoiceId.toLowerCase()));
-            if (match) selectedVoice = match;
-            if (origOnChange) synth.onvoiceschanged = origOnChange;
-          };
+        } else {
+          let voices = synth.getVoices();
+          if (voices.length === 0) {
+            // Voices not ready yet (common on first load or some browsers). Listen once.
+            const origOnChange = synth.onvoiceschanged;
+            synth.onvoiceschanged = () => {
+              match = findLocalVoiceById(currentVoiceId);
+              if (match) selectedVoice = match;
+              if (origOnChange) synth.onvoiceschanged = origOnChange;
+            };
+          }
         }
       }
 
@@ -1383,9 +1382,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // the dropdown and voiceSettings say "Google UK English Male".
       let usedVoice = null;
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-        const voices = synth.getVoices();
-        usedVoice = voices.find(v => v.name === voiceSettings.voiceId) ||
-                    voices.find(v => v.name.toLowerCase().includes(voiceSettings.voiceId.toLowerCase()));
+        usedVoice = findLocalVoiceById(voiceSettings.voiceId);
         if (usedVoice) {
           currentUtterance.voice = usedVoice;
           selectedVoice = usedVoice;
@@ -1464,6 +1461,31 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       if (fullName.includes("(Enhanced)")) return fullName;
       return fullName;
+    }
+
+    // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
+    // Uses exact, case-insensitive, includes, and special case for UK male to avoid falling back to Karen etc.
+    function findLocalVoiceById(id) {
+      if (!id) return null;
+      const voices = synth.getVoices();
+      if (!voices || voices.length === 0) return null;
+      let v = voices.find(v => v.name === id);
+      if (v) return v;
+      v = voices.find(v => v.name.toLowerCase() === id.toLowerCase());
+      if (v) return v;
+      v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
+      if (v) return v;
+      // Special handling for UK male preference
+      if (id.toLowerCase().includes('uk') && id.toLowerCase().includes('male')) {
+        v = voices.find(v => 
+          v.name.toLowerCase().includes('google') && 
+          v.name.toLowerCase().includes('uk') && 
+          v.name.toLowerCase().includes('english') && 
+          v.name.toLowerCase().includes('male')
+        );
+        if (v) return v;
+      }
+      return null;
     }
 
     function loadVoices() {
@@ -1603,6 +1625,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceId = defaultVoice.name;
         voiceSettings.voiceSource = 'local';
 
+        // Persist the default so it sticks across reloads (otherwise it re-picks every load if never saved)
+        localStorage.setItem('voice_source', 'local');
+        localStorage.setItem('voice_id', defaultVoice.name);
+
         // Force the select to the preferred value (helps with timing/order issues in some browsers)
         voiceSelect.value = `local:${defaultVoice.name}`;
       }
@@ -1718,8 +1744,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             voiceSettings.voiceId = selVal.replace('local:', '');
             // Sync selectedVoice right away so fallbackToBrowserSpeech uses it
             const voices = synth.getVoices();
-            selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) ||
-                          voices.find(v => v.name.toLowerCase().includes(voiceSettings.voiceId.toLowerCase()));
+            selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
             localStorage.setItem('voice_source', voiceSettings.voiceSource);
             localStorage.setItem('voice_id', voiceSettings.voiceId);
           } else if (selVal.startsWith('elevenlabs:')) {
@@ -1934,7 +1959,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Update selectedVoice for local Mac voices
       const voices = synth.getVoices();
       if (voiceSettings.voiceSource === 'local') {
-        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+        selectedVoice = findLocalVoiceById(voiceSettings.voiceId) || null;
       } else {
         selectedVoice = null; // ElevenLabs uses its own path in speak()
       }
@@ -1983,6 +2008,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       isAwaitingResponse = true;
       wakeWordActiveUntil = 0;
       longPauseUntil = 0;
+
+      // Normalize typed input as well for Bible refs (e.g. "John two" -> "John 2")
+      // so extraction and grounding works for typed questions too.
+      if (userText) {
+        userText = normalizeBibleTranscript(userText);
+      }
 
       // If user typed/sent while voice was listening (hands-free), stop the recognizer cleanly.
       if (handsFreeEnabled && isListening && recognition) {

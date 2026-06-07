@@ -1001,6 +1001,17 @@ app.post('/api/chat', (req, res, next) => {
       // Normalize common STT / voice errors for Bible refs before extraction (helps grounding when mic input is noisy)
       text = normalizeBibleTranscriptForRefs(text);
 
+      // Extra safety: convert any remaining word numbers for chapters in case normalize missed (e.g. "John two")
+      text = text.replace(/\b(two|second)\b/gi, '2');
+      text = text.replace(/\b(three|third)\b/gi, '3');
+      text = text.replace(/\b(four)\b/gi, '4');
+      text = text.replace(/\b(five)\b/gi, '5');
+      text = text.replace(/\b(six)\b/gi, '6');
+      text = text.replace(/\b(seven)\b/gi, '7');
+      text = text.replace(/\b(eight)\b/gi, '8');
+      text = text.replace(/\b(nine)\b/gi, '9');
+      text = text.replace(/\b(ten)\b/gi, '10');
+
       // Matches common Bible refs, including bare chapters for full context:
       // "John 3:16", "John 1:1-10", "1 John 1:1", "John 1", "John chapter 1", "Jn 1", "Ps 23", etc.
       const regex = /\b((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?\b/gi;
