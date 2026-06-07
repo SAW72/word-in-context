@@ -400,7 +400,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (full text for local/system voices and ElevenLabs)
+        Auto-speak AI replies (full text for local/system voices, ElevenLabs if key, and premium hosted voices)
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -1425,7 +1425,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         } else {
           const voices = synth.getVoices();
           const fallback = voices.find(v =>
-            v.name.includes('Samantha') || v.name.includes('Karen') ||
+            v.name.toLowerCase().includes('google uk english male') ||
+            (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && v.name.toLowerCase().includes('english') && v.name.toLowerCase().includes('male')) ||
+            v.name.includes('Samantha') ||
             v.name.includes('Daniel') || v.name.includes('Serena') ||
             (v.lang.includes('en') && v.localService)
           ) || voices.find(v => v.lang.includes('en'));
@@ -1777,6 +1779,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
             localStorage.setItem('voice_source', voiceSettings.voiceSource);
             localStorage.setItem('voice_id', voiceSettings.voiceId);
+            // Force premium hosted off when a local voice is explicitly chosen in the main dropdown
+            localStorage.setItem('use_premium_voices', 'false');
+            // Sync the premium toggle UI if the modal is currently open
+            const pt = document.getElementById('premium-voices-toggle');
+            if (pt) pt.checked = false;
           } else if (selVal.startsWith('elevenlabs:')) {
             voiceSettings.voiceSource = 'elevenlabs';
             voiceSettings.voiceId = selVal.replace('elevenlabs:', '');
@@ -1870,9 +1877,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = selectedValue.replace('local:', '');
         // Resolve to actual voice object now (so speak uses it even if modal closes)
-        const voices = synth.getVoices();
-        const match = voices.find(v => v.name === voiceSettings.voiceId);
+        const match = findLocalVoiceById(voiceSettings.voiceId);
         if (match) selectedVoice = match;
+        // Force premium hosted off when saving a local voice selection
+        localStorage.setItem('use_premium_voices', 'false');
       } else {
         // Fallback
         voiceSettings.voiceSource = 'local';
@@ -3599,6 +3607,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
           localStorage.setItem('voice_id', voiceSettings.voiceId);
           localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
         }
+        // Ensure the flag is explicitly false when we are forcing local
+        localStorage.setItem('use_premium_voices', 'false');
       }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
