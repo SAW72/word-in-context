@@ -306,7 +306,7 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
   }
 }
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
 
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
@@ -889,7 +889,7 @@ app.get('/login', (req, res) => {
 // Supports both authenticated users (full trial/sub access via JWT) AND limited demo mode
 // for the "Try the App" button on landing (no token = demo, client-enforced small limit).
 // Demo requests bypass user DB/trial checks but still get full Bible-grounded Grok replies.
-app.post('/api/chat', express.json({ limit: '5mb' }), (req, res, next) => {
+app.post('/api/chat', (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     // Demo / try-the-app limited mode (no login token). Client limits to a few responses.
