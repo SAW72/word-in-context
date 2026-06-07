@@ -456,13 +456,9 @@
         </div>
 
         <p style="font-size:10px; color:#555; margin:4px 0 0;">
-          This calls our backend proxy, which forwards to your hosted TTS service (the openai-edge-tts container). 
-          No per-user Docker, no localhost issues. Works from the deployed app.
-          (For faster voice generation on the hosted path, the TTS service benefits from more CPU — Hobby is fine for always-on; Standard reduces synthesis latency.)
-        </p>
-
-        <p style="font-size:9px; color:#666; margin:6px 0 0;">
-          (Advanced power users can still use a custom local server URL in the details below if they run their own container.)
+          Uses xAI Grok voices (Ara, Eve, Leo, Rex, Sal) through our backend proxy (same XAI_API_KEY as chat). 
+          Requires audio/TTS access enabled on your xAI team/key. When the toggle is on, both manual 🔊 and hands-free use these voices.
+          If xAI audio is not yet authorized for your key you will automatically fall back to fast local system voices.
         </p>
       </div>
 
@@ -1147,7 +1143,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           fallbackToBrowserSpeech(text);
         } else {
           console.warn('Premium TTS failed, falling back to browser voice:', err);
-          fallbackToBrowserSpeech(text);
+          const msg = (err && err.message) || '';
+          const isXaiAuthError = /not authorized|Team is not authorized|permission/i.test(msg);
+          if (isXaiAuthError) {
+            // Special clear handling for xAI permission issue (common when audio/TTS not enabled for the key/team yet)
+            if (!window.__xaiTtsAuthErrorShown) {
+              window.__xaiTtsAuthErrorShown = true;
+              const lastMsg = document.querySelector('.messages .message:last-child');
+              if (lastMsg) {
+                const fb = document.createElement('span');
+                fb.className = 'voice-generating-note';
+                fb.style.color = '#c94e4e';
+                fb.textContent = ' (xAI TTS not authorized for this key/team yet — using local system voice instead. Check console.x.ai or your xAI account for audio access.)';
+                lastMsg.appendChild(fb);
+              }
+            }
+            // Stop hammering the failing xAI path this session
+            localStorage.setItem('use_premium_voices', 'false');
+            const pt = document.getElementById('premium-voices-toggle');
+            if (pt) pt.checked = false;
+          } else {
+            fallbackToBrowserSpeech(text);
+          }
         }
       }
     }
