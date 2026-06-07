@@ -382,9 +382,8 @@
     <div class="modal-content" style="max-width: 380px;">
       <h3 style="margin-bottom:4px;">Voice Settings</h3>
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All non-English voices are shown (full language support). For English we only show the better/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc. — older ones like Karen/Allison/Alex hidden). The dropdown is sorted with the best English options (Google UK English Male first) at the top, then non-English alphabetically. Install more via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default. Premium ElevenLabs optional.
+        All non-English voices are shown (full language support). For English we only show the better/enhanced ones (Google voices, Enhanced, Samantha, Daniel, etc. — older ones like Karen/Allison/Alex hidden). The dropdown is sorted with the best English options (Google UK English Male first) at the top, then non-English alphabetically. Install more via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default.
       </p>
-      <p id="elevenlabs-quota-warning" style="font-size:11px; color:#c94e4e; margin:0 0 8px; font-weight:500; display:none;">ElevenLabs quota exceeded (your key) — using free local/system voices. Add credits to your ElevenLabs account or switch back to a system voice.</p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;"></select>
@@ -400,7 +399,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (full text for local/system voices, ElevenLabs if key, and premium Grok/xAI voices for manual speak)
+        Auto-speak AI replies (local/system voices by default; premium xAI Grok voices when the Voice Settings toggle is on — hands-free always prefers fast local for reliability)
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -428,14 +427,7 @@
         </select>
       </label>
 
-      <!-- ElevenLabs is now bring-your-own-key only (no more shared "managed" credits in the default UI
-           to avoid confusion and reverting issues). Paste a key to unlock premium voices in the dropdown.
-           For a different/low-cost service, local system voices (including any you buy/install) are recommended
-           and fully supported. -->
-      <label for="elevenlabs-key-input" style="font-size:13px;display:block;margin-bottom:4px;">ElevenLabs API Key (optional — paste your own key for premium voices)
-        <input type="password" id="elevenlabs-key-input" placeholder="sk_..." style="width:100%;padding:8px;margin-top:4px;margin-bottom:8px;font-size:14px;">
-      </label>
-      <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
+      <!-- Local system voices are always available and free. For higher quality, use the Premium Grok Voices (xAI) toggle (paid tier for hands-free) or the old hosted if still configured for manual use. -->
 
       <!-- Premium Hosted Voices (seamless, via our server — no user setup) -->
       <hr style="margin: 10px 0; border-color: #ddd;">
@@ -555,7 +547,7 @@
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Free &amp; unlimited</strong>: All non-English voices + curated better English voices only (Google, Enhanced, Samantha, Daniel etc.). Older English voices (Karen, Allison, Alex etc.) hidden. Dropdown sorted with best English first (Google UK English Male on top), then non-English A-Z. "Google UK English Male" preferred default when available in browser.</li>
-          <li><strong>Optional premium</strong>: ElevenLabs — you must paste your own API key in Voice Settings. You are billed directly by ElevenLabs; this app does not provide or share any ElevenLabs credits.</li>
+          <li><strong>Optional premium</strong>: Grok voices (xAI) via the "Use Premium Grok Voices" toggle in Voice Settings (highest tier). Legacy free hosted neural voices available only for manual speak (🔊) if the server has TTS_SERVER_URL configured. Hands-free always uses local system voices (or xAI premium when toggled on for the paid tier).</li>
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
@@ -838,21 +830,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
-    // ElevenLabs
-    let elevenLabsApiKey = localStorage.getItem('elevenlabs_api_key') || '';
-    let elevenLabsVoices = [];
-    let elevenLabsAudio = null;
     let hostedAudio = null;  // for the /api/tts premium hosted neural voices (edge-tts)
-    let elevenLabsFailedOnce = false;
-    let currentElevenLabsController = null;
-    let pendingElevenLabsText = null;
-    let elevenLabsNextAllowedTime = 0;
-    let elevenLabsQuotaExceeded = localStorage.getItem('elevenlabs_quota_exceeded') === 'true';
     let lastSpokenText = '';
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
-    let elevenLabsCurrentRequestId = 0;
-    let elevenLabsTTSLock = false;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
     let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
 
@@ -864,18 +845,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWord = 'john';
       localStorage.setItem('wake_word', 'John');
     }
-    let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
+    let serverHasManagedTTS = false; // not used for voices anymore (xAI premium is controlled client-side via toggle + /api/tts)
     let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
-    const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
-    const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
-
-    // On startup we no longer forcibly revert elevenlabs source to local here.
-    // Selection persistence is handled in loadVoices + applySavedVoiceSelection so the dropdown
-    // doesn't "revert" visually. speak() will still safely use local if premium/key not usable.
-    // if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
-    //   voiceSettings.voiceSource = 'local';
-    //   voiceSettings.voiceId = '';
-    // }
 
     // ====================== HELPERS ======================
     function addMessage(text, isUser, isLoading = false) {
@@ -978,7 +949,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // When premium is off, force local voice settings and resolution so the main dropdown
       // selection is always honored and we don't fall back to default Mac voice.
       if (!usePremium) {
-        if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
+        if (voiceSettings.voiceSource !== 'local') {
           voiceSettings.voiceSource = 'local';
           localStorage.setItem('voice_source', 'local');
         }
@@ -1019,17 +990,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelectEl = document.getElementById('voice-select');
       if (voiceModalEl && voiceModalEl.style.display === 'flex' && voiceSelectEl && voiceSelectEl.value) {
         const selVal = voiceSelectEl.value;
-        if (selVal.startsWith('elevenlabs:')) {
-          const canEleven = !elevenLabsQuotaExceeded && ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
-          if (!canEleven) {
-            // keep the visual selection on the EL voice (don't revert dropdown), but speak will fallback
-            currentVoiceSource = 'elevenlabs';
-            currentVoiceId = selVal.replace('elevenlabs:', '');
-          } else {
-            currentVoiceSource = 'elevenlabs';
-            currentVoiceId = selVal.replace('elevenlabs:', '');
-          }
-        } else if (selVal.startsWith('local:')) {
+        if (selVal.startsWith('local:')) {
           currentVoiceSource = 'local';
           currentVoiceId = selVal.replace('local:', '');
         }
@@ -1056,56 +1017,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
-      if (elevenLabsQuotaExceeded && currentVoiceSource === 'elevenlabs') {
-        currentVoiceSource = 'local';
-      }
-
-      // Support BOTH: user-provided key (direct, they pay EL) OR app-managed proxy (no key needed, owner pays via sub model).
-      // Gate: explicitly chose elevenlabs voice + not quota + (own key OR (premium toggle + server actually has managed key from health))
-      const canUseEleven = currentVoiceSource === 'elevenlabs' && currentVoiceId && !elevenLabsQuotaExceeded &&
-                           ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
-      const useElevenLabs = canUseEleven;
-
-      if (currentVoiceSource === 'elevenlabs' && !canUseEleven) {
-        // Selection is for ElevenLabs but we can't use it right now (no key, premium disabled, or no server key).
-        // Keep the dropdown selection as-is (prevents visual revert to Karen etc.) but safely fallback here.
-        // User can paste their own ElevenLabs key in Voice Settings for premium.
-        console.warn('[Voice] ElevenLabs selected but not usable now - falling back to local system voice');
-      }
-
-      let textToUse = text;
-      // Always use full text (local voices free + unlimited; EL uses caller's own key so they pay directly).
-
-      if (useElevenLabs) {
-        // Set the most recent text. This ensures we only ever generate audio for the latest requested utterance.
-        pendingElevenLabsText = textToUse;
-
-        // If lock or controller, abort current (if any) and return; the completion will start the latest pending.
-        if (elevenLabsTTSLock || currentElevenLabsController) {
-          if (currentElevenLabsController) {
-            currentElevenLabsController.abort();
-          }
-          return;
-        }
-
-        // Start
-        if (!elevenLabsQuotaExceeded) {
-          startElevenLabsRequest(pendingElevenLabsText, currentVoiceId);
-          pendingElevenLabsText = null;
-        } else {
-          pendingElevenLabsText = null;
-        }
-        return;
-      }
-
+      // Fall through to local or premium (xAI/hosted) paths.
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
     // Premium / custom voices via your server-side proxy (seamless from deployed app).
-    // When "premium" or custom URL is set, call /api/tts which proxies to your TTS server (your hosted edge-tts or ElevenLabs with your key).
-    // This flows through Render, no localhost/CORS issues for users.
-    // 30s timeout + local fallback is the current mitigation while staying on Hobby for the TTS service.
-    async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null) {
+    // When use_premium_voices or custom_tts_url, calls /api/tts which uses xAI TTS (Grok voices) by default.
+    // Legacy TTS_SERVER_URL (if set) provides the optional free hosted neural for manual speak only.
+    async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null, xaiProvider = null) {
       // Hard guard: if this was called but the current flag no longer says premium (stale call,
       // race after toggle off, or storage fixed), immediately fallback to local.
       // This stops the "premium voice slow on current tier – fell back to local" note
@@ -1136,13 +1055,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const controller = new AbortController();
         ttsTimeout = setTimeout(() => controller.abort(), 30000); // 30s – Hobby TTS synthesis can be slow/cold; fallback to local instead of hanging
 
+        const body = {
+          text,
+          voice: hostedVoice
+        };
+        if (xaiProvider === 'xai') {
+          body.provider = 'xai';
+        }
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            voice: hostedVoice
-          }),
+          body: JSON.stringify(body),
           signal: controller.signal
         });
 
@@ -1216,261 +1139,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
     }
 
-    function startElevenLabsRequest(textToSpeak, voiceIdToUse) {
-      const now = Date.now();
-      if (now < elevenLabsNextAllowedTime) {
-        elevenLabsTTSLock = true; // keep locked during backoff wait
-        const delay = elevenLabsNextAllowedTime - now + 100;
-        setTimeout(() => startElevenLabsRequest(textToSpeak, voiceIdToUse), delay);
-        return;
-      }
-
-      // Check client cache first -- free replay, no API cost/credit burn
-      if (elevenLabsTTSCache.has(textToSpeak)) {
-        const entry = elevenLabsTTSCache.get(textToSpeak);
-        entry.lastUsed = Date.now();
-        elevenLabsAudio = new Audio();
-        elevenLabsAudio.src = entry.url;
-        elevenLabsAudio.preload = 'auto';
-
-        elevenLabsAudio.onerror = (e) => {
-          console.error('ElevenLabs (cached) audio playback error', e);
-          elevenLabsAudio = null;
-          fallbackToBrowserSpeech(textToSpeak);
-        };
-
-        elevenLabsAudio.onended = () => {
-          elevenLabsAudio = null;
-          if (handsFreeEnabled && !isListening) {
-            scheduleHandsFreeRestart(450);
-          }
-        };
-        elevenLabsAudio.play().catch((e) => {
-          console.warn('ElevenLabs (cached) audio play failed, falling back', e);
-          fallbackToBrowserSpeech(textToSpeak);
-        });
-        elevenLabsTTSLock = false;
-        // still check pending for any newer
-        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
-          const nextText = pendingElevenLabsText;
-          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
-          pendingElevenLabsText = null;
-          startElevenLabsRequest(nextText, nextVoiceId);
-        }
-        return;
-      }
-
-      elevenLabsTTSLock = true;
-      lastSpokenText = textToSpeak;
-      const thisRequestId = ++elevenLabsCurrentRequestId;
-      currentElevenLabsController = new AbortController();
-
-      console.log('[ElevenLabs] starting TTS request for text length', textToSpeak.length, 'id', thisRequestId, 'lock', elevenLabsTTSLock);
-
-      // Decide endpoint: user's own key (they pay ElevenLabs directly) vs app-managed proxy (our key, cost covered by low monthly sub model; defaults to local free voices)
-      const useUserKey = !!elevenLabsApiKey && !elevenLabsQuotaExceeded;
-      let fetchUrl, fetchHeaders, fetchBody;
-      if (useUserKey) {
-        fetchUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceIdToUse}`;
-        fetchHeaders = {
-          'Accept': 'audio/mpeg',
-          'xi-api-key': elevenLabsApiKey,
-          'Content-Type': 'application/json'
-        };
-        fetchBody = JSON.stringify({
-          text: textToSpeak,
-          model_id: 'eleven_turbo_v2_5', // cheapest low-latency, excellent for the price (same as Flash v2.5)
-          voice_settings: { stability: 0.55, similarity_boost: 0.8 }
-        });
-      } else {
-        // proxy uses server-side ELEVENLABS_API_KEY + turbo model. Perfect for low-fee subs with included minutes.
-        fetchUrl = '/api/tts';
-        fetchHeaders = { 'Content-Type': 'application/json' };
-        fetchBody = JSON.stringify({ text: textToSpeak, voiceId: voiceIdToUse });
-      }
-
-      currentElevenLabsController = new AbortController();
-
-      fetch(fetchUrl, {
-        method: 'POST',
-        headers: fetchHeaders,
-        body: fetchBody,
-        signal: currentElevenLabsController.signal
-      })
-      .then(async response => {
-        if (!response.ok) {
-          let detail = '';
-          try {
-            const errJson = await response.json();
-            detail = errJson?.detail || JSON.stringify(errJson);
-          } catch (_) {
-            detail = await response.text().catch(() => '');
-          }
-          const quotaCode = (typeof detail === 'object' && detail.code) || (typeof detail === 'string' && detail.includes('quota_exceeded') ? 'quota_exceeded' : null);
-          if (quotaCode === 'quota_exceeded') {
-            console.warn('ElevenLabs quota exceeded:', typeof detail === 'object' ? detail.message : detail);
-            elevenLabsQuotaExceeded = true;
-            try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
-            voiceSettings.voiceSource = 'local';
-          } else if (response.status === 429) {
-            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
-            elevenLabsNextAllowedTime = Date.now() + 5000;
-          } else {
-            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
-          }
-          const e = new Error(`ElevenLabs error: ${response.status}`);
-          e.detail = detail;
-          throw e;
-        }
-        return response.blob();
-      })
-      .then(blob => {
-        if (thisRequestId === elevenLabsCurrentRequestId) {
-          currentElevenLabsController = null;
-          elevenLabsTTSLock = false;
-          elevenLabsFailedOnce = false; // reset on success so future errors can notify
-          console.log('[ElevenLabs] TTS request completed successfully id', thisRequestId);
-        }
-
-        if (thisRequestId !== elevenLabsCurrentRequestId) {
-          // This request was superseded by a newer speak() call; discard the audio.
-          return;
-        }
-
-        const url = URL.createObjectURL(blob);
-        // cache for free future replays of exact same text (saves credits)
-        elevenLabsTTSCache.set(textToSpeak, { url, lastUsed: Date.now() });
-        // prune cache
-        if (elevenLabsTTSCache.size > 20) {
-          let oldest = null, oldestTime = Infinity;
-          for (const [k, v] of elevenLabsTTSCache.entries()) {
-            if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldest = k; }
-          }
-          if (oldest) {
-            const oldEntry = elevenLabsTTSCache.get(oldest);
-            URL.revokeObjectURL(oldEntry.url);
-            elevenLabsTTSCache.delete(oldest);
-          }
-        }
-        elevenLabsAudio = new Audio();
-        elevenLabsAudio.src = url;
-        elevenLabsAudio.preload = 'auto';
-
-        elevenLabsAudio.onerror = (e) => {
-          console.error('ElevenLabs audio playback error', e);
-          if (thisRequestId === elevenLabsCurrentRequestId) {
-            elevenLabsAudio = null;
-          }
-          fallbackToBrowserSpeech(textToSpeak);
-        };
-
-        elevenLabsAudio.onended = () => {
-          // do not revoke here -- urls for cached items are managed in prune (or on key change)
-          if (thisRequestId === elevenLabsCurrentRequestId) {
-            elevenLabsAudio = null;
-          }
-          if (thisRequestId === elevenLabsCurrentRequestId && handsFreeEnabled && !isListening) {
-            // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
-            scheduleHandsFreeRestart(450);
-          }
-        };
-
-        elevenLabsAudio.play().catch((e) => {
-          console.warn('ElevenLabs audio play failed, falling back', e);
-          fallbackToBrowserSpeech(textToSpeak);
-        });
-
-        // After this one is done (request + play started), check if a newer one was requested
-        // Only for requests that are still the current one.
-        if (thisRequestId === elevenLabsCurrentRequestId) {
-          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
-            const nextText = pendingElevenLabsText;
-            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
-            pendingElevenLabsText = null;
-            elevenLabsTTSLock = false; // release before starting next (next will set true)
-            // start the next (this will set new controller etc.)
-            startElevenLabsRequest(nextText, nextVoiceId);
-          } else if (elevenLabsQuotaExceeded) {
-            pendingElevenLabsText = null;
-            elevenLabsTTSLock = false;
-          }
-        }
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') {
-          if (thisRequestId === elevenLabsCurrentRequestId) {
-            currentElevenLabsController = null;
-            elevenLabsTTSLock = false;
-          }
-          // A newer speak() aborted us - check for pending text and start it.
-          // Even old aborts can start the *latest* pending.
-          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
-            const nextText = pendingElevenLabsText;
-            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
-            pendingElevenLabsText = null;
-            elevenLabsTTSLock = false;
-            startElevenLabsRequest(nextText, nextVoiceId);
-          } else if (elevenLabsQuotaExceeded) {
-            pendingElevenLabsText = null;
-            elevenLabsTTSLock = false;
-          }
-          return;
-        }
-        if (thisRequestId === elevenLabsCurrentRequestId) {
-          currentElevenLabsController = null;
-          elevenLabsTTSLock = false;
-          console.log('[ElevenLabs] TTS request ended (error/abort) id', thisRequestId);
-        }
-
-        if (thisRequestId !== elevenLabsCurrentRequestId) {
-          return;  // ignore errors from superseded requests
-        }
-
-        const detail = err.detail;
-        const isQuota = elevenLabsQuotaExceeded || (detail && detail.code === 'quota_exceeded') || (err.message && err.message.includes('quota_exceeded'));
-        const isRate = err.message && (err.message.includes('429') || (detail && detail.code === 'rate_limit_error'));
-
-        if (!isQuota && !isRate) {
-          console.error('ElevenLabs TTS error (falling back to browser voice):', err);
-        } else if (isQuota) {
-          console.warn('ElevenLabs quota exceeded, falling back to browser voice.');
-        } else {
-          console.warn('ElevenLabs rate limit, falling back to browser voice.');
-        }
-
-        let userMessage = 'ElevenLabs TTS failed (check browser console for the exact error). Falling back to browser voice for now.';
-        if (isRate) {
-          elevenLabsNextAllowedTime = Date.now() + 5000;
-          userMessage = 'ElevenLabs rate limit hit (too many requests). Please wait a few seconds before clicking more 🔊 buttons. Falling back to browser voice.';
-        }
-        if (isQuota) {
-          elevenLabsQuotaExceeded = true;
-          try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
-          voiceSettings.voiceSource = 'local';
-          userMessage = 'ElevenLabs quota exceeded (managed or your key). Top up at elevenlabs.io, enable your own key, or use free local Mac voices (recommended for low-cost plans). Falling back to local voice.';
-        }
-        if (!elevenLabsFailedOnce) {
-          elevenLabsFailedOnce = true;
-          addMessage(userMessage, false);
-        }
-        fallbackToBrowserSpeech(textToSpeak);
-
-        // Even on error, check if there's a pending newer request (will respect backoff inside start)
-        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
-          const nextText = pendingElevenLabsText;
-          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
-          pendingElevenLabsText = null;
-          elevenLabsTTSLock = false;
-          startElevenLabsRequest(nextText, nextVoiceId);
-        } else if (elevenLabsQuotaExceeded) {
-          pendingElevenLabsText = null;
-          elevenLabsTTSLock = false;
-        }
-      });
-    }
-
-    // Also clear controller if stopSpeaking is called externally while a request is pending
-    // (already handled inside stopSpeaking)
+    // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
+    // Only paths now: local system voices (primary for hands-free), xAI premium (toggle, highest tier, hands-free capable),
+    // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
 
     function fallbackToBrowserSpeech(text) {
       currentUtterance = new SpeechSynthesisUtterance(text);
@@ -1525,21 +1196,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (synth.speaking) synth.cancel();
       currentUtterance = null;
 
-      if (elevenLabsAudio) {
-        elevenLabsAudio.pause();
-        elevenLabsAudio.currentTime = 0;
-        elevenLabsAudio = null;
-      }
-
       if (hostedAudio) {
         hostedAudio.pause();
         hostedAudio.currentTime = 0;
         hostedAudio = null;
-      }
-
-      if (currentElevenLabsController) {
-        currentElevenLabsController.abort();
-        currentElevenLabsController = null;
       }
 
       // User manually stopped output; clear awaiting so hands-free can restart promptly if desired
@@ -1551,7 +1211,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function updateStopButton() {
-      const isSpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused) || (hostedAudio && !hostedAudio.paused);
+      const isSpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
       stopBtn.style.display = isSpeaking ? 'inline-block' : 'none';
     }
     setInterval(updateStopButton, 400);
@@ -1671,41 +1331,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
 
-      // Add ElevenLabs voices (async) — only if user opted into premium (for cost control) OR provided their own key (they pay directly).
-      // This is the main lever for making a low-monthly-fee subscription viable: premium off by default = zero TTS spend.
-      // Also require serverHasManagedTTS (from health) so we don't show options or burn when owner has no ELEVENLABS_API_KEY configured.
-      // Force load even if !premium if a ElevenLabs voice was previously saved, so the selection doesn't visually revert.
-      let shouldLoadEleven = (premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey;
-      if (!shouldLoadEleven && voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
-        shouldLoadEleven = true;
-      }
-      if (shouldLoadEleven) {
-        const voicesUrl = elevenLabsApiKey
-          ? 'https://api.elevenlabs.io/v1/voices'
-          : '/api/voices';
-        const voicesHeaders = elevenLabsApiKey
-          ? { 'xi-api-key': elevenLabsApiKey }
-          : {};
-        fetch(voicesUrl, { headers: voicesHeaders })
-          .then(r => r.json())
-          .then(data => {
-            const voices = data?.voices || data; // proxy returns {voices: [...] } or direct
-            if (Array.isArray(voices)) {
-              elevenLabsVoices = voices;
-              voices.forEach(v => {
-                const option = document.createElement('option');
-                option.value = `elevenlabs:${v.voice_id}`;
-                option.textContent = `${v.name} (ElevenLabs)`;
-                voiceSelect.appendChild(option);
-              });
-              // Re-apply saved selection now that ElevenLabs options exist
-              applySavedVoiceSelection();
-            }
-          })
-          .catch((e) => {
-            console.error('Failed to load ElevenLabs voices list:', e);
-          });
-      }
+      // Only local voices (and premium xAI/hosted if enabled).
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
@@ -1737,43 +1363,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
     }
 
-    // Helper to apply the saved voice selection after voices (especially ElevenLabs) have loaded
+    // Helper to apply the saved voice selection after voices have loaded
     function applySavedVoiceSelection() {
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect || !voiceSettings.voiceId) return;
 
-      const hasPersonalKey = !!elevenLabsApiKey;
-      const canUseElevenSaved = voiceSettings.voiceSource === 'elevenlabs' && !elevenLabsQuotaExceeded &&
-                                ((premiumVoicesEnabled && serverHasManagedTTS) || hasPersonalKey);
-
-      let targetValue;
-      if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
-        targetValue = `elevenlabs:${voiceSettings.voiceId}`;
-      } else {
-        targetValue = `local:${voiceSettings.voiceId}`;
-      }
-
+      const targetValue = `local:${voiceSettings.voiceId}`;
       const option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
       if (option) {
         option.selected = true;
-
-        // Also sync the selectedVoice variable for local voices
-        if (voiceSettings.voiceSource === 'local') {
-          const voices = synth.getVoices();
-          selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
-        }
-        // IMPORTANT: do NOT force voiceSettings.voiceSource to 'local' here even if !canUseElevenSaved.
-        // This prevents the dropdown from "reverting" the saved ElevenLabs selection.
-        // The speak() function will still safely fallback to local voice if !canUseEleven.
-      } else if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
-        // Saved eleven but no matching option (e.g. voices not loaded yet) - keep the settings as-is
-        // so selection doesn't revert. loadVoices should have forced the fetch above.
+        const voices = synth.getVoices();
+        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
       } else {
         // fallback to a good local (prefer Google UK English Male etc, or first English after our filter)
         const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
           const n = o.value.toLowerCase();
           return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
-        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));  // first local (will be best English after our sort/filter)
+        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
@@ -1791,12 +1397,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
 
-      // Pre-fill the ElevenLabs key input BEFORE loading voices
-      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
-      if (elevenLabsInput) elevenLabsInput.value = elevenLabsApiKey || '';
-
-      const quotaWarning = document.getElementById('elevenlabs-quota-warning');
-      if (quotaWarning) quotaWarning.style.display = elevenLabsQuotaExceeded ? 'block' : 'none';
+      // No legacy premium key input (11Labs fully removed).
 
       // Prefill custom local TTS URL (free Docker server)
       const customTtsInput = document.getElementById('custom-tts-url');
@@ -1862,17 +1463,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             // Sync the premium toggle UI if the modal is currently open
             const pt = document.getElementById('premium-voices-toggle');
             if (pt) pt.checked = false;
-          } else if (selVal.startsWith('elevenlabs:')) {
-            voiceSettings.voiceSource = 'elevenlabs';
-            voiceSettings.voiceId = selVal.replace('elevenlabs:', '');
           }
           localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
         };
-      }
-
-      if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
-        // do not force source change here - keeps the saved EL selection visible in dropdown
-        // speak() will fallback to local automatically
       }
 
       const autoSpeakToggle = document.getElementById('auto-speak-toggle');
@@ -1911,17 +1504,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
-      // Premium toggle removed (ElevenLabs is now key-only). We still keep the variable for backward compat with saved state.
       loadVoices();
 
-      // Ensure the saved voice (local or ElevenLabs) is selected in the dropdown
-      // We call it a couple times to cover async ElevenLabs population
+      // Ensure the saved local voice is selected in the dropdown
       setTimeout(() => {
         applySavedVoiceSelection();
       }, 80);
       setTimeout(() => {
         applySavedVoiceSelection();
-      }, 300);  // give async ElevenLabs fetch time to complete and add options
+      }, 300);
 
       rateSlider.value = voiceSettings.rate;
       pitchSlider.value = voiceSettings.pitch;
@@ -1938,20 +1529,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelect = document.getElementById('voice-select');
       const rateSlider = document.getElementById('rate-slider');
       const pitchSlider = document.getElementById('pitch-slider');
-      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
-
-      const selectedValue = voiceSelect.value; // e.g. "local:Daniel (Enhanced)" or "elevenlabs:abc123"
+      const selectedValue = voiceSelect.value; // e.g. "local:Daniel (Enhanced)"
 
       // Parse the selection into clean source + id
-      if (selectedValue.startsWith('elevenlabs:')) {
-        voiceSettings.voiceSource = 'elevenlabs';
-        voiceSettings.voiceId = selectedValue.replace('elevenlabs:', '');
-        // Auto-enable premium when user picks an ElevenLabs voice (so it doesn't stay disabled and cause "revert")
-        if (!premiumVoicesEnabled) {
-          premiumVoicesEnabled = true;
-          localStorage.setItem('premium_voices_enabled', 'true');
-        }
-      } else if (selectedValue.startsWith('local:')) {
+      if (selectedValue.startsWith('local:')) {
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = selectedValue.replace('local:', '');
         // Resolve to actual voice object now (so speak uses it even if modal closes)
@@ -1968,24 +1549,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voiceSettings.rate = parseFloat(rateSlider.value);
       voiceSettings.pitch = parseFloat(pitchSlider.value);
 
-      // Premium toggle removed from UI. We keep premiumVoicesEnabled for any legacy saved state,
-      // but ElevenLabs now requires an explicit key (see key input + auto-enable on EL selection).
-
-      // Save ElevenLabs key if the user entered one (personal unlimited, billed to them)
-      if (elevenLabsInput && elevenLabsInput.value.trim()) {
-        const newKey = elevenLabsInput.value.trim();
-        // Reset quota state on any key save (user may have topped up)
-        elevenLabsFailedOnce = false;
-        elevenLabsQuotaExceeded = false;
-        elevenLabsNextAllowedTime = 0;
-        try { localStorage.removeItem('elevenlabs_quota_exceeded'); } catch (e) {}
-        // free cached audio blobs
-        for (const [k, v] of elevenLabsTTSCache) {
-          try { URL.revokeObjectURL(v.url); } catch (e) {}
-        }
-        elevenLabsTTSCache.clear();
-        elevenLabsApiKey = newKey;
-        localStorage.setItem('elevenlabs_api_key', elevenLabsApiKey);
+      // Premium toggle is saved live on change; persist it here too for safety.
+      const premiumToggleAfter = document.getElementById('premium-voices-toggle');
+      if (premiumToggleAfter) {
+        localStorage.setItem('use_premium_voices', premiumToggleAfter.checked ? 'true' : 'false');
       }
 
       // Save custom local TTS server URL (advanced/power-user path)
@@ -2007,7 +1574,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // If premium hosted is now off, force local voice so dropdown selection takes effect
       if (!premiumToggle || !premiumToggle.checked) {
-        if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
+        if (voiceSettings.voiceSource !== 'local') {
           voiceSettings.voiceSource = 'local';
           voiceSettings.voiceId = '';
         }
@@ -2017,29 +1584,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const hostedVoiceSelect = document.getElementById('hosted-voice-select');
       if (hostedVoiceSelect) {
         localStorage.setItem('hosted_voice', hostedVoiceSelect.value || 'en-US-AvaNeural');
-      }
-
-      // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
-      // This prevents accidental burn of owner's managed credits.
-      if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
-        voiceSettings.voiceSource = 'local';
-        voiceSettings.voiceId = '';
-        // pick a reasonable local default if possible (prefer Google UK English Male)
-        const voices = synth.getVoices();
-        const pref = voices.find(v => v.name.toLowerCase().includes('google uk english male')) ||
-                     voices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-                     voices.find(v => v.name.includes('Enhanced') || v.name.includes('Samantha')) ||
-                     voices.find(v => v.lang.includes('en') && v.localService);
-        if (pref) {
-          voiceSettings.voiceId = pref.name;
-          selectedVoice = pref;
-        }
-        // gentle note
-        const note = document.createElement('div');
-        note.style.cssText = 'font-size:11px;color:#c94e4e;margin-top:4px;';
-        note.textContent = 'Premium was off — switched to free local voice to avoid using app credits.';
-        // append temporarily? for now just console; user sees in dropdown after close
-        console.warn('Forced local voice on save because premium toggle off + no personal key.');
       }
 
       // Persist the clean voice choice
@@ -2077,12 +1621,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (voiceSettings.voiceSource === 'local') {
         selectedVoice = findLocalVoiceById(voiceSettings.voiceId) || null;
       } else {
-        selectedVoice = null; // ElevenLabs uses its own path in speak()
-      }
-
-      // If we have a key, make sure ElevenLabs voices are loaded for next open
-      if (elevenLabsApiKey) {
-        loadVoices();
+        selectedVoice = null;
       }
 
       // Visual feedback on the button
@@ -2110,9 +1649,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(() => {
         const sel = document.getElementById('voice-select');
         if (sel) {
-          const target = voiceSettings.voiceSource === 'elevenlabs'
-            ? `elevenlabs:${voiceSettings.voiceId}`
-            : `local:${voiceSettings.voiceId}`;
+          const target = `local:${voiceSettings.voiceId}`;
           const opt = Array.from(sel.options).find(o => o.value === target);
           if (opt) opt.selected = true;
         }
@@ -2290,32 +1827,41 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
-          // Always speak the full reply now, even for ElevenLabs voices.
-          // (Previously truncated for cost, but that caused "stops after 30s" with EL.
-          //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
-          //  Manual 🔊 on messages also full.)
+          // For hands-free auto-speak: use xAI premium voices if toggle on (for paid highest tier).
+          // This is isolated from the old hosted premium (which is for manual non-hands-free only).
+          const pt = document.getElementById('premium-voices-toggle');
+          if (pt && !pt.checked) {
+            localStorage.setItem('use_premium_voices', 'false');
+          }
 
-          // IMPORTANT: For hands-free auto-speak, ALWAYS use local system voices.
-          // Premium hosted voices are isolated to manual speak only (click 🔊 speaker button or
-          // mic button when hands-free is off). This completely avoids the toggle bugs, lag,
-          // and timeout issues that have plagued hands-free + premium.
-          // Premium toggle only affects manual speak paths.
+          const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
+          if (usePremiumHosted) {
+            // Use xAI for hands-free premium (Grok voices, highest tier).
+            const voiceNote = document.createElement('span');
+            voiceNote.className = 'voice-generating-note';
+            voiceNote.textContent = ' 🎙️ generating premium xAI Grok voice...';
+            voiceNote.style.fontSize = '11px';
+            voiceNote.style.opacity = '0.7';
+            msgEl.appendChild(voiceNote);
 
-          // Clean stale premium notes before local speak in hands-free auto-speak.
-          const lastMsgForClean = document.querySelector('.messages .message:last-child');
-          if (lastMsgForClean) {
-            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+            speakWithCustomTts(reply, 'premium', voiceNote, 'xai');  // pass provider xai for hands-free
+          } else {
+            // Clean stale premium notes before local speak in hands-free auto-speak.
+            const lastMsgForClean = document.querySelector('.messages .message:last-child');
+            if (lastMsgForClean) {
+              lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
+            }
+            // Force local settings so the user's chosen voice from the main dropdown is used.
+            if (voiceSettings.voiceSource !== 'local') {
+              voiceSettings.voiceSource = 'local';
+              localStorage.setItem('voice_source', 'local');
+            }
+            if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+              voiceSettings.voiceId = 'Google UK English Male';
+              localStorage.setItem('voice_id', voiceSettings.voiceId);
+            }
+            speak(reply);
           }
-          // Force local settings so the user's chosen voice from the main dropdown is used.
-          if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
-            voiceSettings.voiceSource = 'local';
-            localStorage.setItem('voice_source', 'local');
-          }
-          if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-            voiceSettings.voiceId = 'Google UK English Male';
-            localStorage.setItem('voice_id', voiceSettings.voiceId);
-          }
-          speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
@@ -2358,7 +1904,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         currentTranscript = transcript;  // for non-handsfree stop handlers etc.
 
         if (handsFreeEnabled) {
-          const isCurrentlySpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused) || (hostedAudio && !hostedAudio.paused);
+          const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
           const hasWake = containsWakeWord(transcript);
           const cmd = hasWake ? getCommandAfterWake(transcript) : '';
 
@@ -2593,7 +2139,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       recognition.onend = () => {
         stopListeningUI();
-        const isOutputting = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused) || (hostedAudio && !hostedAudio.paused);
+        const isOutputting = synth.speaking || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
           // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
@@ -2618,11 +2164,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
       if (synth.speaking) synth.cancel();
-      if (elevenLabsAudio) {
-        elevenLabsAudio.pause();
-        elevenLabsAudio.currentTime = 0;
-        elevenLabsAudio = null;
-      }
 
       // Always attempt a clean stop first. The Web Speech API state machine is picky;
       // calling start() too soon after end/error or without stopping often throws InvalidStateError.
@@ -3094,7 +2635,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         if (isListening) {
           recognition.stop();
-        } else if (synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused) || (hostedAudio && !hostedAudio.paused)) {
+        } else if (synth.speaking || (hostedAudio && !hostedAudio.paused)) {
           stopSpeaking();
         } else {
           startListening();
@@ -3891,7 +3432,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       // On startup, if premium hosted voices are OFF, force voiceSettings to a local voice
       // so the dropdown works and speak() uses system voices (prevents stuck state after previously using hosted).
       if (localStorage.getItem('use_premium_voices') !== 'true') {
-        if (voiceSettings.voiceSource !== 'local' && voiceSettings.voiceSource !== 'elevenlabs') {
+        if (voiceSettings.voiceSource !== 'local') {
           voiceSettings.voiceSource = 'local';
           voiceSettings.voiceId = '';
           localStorage.setItem('voice_source', voiceSettings.voiceSource);

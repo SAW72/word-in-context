@@ -11,7 +11,7 @@ A secure, voice-first application for deep study of The Word — the Hebrew, Ara
 - **Secure by default**: Your xAI API key lives only on the server (never in the browser).
 - **Accurate Bible text**: Automatically pulls real verse text from the excellent free public Bible API when you mention a reference.
 - **Current model**: Uses `grok-4.3` via the official xAI endpoint.
-- All the excellent voice features from v1 preserved and improved (hands-free conversation, ElevenLabs support, premium Mac voices, hold-to-talk, etc.).
+- All the excellent voice features from v1 preserved and improved (hands-free conversation with accurate Bible ref transcription via cheap xAI STT, premium xAI Grok voices for highest tier, fast local system voices primary, legacy hosted option for manual speak only).
 
 ## Quick Start
 
@@ -42,7 +42,7 @@ A secure, voice-first application for deep study of The Word — the Hebrew, Ara
 - Deep original-language and literary context study
 - Strict literal translation policy (ESV, NASB, NKJV, LSB, BSB, etc.)
 - Voice input + high-quality text-to-speech (including hands-free back-and-forth mode)
-- Optional premium ElevenLabs voices (opt-in, with strong cost controls so low-fee subs are viable)
+- Optional premium Grok voices via xAI TTS (toggle in Voice Settings for highest tier; hands-free protected on fast local or xAI when toggled)
 - Server-side Bible text injection for accuracy
 - Clean, distraction-free interface optimized for long study sessions
 
@@ -59,7 +59,7 @@ This creates a natural spoken conversation while studying Scripture.
 
 ```
 word-in-context/
-├── server.js          # Secure proxy (Grok + optional managed ElevenLabs TTS) + Bible API
+├── server.js          # Secure proxy (Grok + xAI TTS for premium voices + optional legacy TTS_SERVER_URL hosted + Bible API)
 ├── package.json
 ├── .env.example
 ├── .gitignore
@@ -74,28 +74,24 @@ word-in-context/
 
 **Goal**: You (the app owner) pay for Grok + limited TTS out of low monthly subs ($3-8/mo), while giving users a great experience without them needing API keys.
 
-**Defaults are zero-TTS-cost**:
-- All users get excellent free local voices (Mac "Samantha", "Enhanced", Daniel, etc. — neural voices are very good on modern macOS; any downloadable/purchased voice packs appear automatically).
-- ElevenLabs premium voices are available only if the user pastes their own API key in Voice Settings (they pay ElevenLabs directly — owner pays nothing for their usage).
-- No "premium toggle" — just paste a key for EL voices or stick with free local.
+**Defaults are zero-TTS-cost (and zero friction)**:
+- All users get excellent free local system voices (Mac "Samantha", "Enhanced", Daniel, Google UK English Male, etc. — modern macOS/iOS neural voices are very good; any purchased voice packs appear automatically in the dropdown).
+- Hands-free conversation ALWAYS uses local system voices for speed/reliability (or xAI premium Grok voices when the user explicitly turns on the "Use Premium Grok Voices" toggle for the highest tier).
+- The legacy free hosted neural voices (via your own TTS_SERVER_URL env, e.g. the edge-tts Render service) are isolated to manual speak (🔊 button or mic when hands-free is off) and can be completely disabled by simply not setting TTS_SERVER_URL.
+- xAI premium (same XAI_API_KEY you already use for chat) is the paid/highest tier option, controlled by one toggle. Ideal for "talking to Grok" seamless experience on hands-free.
 
 **Full text for auto-speak**:
-- Hands-free auto-speak uses the full Grok reply text (local voices: free + unlimited; EL: billed to the user who provided the key).
-- Server `/api/tts` (if owner offers managed) uses the cheapest high-quality model `eleven_turbo_v2_5` and logs usage.
-- TTS cache avoids re-synthesis for repeated phrases.
-- Manual 🔊 on any chat message always speaks full text.
+- Hands-free auto-speak uses the full Grok reply (local: free/unlimited; xAI premium when toggled on).
+- /api/tts routes to xAI audio/speech by default (or your legacy TTS_SERVER_URL if set and client asks for it on manual paths).
+- No per-user keys or Docker needed for the good stuff.
 
-**Other savings**:
-- Grok replies use `max_tokens: 1600` + system prompt emphasizes conciseness.
-- Bible API is free public (no key).
-- Future: add user auth + per-sub quotas / metering around the proxy.
+**Cost for owner**:
+- xAI TTS is usage-based (~$15 per 1M chars). Predictable for first 100 users at your estimated 5-10k chars/day/user.
+- Local voices = $0.
+- Legacy hosted (if you keep the TTS container) is a small fixed cost on Render (~$7-14/mo Hobby) with no per-char billing to you.
+- You can shut off the old hosted path entirely by unsetting TTS_SERVER_URL (the UI gracefully falls back; no breakage).
 
-**Owner setup**:
-- Put your `ELEVENLABS_API_KEY` in `.env` (only needed if offering included premium minutes).
-- Watch server logs: `[TTS managed] N chars ...` — this tells you exactly what is being burned.
-- Users who want "unlimited premium" can paste their own ElevenLabs key (they pay ElevenLabs directly; app still proxies Grok).
-
-This architecture supports selling a low-fee subscription without the app owner going broke on voice credits.
+This keeps the app viable for low monthly fee subs while giving the best "talk to Grok about the Bible" experience to paying/highest-tier users.
 
 ## Important Notes
 
@@ -107,7 +103,7 @@ This architecture supports selling a low-fee subscription without the app owner 
 
 - **"No XAI_API_KEY"**: Make sure `.env` exists and contains your key, then restart the server.
 - Voice not working well? Try Chrome/Edge first (best SpeechRecognition support). On macOS, download additional voices in System Settings → Accessibility → Spoken Content (local voices are free + high quality).
-- For even better voices: in Voice Settings (🔊), paste your own ElevenLabs key (billed to you) or use any local system voice (free, including ones you buy/install in macOS Spoken Content).
+- For the best voices: in Voice Settings (🔊) turn on "Use Premium Grok Voices (xAI powered)" for hands-free + manual. Local system voices are the reliable default (especially for hands-free). Legacy hosted neural (if you run the optional TTS service) is available for manual speak only when TTS_SERVER_URL is configured on the server.
 - **Console spam** (e.g. "MaxListenersExceededWarning", "ObjectMultiplex", "orphaned data", "malformed chunk", "The Shared Storage API is deprecated...", "csNotification", "Content Security Policy of your site blocks the use of 'eval' in JavaScript"): These come from browser extensions (most commonly MetaMask / wallet extensions) that inject content scripts into *every* page, including your localhost dev server. They are harmless to the app and have nothing to do with The Word in Context. The app already filters the known noisy strings from console.warn/error/info. For a perfectly clean console during development:
   - Open the app in an Incognito / Private window (most extensions are disabled by default), or
   - Go to `chrome://extensions/` and temporarily disable MetaMask (and any other wallet/ad/privacy extensions) while working on voice features.

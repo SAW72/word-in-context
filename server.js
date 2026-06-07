@@ -379,7 +379,7 @@ function requireAuth(req, res, next) {
 // Also set a permissive CSP during dev so that:
 // - Our inline <style> and (previously) event handlers work without 'unsafe-inline' complaints
 // - Blob URLs for TTS audio playback are allowed
-// - Fetches to xAI, ElevenLabs, bible.helloao.org etc. are allowed
+// - Fetches to xAI, bible.helloao.org etc. are allowed (11Labs support removed)
 // - Any 'eval' usage from browser APIs or (more commonly) injected extension scripts doesn't
 //   produce the "Content Security Policy of your site blocks the use of 'eval'" noise.
 // In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
@@ -762,37 +762,28 @@ app.get('/api/config', (req, res) => {
 
 // === TTS proxy for seamless premium/custom voices ===
 // Call this from the frontend instead of direct localhost.
-// Set TTS_SERVER_URL in env to your hosted TTS (e.g. your Render TTS service running the openai-edge-tts image, or a VPS).
-// This keeps keys/server details on your server, works from the deployed HTTPS app.
-// For custom "my voice": Clone on ElevenLabs, then we can extend this proxy to call ElevenLabs with your key + voice_id.
-//
-// xAI pricing note (per your numbers): TTS $15 / 1M chars (output only). Voice/Realtime Agent $3/hr (full session, STT+TTS+turn-taking).
-// For this app (wake-word "John" + turn-based Q&A, not continuous agent):
-// - Pure TTS (output chars only) + browser STT (or cheap xAI STT) is far more economical than full Voice Agent.
-// - Rough for 100 users @ moderate usage (e.g. 4k chars AI speech / user / day): ~$180/mo TTS vs $1k+ for Voice Agent (if sessions total 20+ min/user/day wall time).
-// Current edge-tts hosted is even better: fixed low cost (~$7-14/mo total for TTS container), "unlimited" high-quality neural voices. The lag you see is Render Hobby cold starts / limited CPU on the TTS service, not the concept. Upgrade only the TTS service tier (not main app) for speed without per-char costs.
-//
-// Latency note: When "Use Premium Hosted Voices" is on, the reply text appears as soon as /api/chat finishes,
-// but the voice audio requires a second round-trip: main app -> this proxy -> your TTS service (the separate
-// openai-edge-tts container) -> synthesis -> MP3 back.
-// Even on Hobby for the TTS service, cold starts + limited CPU commonly cause 15s–3min+ delays (or "text is there
-// but voice never plays"). This exactly matches your report, and you noted it started after adding the hosted TTS
-// (before that, pure local system voices were snappy). The 15s timeout + fallback to local (with visible note)
-// is the current mitigation so it doesn't hang. Since you don't want to upgrade the TTS service, turning the
-// premium toggle OFF will give you the fast local voices again. If you ever do upgrade, do it on the TTS service
-// only (more CPU = much faster synthesis).
+// /api/tts now supports both:
+// - provider: 'xai' : for hands-free premium (xAI Grok voices, highest paid tier) - uses your existing XAI_API_KEY
+// - default: old hosted (free, manual non-hands-free only) via TTS_SERVER_URL if set
+// Hands-free auto-speak is isolated to local system voices only (see client code).
+// To completely shut off old hosted: unset TTS_SERVER_URL (UI will hide the old toggle).
+// xAI TTS uses same key as chat - no additional API key required.
+// For full realtime "like talking to Grok" in hands-free xAI premium: can later integrate Voice Agent realtime.
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
-    const { text, voice } = req.body || {};
+    const { text, voice, provider } = req.body || {};
     if (!text) return res.status(400).json({ error: 'text is required' });
 
-    // Prefer xAI TTS for "Premium Grok Voices" (xAI powered, for paid tier or manual speak).
+    // Support both:
+    // - provider: 'xai' for hands-free premium (xAI Grok voices, highest paid tier)
+    // - default or no provider for old hosted (free, manual non-hands-free only)
     // Same XAI_API_KEY as chat — no new API key needed.
-    // This replaces/augments the old hosted Microsoft neural (via TTS_SERVER_URL / edge-tts).
     // xAI TTS: $15/1M chars. Voices: Ara, Eve, Leo, Rex, Sal (or your cloned custom voice ID).
+    // Old hosted still available via TTS_SERVER_URL if set (for the free manual premium).
     // To completely shut off old hosted: unset TTS_SERVER_URL and the UI will hide the old toggle.
     // Hands-free auto-speak always uses local system voices (isolated for reliability).
-    if (process.env.XAI_API_KEY) {
+    const useXai = provider === 'xai' || (!process.env.TTS_SERVER_URL && process.env.XAI_API_KEY);
+    if (useXai && process.env.XAI_API_KEY) {
       const xaiRes = await fetch('https://api.x.ai/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -815,7 +806,7 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
       return res.send(Buffer.from(audioBuffer));
     }
 
-    // Fallback to old hosted (if TTS_SERVER_URL still set for legacy/manual use)
+    // Old hosted (if TTS_SERVER_URL still set for legacy/manual use)
     const ttsBase = process.env.TTS_SERVER_URL || 'http://localhost:5050';
     const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
       method: 'POST',
@@ -1376,12 +1367,9 @@ app.post('/api/chat', (req, res, next) => {
 });
 
 // === Voices list via managed key (so users without personal key can still pick nice voices)
-// /api/voices kept minimal for now (ElevenLabs direct BYOK path in UI can still work client-side if user pastes a key).
-// The primary seamless path (Premium Hosted toggle) hard-codes good neural voices server-side via TTS_SERVER_URL.
-
-// (ElevenLabs managed /api/tts removed — using the edge-tts compatible proxy above when TTS_SERVER_URL is set.
-// The hosted Microsoft neural voices via your Render TTS service (openai-edge-tts image) are the zero-friction
-// path for customers via the "Use Premium Hosted Voices" toggle. No per-character costs.)
+// /api/voices kept minimal (no managed premium voice list needed; xAI voices are known: Ara, Eve, Leo, Rex, Sal etc.).
+// Premium is xAI TTS via the same XAI_API_KEY when the client sends provider or when no TTS_SERVER_URL is configured.
+// Legacy TTS_SERVER_URL (edge-tts compatible) remains supported for optional free hosted neural (manual speak only).
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -1390,7 +1378,7 @@ app.get('/api/health', (req, res) => {
     hasKey: !!process.env.XAI_API_KEY,
     hasHostedTTS: !!process.env.TTS_SERVER_URL, // legacy/old hosted; premium now uses xAI TTS by default (same key)
     hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
-    hasTTSKey: !!process.env.ELEVENLABS_API_KEY, // legacy for any ElevenLabs direct UI bits
+    hasTTSKey: false, // 11Labs fully removed; premium voices now use xAI (XAI_API_KEY) or optional TTS_SERVER_URL legacy hosted
     model: 'grok-4.3'
   });
 });
