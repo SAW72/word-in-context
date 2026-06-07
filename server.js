@@ -961,6 +961,21 @@ app.post('/api/chat', (req, res, next) => {
       t = t.replace(/\bone\s+john\s+four\b/gi, '1 John 4');
       t = t.replace(/\b(1|2|3)\s+john\s+four\b/gi, '$1 John 4');
       t = t.trim();
+
+      // Final safeguard pass: force gospel "John 1" (or other chapters) for any "john one/1/first" etc.
+      // This catches cases where STT or wake word stripping left "john one" and earlier rules didn't trigger perfectly.
+      // "john one" or "john 1" should be the Gospel of John, not 1 John.
+      t = t.replace(/\bjohn\s+(one|1|first)\b/gi, 'John 1');
+      t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
+      t = t.replace(/\bjohn\s+(three|3|third)\b/gi, 'John 3');
+      t = t.replace(/\bjohn\s+(four|4)\b/gi, 'John 4');
+      t = t.replace(/\bjohn\s+(five|5)\b/gi, 'John 5');
+      t = t.replace(/\bjohn\s+(six|6)\b/gi, 'John 6');
+      t = t.replace(/\bjohn\s+(seven|7)\b/gi, 'John 7');
+      t = t.replace(/\bjohn\s+(eight|8)\b/gi, 'John 8');
+      t = t.replace(/\bjohn\s+(nine|9)\b/gi, 'John 9');
+      t = t.replace(/\bjohn\s+(ten|10)\b/gi, 'John 10');
+
       return t;
     }
 
