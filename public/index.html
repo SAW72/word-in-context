@@ -1103,8 +1103,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           try { URL.revokeObjectURL(url); } catch (e) {}
           // In hands-free mode, after the AI finishes speaking, auto-restart listening
           // so the user can speak the next command without pressing anything.
+          // Use a longer delay (matching local synth) to let speaker echo / room acoustics settle
+          // before the mic starts listening again. Short delays (e.g. 450ms) are the main cause
+          // of "hearing itself" / false triggers from the app's own TTS output.
           if (handsFreeEnabled && !isListening) {
-            scheduleHandsFreeRestart(450);
+            scheduleHandsFreeRestart(1000);
           }
         };
 
@@ -1895,7 +1898,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
-          scheduleHandsFreeRestart(400);
+          // Give a bit more time before listening to avoid picking up any residual audio/echo.
+          scheduleHandsFreeRestart(800);
         }
       } catch (err) {
         removeLoadingMessage();
@@ -1903,7 +1907,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         addMessage("Connection error: " + err.message, false);
         conversation.pop();
         if (handsFreeEnabled) {
-          scheduleHandsFreeRestart(600);
+          scheduleHandsFreeRestart(800);
         }
       }
     }
@@ -2173,7 +2177,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
           // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
-          scheduleHandsFreeRestart(600);
+          scheduleHandsFreeRestart(800);
         }
       };
     }
@@ -2194,6 +2198,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
       if (synth.speaking) synth.cancel();
+
+      if (hostedAudio) {
+        try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
+        hostedAudio = null;
+      }
 
       // Always attempt a clean stop first. The Web Speech API state machine is picky;
       // calling start() too soon after end/error or without stopping often throws InvalidStateError.
@@ -2328,7 +2337,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Centralized restart scheduler for hands-free to avoid overlapping timers that cause
     // "Recognition already started" + laggy / noisy behavior.
-    function scheduleHandsFreeRestart(delayMs = 600) {
+    function scheduleHandsFreeRestart(delayMs = 800) {
       if (restartTimer) {
         clearTimeout(restartTimer);
       }
@@ -2624,12 +2633,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       if (!cmd || cmd.length < 2) {
         if (recentlyWoke) wakeWordActiveUntil = 0;
-        scheduleHandsFreeRestart(650);
+        scheduleHandsFreeRestart(800);
         return;
       }
 
       if (cmd.length < 3 || conf < 0.48) {
-        scheduleHandsFreeRestart(650);
+        scheduleHandsFreeRestart(800);
         return;
       }
 
@@ -2641,7 +2650,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           spoken.includes(heard.slice(0, 20))
         );
         if (isEcho) {
-          scheduleHandsFreeRestart(600);
+          scheduleHandsFreeRestart(800);
           return;
         }
       }
