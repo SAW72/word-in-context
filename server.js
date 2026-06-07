@@ -784,6 +784,7 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
     // Hands-free auto-speak always uses local system voices (isolated for reliability).
     const useXai = provider === 'xai' || (!process.env.TTS_SERVER_URL && process.env.XAI_API_KEY);
     if (useXai && process.env.XAI_API_KEY) {
+      console.log('[TTS] Attempting xAI TTS with voice:', voice || 'Ara', 'provider sent:', provider);
       const xaiRes = await fetch('https://api.x.ai/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -792,7 +793,7 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
         },
         body: JSON.stringify({
           input: text,
-          voice: voice || 'Ara',  // xAI default female; change to 'Leo' etc or cloned ID
+          voice_id: voice || 'Ara',  // xAI default female; change to 'Leo' etc or cloned ID (use voice_id per xAI TTS API)
           response_format: 'mp3'
         })
       });
@@ -1319,20 +1320,20 @@ app.post('/api/chat', (req, res, next) => {
       }).join('') + '\n\nUse the above literal text(s) — including original Greek (SBLGNT etc.) and Hebrew (WLC) when provided — as your primary source(s). For any verse or phrase discussed, explicitly cite the translation/source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").';
     }
 
-    // Build the messages for xAI
+    // Build the messages for xAI (using the recommended Responses API per xAI quickstart)
     const apiMessages = [
       { role: 'system', content: SYSTEM_PROMPT + bibleContext },
       ...messages.filter(m => m.role !== 'system')
     ];
 
-    const completion = await xai.chat.completions.create({
+    const completion = await xai.responses.create({
       model: 'grok-4.3',
-      messages: apiMessages,
+      input: apiMessages,
       temperature: 0.55,
       max_tokens: 1600,
     });
 
-    const reply = completion.choices?.[0]?.message?.content || 'No response generated.';
+    const reply = completion.output_text || 'No response generated.';
 
     // Post-hoc: the model may have referenced additional verses in its reply.
     // Fetch accurate live text for those too (including originals) so the client can show trustworthy sources.
