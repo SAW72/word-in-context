@@ -725,6 +725,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let startingRecognition = false; // prevents re-entrant start() calls that cause "already started" InvalidStateError
     let currentUtterance = null;
 
+    // Audio capture for cheap high-accuracy xAI STT (only used on hands-free commits).
+    // Browser SpeechRecognition gives us fast interim + wake word; xAI STT gives far better
+    // Bible ref accuracy ("John one" → "John 1", "first John one" → "1 John 1", "Romans five" etc.).
+    // Cost is negligible ($0.10–0.20 per hour of actual user speaking time).
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let lastUtteranceAudioBlob = null;
+
     // Voice settings - cleaned up persistence
     let selectedVoice = null;
     let voiceSettings = {
@@ -856,6 +865,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       localStorage.setItem('wake_word', 'John');
     }
     let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
+    let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
     const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
     const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
 
@@ -2559,6 +2569,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           micBtn.classList.add("listening");
           micBtn.textContent = "●";
           startingRecognition = false;
+
+          // Start capturing raw audio for this utterance (hands-free only).
+          // We keep using the fast browser recognizer for wake word, barge-in, and interim text.
+          // On commit we will optionally send the short clip to /api/stt for a much more accurate transcript
+          // (especially Bible references). This is the main place we use the extremely cheap xAI STT.
+          if (handsFreeEnabled) {
+            startAudioCaptureForCurrentUtterance().catch(() => {});
+          }
         } catch (e) {
           startingRecognition = false;
           if (e.name === 'InvalidStateError') {
@@ -2578,7 +2596,63 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       currentTranscript = '';
       micBtn.classList.remove("listening");
       micBtn.textContent = "🎙️";
+
+      // Finalize any in-progress audio capture for the just-ended utterance.
+      // The blob (if any) will be available in lastUtteranceAudioBlob for the commit path.
+      stopAndFinalizeAudioCapture();
     }
+
+    // Start (or restart) a MediaRecorder on the mic for the current user turn.
+    // We request the stream once and reuse it. Only the audio from the active listening
+    // window is kept (we clear chunks on start of a new command turn).
+    async function startAudioCaptureForCurrentUtterance() {
+      try {
+        if (!mediaStream) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        }
+        // Stop any previous recorder cleanly
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          try { mediaRecorder.stop(); } catch (e) {}
+        }
+        audioChunks = [];
+        lastUtteranceAudioBlob = null;
+
+        // Prefer webm/opus (widely supported and good quality for STT). Fall back to default.
+        const options = { mimeType: 'audio/webm;codecs=opus' };
+        mediaRecorder = new MediaRecorder(mediaStream, MediaRecorder.isTypeSupported(options.mimeType) ? options : undefined);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          if (audioChunks.length > 0) {
+            lastUtteranceAudioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+            // Keep chunks for potential re-use until next turn; they are cleared on next start.
+          }
+        };
+
+        mediaRecorder.start();
+        // console.log('[audio] recording started for utterance');
+      } catch (err) {
+        // Permission denied or no mic support — silently fall back to browser transcript only.
+        // This is fine; the browser STT still works.
+        console.warn('[audio] could not start raw capture for STT (will use browser transcript only):', err && err.name);
+        mediaStream = null;
+        mediaRecorder = null;
+        audioChunks = [];
+        lastUtteranceAudioBlob = null;
+      }
+    }
+
+    function stopAndFinalizeAudioCapture() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        try { mediaRecorder.stop(); } catch (e) {}
+      }
+      // lastUtteranceAudioBlob will be set in the onstop handler above (async).
+    }
+
+    // Small helper so the async onstop has time to populate the blob before we try to send it.
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     // Helper to completely recreate the SpeechRecognition instance after bad errors (network etc).
     // The Web Speech API can get into a bad state after certain errors; fresh instance helps.
@@ -2754,21 +2828,114 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return t;
     }
 
+    // Convert a recorded audio Blob to base64 for the /api/stt proxy (keeps things simple, no extra deps).
+    // We only do this for short committed utterances in hands-free mode.
+    async function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          // Strip the "data:...;base64," prefix
+          const base64 = (dataUrl || '').split(',')[1] || '';
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // Optional: fetch a higher-quality transcript from xAI STT for a just-recorded utterance.
+    // Falls back to the browser transcript if STT is slow, not configured, or fails.
+    // Runs with a short timeout so voice input never feels slower than before.
+    async function improveTranscriptWithSTT(fallbackText, audioBlob, timeoutMs = 3800) {
+      if (!audioBlob || !fallbackText) return fallbackText;
+
+      // Quick client-side guard: if /api/config said no STT, skip the roundtrip.
+      // (We also check on the server.)
+      try {
+        const has = (typeof serverHasSTT !== 'undefined') ? serverHasSTT : true;
+        if (!has) return fallbackText;
+      } catch (e) {}
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const b64 = await blobToBase64(audioBlob);
+        const mime = audioBlob.type || 'audio/webm';
+
+        const r = await fetch('/api/stt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio: b64, mime, language: 'en' }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timer);
+
+        if (!r.ok) {
+          console.warn('[STT] proxy returned', r.status);
+          return fallbackText;
+        }
+
+        const data = await r.json();
+        const improved = (data && data.text ? data.text : '').trim();
+        if (improved && improved.length > 1) {
+          // Keep the browser text as a very light fallback post-process if needed,
+          // but the xAI result is usually dramatically better for Bible content.
+          console.log('[STT] improved transcript (browser → xAI):', fallbackText.slice(0,80), '→', improved.slice(0,80));
+          return improved;
+        }
+        return fallbackText;
+      } catch (e) {
+        clearTimeout(timer);
+        if (e.name === 'AbortError') {
+          console.log('[STT] timed out, using browser transcript');
+        } else {
+          console.warn('[STT] client error, using browser transcript:', e.message || e);
+        }
+        return fallbackText;
+      }
+    }
+
     // Extracted commit logic for hands-free wake-word gated turns.
     // Centralized so we can call it from the silence timer and from barge-in short timers.
-    function commitHandsFreeTranscript(finalText, conf) {
+    async function commitHandsFreeTranscript(finalText, conf) {
       stopListeningUI();
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
       }
 
+      // Give the MediaRecorder 'stop' event a moment to fire and populate lastUtteranceAudioBlob.
+      // This is only for the rare case where stop was just called; in normal flow the onstop has usually run.
+      if (lastUtteranceAudioBlob === null && audioChunks && audioChunks.length > 0) {
+        await sleep(60);
+      }
+
+      // If we captured raw audio for this utterance (started when listening began),
+      // ask the cheap xAI STT for a high-accuracy version. This is the main win:
+      // better base text for Bible refs means the existing normalize + server grounding
+      // succeed far more often ("John one" / "first John one" / "Romans 5" etc.).
+      // We use a short timeout so it never makes voice input feel slower.
+      let textForCommit = finalText;
+      if (lastUtteranceAudioBlob) {
+        try {
+          textForCommit = await improveTranscriptWithSTT(finalText, lastUtteranceAudioBlob);
+        } catch (e) {
+          textForCommit = finalText;
+        }
+        // Clear so we don't accidentally re-use the same clip on a restart
+        lastUtteranceAudioBlob = null;
+        audioChunks = [];
+      }
+
       // === Wake-word gated commit ===
-      finalText = normalizeBibleTranscript(finalText);
-      let cmd = getCommandAfterWake(finalText);
+      textForCommit = normalizeBibleTranscript(textForCommit);
+      let cmd = getCommandAfterWake(textForCommit);
       const recentlyWoke = Date.now() < wakeWordActiveUntil;
 
       if ((!cmd || cmd.length < 2) && recentlyWoke) {
-        cmd = finalText.trim();
+        cmd = textForCommit.trim();
         wakeWordActiveUntil = 0;
       longPauseUntil = 0;
       }
@@ -3588,11 +3755,12 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       fetch('/api/health').then(r => r.json()).then(data => {
         serverHasManagedTTS = !!data.hasTTSKey;
         window.hasHostedTTS = !!data.hasHostedTTS;
+        serverHasSTT = !!data.hasSTT;
         // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
         if (serverHasManagedTTS && premiumVoicesEnabled) {
           setTimeout(loadVoices, 50);
         }
-      }).catch(() => { serverHasManagedTTS = false; });
+      }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
       synth.onvoiceschanged = loadVoices;
       setTimeout(loadVoices, 300);
@@ -3669,6 +3837,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         if (!d.hasKey) {
           addMessage("Server warning: No XAI_API_KEY configured in .env", false);
         }
+        if (typeof d.hasSTT === 'boolean') serverHasSTT = d.hasSTT;
       }).catch(() => {});
 
       // Load dynamic config (demo limit + trial days) from server so we can tune via env without rebuild
@@ -3678,6 +3847,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         }
         if (cfg && typeof cfg.trialDays === 'number' && cfg.trialDays > 0) {
           TRIAL_DAYS = cfg.trialDays;
+        }
+        if (typeof cfg.hasSTT === 'boolean') {
+          serverHasSTT = cfg.hasSTT;
         }
         updateDemoStatus();
         enforceDemoLimit();

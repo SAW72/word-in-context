@@ -737,7 +737,8 @@ app.get('/api/config', (req, res) => {
   res.json({
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
-    testerTrialDays: TESTER_TRIAL_DAYS
+    testerTrialDays: TESTER_TRIAL_DAYS,
+    hasSTT: !!process.env.XAI_API_KEY
   });
 });
 
@@ -746,6 +747,12 @@ app.get('/api/config', (req, res) => {
 // Set TTS_SERVER_URL in env to your hosted TTS (e.g. your Render TTS service running the openai-edge-tts image, or a VPS).
 // This keeps keys/server details on your server, works from the deployed HTTPS app.
 // For custom "my voice": Clone on ElevenLabs, then we can extend this proxy to call ElevenLabs with your key + voice_id.
+//
+// xAI pricing note (per your numbers): TTS $15 / 1M chars (output only). Voice/Realtime Agent $3/hr (full session, STT+TTS+turn-taking).
+// For this app (wake-word "John" + turn-based Q&A, not continuous agent):
+// - Pure TTS (output chars only) + browser STT (or cheap xAI STT) is far more economical than full Voice Agent.
+// - Rough for 100 users @ moderate usage (e.g. 4k chars AI speech / user / day): ~$180/mo TTS vs $1k+ for Voice Agent (if sessions total 20+ min/user/day wall time).
+// Current edge-tts hosted is even better: fixed low cost (~$7-14/mo total for TTS container), "unlimited" high-quality neural voices. The lag you see is Render Hobby cold starts / limited CPU on the TTS service, not the concept. Upgrade only the TTS service tier (not main app) for speed without per-char costs.
 //
 // Latency note: When "Use Premium Hosted Voices" is on, the reply text appears as soon as /api/chat finishes,
 // but the voice audio requires a second round-trip: main app -> this proxy -> your TTS service (the separate
@@ -784,6 +791,66 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   } catch (e) {
     console.error('[TTS] proxy error:', e);
     res.status(500).json({ error: 'TTS proxy failed' });
+  }
+});
+
+// === STT proxy for high-accuracy voice input (hands-free) ===
+// xAI STT is extremely cheap ($0.10/hr batch, $0.20/hr streaming per audio hour).
+// We use the same XAI_API_KEY you already set for chat.
+// Client captures short utterance via MediaRecorder (only on hands-free commits), sends base64.
+// We forward as proper multipart + heavy Bible book/chapter/verse keyterm boosting so
+// "John one", "first John one", "Romans five", "1st Corinthians" etc. transcribe correctly on the first pass.
+// This is the highest-leverage use of cheap STT for this app: better base text → far fewer grounding/ref extraction failures.
+app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
+  try {
+    const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
+    if (!audio) return res.status(400).json({ error: 'audio (base64) is required' });
+
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'STT not configured on server' });
+
+    const audioBuffer = Buffer.from(audio, 'base64');
+
+    // Native FormData + Blob works on Node 18+ (Render uses 22.x)
+    const form = new FormData();
+    const blob = new Blob([audioBuffer], { type: mime });
+    const ext = mime.includes('webm') ? 'webm' : (mime.includes('wav') ? 'wav' : 'mp3');
+    form.append('file', blob, `utterance.${ext}`);
+    form.append('language', language);
+
+    // Bible-specific keyterm boosting — this is magic for your ref problems.
+    // The model will strongly prefer these tokens when they sound similar.
+    const bibleKeyterms = [
+      'John', '1 John', '2 John', '3 John', 'Romans', 'Corinthians',
+      '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians',
+      'Colossians', 'Thessalonians', '1 Thessalonians', '2 Thessalonians',
+      'Timothy', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
+      'James', 'Peter', '1 Peter', '2 Peter', 'Jude', 'Revelation',
+      'chapter', 'verse', 'one', 'two', 'three', 'four', 'five', 'six',
+      'first', 'second', 'third', 'Gospel of John', 'book of Romans'
+    ];
+    for (const kt of bibleKeyterms) {
+      form.append('keyterm', kt);
+    }
+
+    const upstream = await fetch('https://api.x.ai/v1/stt', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: form
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      console.error('[STT] upstream error:', upstream.status, errText);
+      return res.status(502).json({ error: 'STT failed', detail: errText });
+    }
+
+    const data = await upstream.json();
+    const text = (data.text || data.transcript || (typeof data === 'string' ? data : '') || '').trim();
+    res.json({ text, raw: data });
+  } catch (e) {
+    console.error('[STT] proxy error:', e);
+    res.status(500).json({ error: 'STT proxy failed' });
   }
 });
 
@@ -1182,6 +1249,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
     hasHostedTTS: !!process.env.TTS_SERVER_URL,
+    hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
     hasTTSKey: !!process.env.ELEVENLABS_API_KEY, // legacy for any ElevenLabs direct UI bits
     model: 'grok-4.3'
   });
@@ -1192,5 +1260,6 @@ app.listen(PORT, () => {
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
   console.log(`   Hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (will use localhost:5050 fallback for dev)'}`);
+  console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
