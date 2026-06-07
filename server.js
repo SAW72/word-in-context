@@ -926,6 +926,10 @@ app.post('/api/chat', (req, res, next) => {
       if (!text) return text;
       let t = ' ' + text + ' ';
       // Same common corrections as client for robustness
+      // Specific for common STT mishearing of 1 John 1 as "first john one" or "1 john one"
+      t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
+      t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
+
       // Gospel of John first (strong patterns for "john one", "john 1", "the book of john one" etc.)
       // to ensure "John one" is the Gospel, not turned into 1 John.
       t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');

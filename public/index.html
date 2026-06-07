@@ -977,6 +977,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
+      // If the live dropdown selected a local voice (modal was open), sync selectedVoice
+      // so the actual synth utterance uses the chosen one (the live override was not fully
+      // propagating to fallbackToBrowserSpeech before).
+      if (currentVoiceSource === 'local' && currentVoiceId) {
+        const voices = synth.getVoices();
+        selectedVoice = voices.find(v => v.name === currentVoiceId) || selectedVoice;
+      }
+
       if (elevenLabsQuotaExceeded && currentVoiceSource === 'elevenlabs') {
         currentVoiceSource = 'local';
       }
@@ -1643,6 +1651,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'en-US-AvaNeural';
         hostedVoiceSelect.onchange = () => {
           localStorage.setItem('hosted_voice', hostedVoiceSelect.value);
+        };
+      }
+
+      // Live update when user clicks a different voice in the main dropdown.
+      // This makes selection take effect immediately (updates voiceSettings + selectedVoice for local)
+      // so speak() uses the new voice without requiring the Save button.
+      if (voiceSelect) {
+        voiceSelect.onchange = () => {
+          const selVal = voiceSelect.value;
+          if (selVal.startsWith('local:')) {
+            voiceSettings.voiceSource = 'local';
+            voiceSettings.voiceId = selVal.replace('local:', '');
+            // Sync selectedVoice right away so fallbackToBrowserSpeech uses it
+            const voices = synth.getVoices();
+            selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+          } else if (selVal.startsWith('elevenlabs:')) {
+            voiceSettings.voiceSource = 'elevenlabs';
+            voiceSettings.voiceId = selVal.replace('elevenlabs:', '');
+          }
+          localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
         };
       }
 
@@ -2495,6 +2523,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function normalizeBibleTranscript(text) {
       if (!text) return text;
       let t = ' ' + text + ' ';
+
+      // Specific for common STT mishearing of 1 John 1 as "first john one" or "1 john one"
+      t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
+      t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
 
       // Gospel of John references first ( "john one", "john 1", "john chapter one", "the book of john 1" etc.)
       // This must come before the epistle "one john" rules so "John one" becomes the Gospel, not 1 John.
