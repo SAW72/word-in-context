@@ -419,7 +419,7 @@
       <!-- Default English translation for Bible grounding -->
       <label for="default-trans-select" style="font-size:13px;display:block;margin-bottom:4px; margin-top:8px;">Default English Translation (used for live literal text & citations in replies)
         <select id="default-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;">
-          <option value="eng_lsv" selected>LSV — Literal Standard Version (NASB 2020 style modern literal) — new default</option>
+          <option value="eng_lsv" selected>NASB (via LSV — Literal Standard Version, modern NASB 2020 style literal) — current default</option>
           <option value="BSB">BSB — Berean Standard Bible (very literal)</option>
           <option value="eng_asv">ASV — American Standard Version (1901 classic literal)</option>
           <option value="eng_ylt">YLT — Young\'s Literal Translation (ultra-literal)</option>
@@ -485,7 +485,7 @@
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
-          <li><strong>English grounding</strong>: User-selectable default (LSV as NASB-style literal by default; also BSB, ASV, YLT, WEB etc. via Voice Settings). All are formal/literal.</li>
+          <li><strong>English grounding</strong>: NASB is the default (via LSV — a modern NASB 2020-style literal). User-selectable in Voice Settings (BSB, ASV, YLT, WEB, etc.). All formal/literal.</li>
           <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
           <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
@@ -3466,9 +3466,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function showWelcomeMessage() {
-      const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
+      const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (NASB default, plus ESV, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Literal Standard Version)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
+Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (NASB)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
@@ -3586,9 +3586,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       const currentChat = getCurrentChat();
       const isEmptyNew = !currentChat || (currentChat.messages || []).length === 0;
       if (isEmptyNew) {
-        const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
+        const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (NASB default, plus ESV, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Literal Standard Version)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
+Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (NASB)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
