@@ -3523,7 +3523,10 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         window.hasHostedTTS = !!data.hasHostedTTS;
         serverHasSTT = !!data.hasSTT;
         const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
-        if (!window.hasHostedTTS || xaiUnavailable) {
+        // Only hide the hosted/xAI voice picker div if we have no legacy hosted AND xAI is unavailable.
+        // When using xAI (flag cleared), show the picker even if no legacy hosted (TTS_SERVER_URL unset).
+        // When xAI unavailable but has legacy, show for legacy voices.
+        if (xaiUnavailable && !window.hasHostedTTS) {
           const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
           if (hostedDiv) hostedDiv.style.display = 'none';
         }
