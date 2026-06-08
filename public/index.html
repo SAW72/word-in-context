@@ -1520,6 +1520,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           }
           hostedVoiceSelect.value = (saved && legacyVoices.some(v => v.id === saved) && !looksLikeXai) ? saved : 'en-US-AvaNeural';
         } else {
+          // Restore xAI voices (in case they were previously overwritten by the legacy repopulation)
+          hostedVoiceSelect.innerHTML = '';
+          const xaiVoices = [
+            {id: 'Ara', label: 'Ara (Female) — natural & recommended'},
+            {id: 'Eve', label: 'Eve (Female)'},
+            {id: 'Leo', label: 'Leo (Male)'},
+            {id: 'Rex', label: 'Rex (Male)'},
+            {id: 'Sal', label: 'Sal (Male)'}
+          ];
+          xaiVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.label;
+            hostedVoiceSelect.appendChild(opt);
+          });
+          // Reset label
+          const label = document.querySelector('label[for="hosted-voice-select"]');
+          if (label) label.textContent = 'Choose Grok voice (xAI):';
           hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'Ara';
         }
         hostedVoiceSelect.onchange = () => {
