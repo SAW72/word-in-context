@@ -1025,6 +1025,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       let ttsTimeout = null;
+
+      // If this call is for Grok xAI premium, sanitize the voice to something the xAI audio endpoint accepts.
+      // Old lingering values like "en-US-AvaNeural" will cause upstream errors → 502 from our proxy.
+      let hostedVoice = localStorage.getItem('hosted_voice') || 'Ara';
+      const isXaiIntent = (xaiProvider === 'xai') || (baseUrl === 'premium');
+      if (isXaiIntent) {
+        const looksLegacy = !hostedVoice || /[- ]|Neural|en-|Ava|Jenny|Guy|Davis|Christopher/i.test(hostedVoice);
+        if (looksLegacy) {
+          hostedVoice = 'Ara';  // safe, natural default for xAI TTS
+        }
+      }
+
       try {
         // Stop any previous hosted audio (prevents overlapping voices when clicking multiple speakers quickly)
         if (hostedAudio) {
@@ -1036,18 +1048,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // For the "Premium Grok Voices" toggle (xaiProvider or base 'premium'), we force the xAI path
         // + a known-good xAI voice name (Ara/Eve/Leo/Rex/Sal). This prevents falling through to a
         // possibly-misconfigured or down legacy TTS_SERVER_URL (which was causing the 502s).
-        let hostedVoice = localStorage.getItem('hosted_voice') || 'Ara';
-
-        // If this call is for Grok xAI premium, sanitize the voice to something the xAI audio endpoint accepts.
-        // Old lingering values like "en-US-AvaNeural" will cause upstream errors → 502 from our proxy.
-        const isXaiIntent = (xaiProvider === 'xai') || (baseUrl === 'premium');
-        if (isXaiIntent) {
-          const looksLegacy = !hostedVoice || /[- ]|Neural|en-|Ava|Jenny|Guy|Davis|Christopher/i.test(hostedVoice);
-          if (looksLegacy) {
-            hostedVoice = 'Ara';  // safe, natural default for xAI TTS
-          }
-        }
-
         // Add timeout so slow/cold services (xAI or legacy hosted) don't hang the UI.
         // xAI TTS can have variable latency (first call, longer text, or load), so give it more time.
         const controller = new AbortController();
