@@ -769,6 +769,33 @@ app.get('/api/config', (req, res) => {
 // To completely shut off old hosted: unset TTS_SERVER_URL (UI will hide the old toggle).
 // xAI TTS uses same key as chat - no additional API key required.
 // For full realtime "like talking to Grok" in hands-free xAI premium: can later integrate Voice Agent realtime.
+// Debug endpoint to test if the server's XAI_API_KEY can call TTS (use in browser: /api/debug/tts )
+app.get('/api/debug/tts', async (req, res) => {
+  if (!process.env.XAI_API_KEY) return res.status(500).json({ error: 'No XAI_API_KEY in env' });
+  try {
+    const testRes = await fetch('https://api.x.ai/v1/tts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: "Test from the app.",
+        voice_id: "Eve",
+        output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
+        language: "en"
+      })
+    });
+    const status = testRes.status;
+    const text = await testRes.text();
+    console.log('[DEBUG TTS] status:', status, 'body:', text.substring(0, 200));
+    res.json({ status, success: testRes.ok, sample: text.substring(0, 200) });
+  } catch (e) {
+    console.error('[DEBUG TTS] error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
     const { text, voice, provider } = req.body || {};
@@ -784,17 +811,22 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
     // Hands-free auto-speak always uses local system voices (isolated for reliability).
     const useXai = provider === 'xai' || (!process.env.TTS_SERVER_URL && process.env.XAI_API_KEY);
     if (useXai && process.env.XAI_API_KEY) {
-      console.log('[TTS] Attempting xAI TTS with voice:', voice || 'Ara', 'provider sent:', provider);
-      const xaiRes = await fetch('https://api.x.ai/v1/audio/speech', {
+      console.log('[TTS] Attempting xAI TTS with voice_id:', voice || 'Eve', 'provider sent:', provider);
+      const xaiRes = await fetch('https://api.x.ai/v1/tts', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          input: text,
-          voice_id: voice || 'Ara',  // xAI default female; change to 'Leo' etc or cloned ID (use voice_id per xAI TTS API)
-          response_format: 'mp3'
+          text: text,
+          voice_id: voice || 'Eve',
+          output_format: {
+            codec: "mp3",
+            sample_rate: 24000,
+            bit_rate: 128000
+          },
+          language: "en"
         })
       });
       if (!xaiRes.ok) {
@@ -804,6 +836,8 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
         const status = xaiRes.status === 429 ? 429 : 502;
         return res.status(status).json({ error: 'xAI TTS generation failed', detail: errText, status: xaiRes.status });
       }
+      // Success: clear any previous unavailable flag so the UI shows xAI voices next time
+      // (client will also see success and can clear its local flag)
       const audioBuffer = await xaiRes.arrayBuffer();
       res.setHeader('Content-Type', 'audio/mpeg');
       return res.send(Buffer.from(audioBuffer));

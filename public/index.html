@@ -1081,6 +1081,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const audio = new Audio(url);
         hostedAudio = audio;
 
+        // Success on xAI path: clear the unavailable flag so the xAI voice dropdown appears next time
+        localStorage.removeItem('xai_audio_unavailable');
+
         // Remove the "generating voice…" note as soon as we have the audio and start playback.
         // This makes the extra latency of the hosted path feel intentional.
         if (voiceNoteEl && voiceNoteEl.parentNode) {
