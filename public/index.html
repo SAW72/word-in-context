@@ -399,7 +399,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (local/system voices by default; premium xAI Grok voices when the Voice Settings "Use Premium Grok Voices" toggle is on). The auto-speak checkbox and Voice Settings premium toggle are independent — turn auto-speak on for hands-free auto replies; use the premium toggle to choose xAI vs your local system voice. Hands-free always falls back to fast local on any premium issues.
+        Auto-speak AI replies (always uses fast local/system voices for hands-free reliability and zero lag). Premium xAI Grok voices are available on-demand via the manual 🔊 buttons on replies when the Voice Settings toggle is on. The two checkboxes are independent.
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -427,21 +427,20 @@
         </select>
       </label>
 
-      <!-- Local system voices are always available and free. For higher quality, use the Premium Grok Voices (xAI) toggle (paid tier for hands-free) or the old hosted if still configured for manual use. -->
-
-      <!-- Premium Hosted Voices (seamless, via our server — no user setup) -->
+      <!-- Premium xAI Grok Voices -->
       <hr style="margin: 10px 0; border-color: #ddd;">
       <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Grok Voices (xAI powered, high-quality, seamless — no Docker, no install)</div>
+        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Grok Voices (xAI)</div>
         
         <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
-          Toggle on for excellent Microsoft-style neural voices (like the ones from the edge-tts container). 
-          These run on <strong>our server</strong> (via Render + the TTS container you host). Users just flip the switch — everything is handled server-side.
+          Higher-quality Grok voices (Ara, Eve, Leo, Rex, Sal). These run through xAI's TTS service using the same API key as chat.
+          <strong>Expect small added latency</strong> (cloud round-trip + generation) compared to instant local system voices.
+          Best for deliberate/manual listen; hands-free auto-speak stays on fast local for reliability.
         </p>
 
         <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
           <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
-          <span>Use Premium Grok Voices (xAI powered, high quality). When on: manual 🔊 + hands-free auto-speak (if enabled) use xAI Grok voices (Ara/Eve/Leo/Rex/Sal — highest tier). When off: fast local system voices from your dropdown choice (recommended default for hands-free reliability + zero cost). This toggle is independent of the "Auto-speak AI replies" checkbox.</span>
+          <span>Use Premium Grok Voices (xAI). When on: manual 🔊 speak buttons on replies use the chosen Grok voice (highest tier). Hands-free auto-speak and fast interaction always use your local system voice (recommended for reliability + zero lag). Toggle is independent of the Auto-speak checkbox.</span>
         </label>
 
         <div style="margin:6px 0 4px;">
@@ -456,14 +455,20 @@
         </div>
 
         <p style="font-size:10px; color:#555; margin:4px 0 0;">
-          Uses xAI Grok voices (Ara, Eve, Leo, Rex, Sal) through our backend proxy (same XAI_API_KEY as chat). 
-          Requires audio/TTS access enabled on your xAI team/key. When the toggle is on, both manual 🔊 and hands-free use these voices.
-          If xAI audio is not yet authorized for your key you will automatically fall back to fast local system voices.
-          <br><small>To enable: log into <a href="https://console.x.ai" target="_blank">console.x.ai</a>, switch to the correct <strong>Team</strong>, go to Voice / TTS playground, and make sure your plan/tier includes Voice API access. Then in this app's console run <code>localStorage.removeItem('xai_audio_unavailable')</code> and refresh.</small>
+          Uses xAI Grok voices through our backend (same XAI_API_KEY as chat). 
+          Requires Voice/TTS access on your xAI team/key. You will automatically fall back to fast local if not authorized.
+          <br><small>To enable: console.x.ai → correct Team → Voice / TTS playground. After enabling, run <code>localStorage.removeItem('xai_audio_unavailable')</code> here and refresh.</small>
         </p>
       </div>
 
       <!-- Advanced custom local TTS UI removed (was clutter; the custom_tts_url localStorage key is still respected in code for power users if needed) -->
+
+      <!-- Future realtime teaser -->
+      <div style="margin-top:12px; padding:8px; background:#fff8e1; border:1px dashed #c9a227; border-radius:4px; font-size:11px; color:#555;">
+        <strong>Future:</strong> Realtime conversational voice (full-duplex, very low latency, like talking naturally).
+        Planning a separate higher tier (~$30/mo) once the app is more mature, after more testing and reaching ~100 paid users.
+        This would use xAI's realtime voice capabilities (different from the current batch TTS).
+      </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
         <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
@@ -531,7 +536,7 @@
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Free &amp; unlimited</strong>: All non-English voices + curated better English voices only (Google, Enhanced, Samantha, Daniel etc.). Older English voices (Karen, Allison, Alex etc.) hidden. Dropdown sorted with best English first (Google UK English Male on top), then non-English A-Z. "Google UK English Male" preferred default when available in browser.</li>
-          <li><strong>Optional premium</strong>: Grok voices (xAI) via the "Use Premium Grok Voices" toggle in Voice Settings (highest tier). Legacy free hosted neural voices available only for manual speak (🔊) if the server has TTS_SERVER_URL configured. Hands-free always uses local system voices (or xAI premium when toggled on for the paid tier).</li>
+          <li><strong>Optional premium</strong>: Grok voices (xAI) via the "Use Premium Grok Voices" toggle in Voice Settings (higher quality, small latency). Manual 🔊 buttons on replies use it when enabled. Hands-free and daily use stay on fast local system voices for reliability and instant response.</li>
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
@@ -1193,7 +1198,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
-    // Only paths now: local system voices (primary for hands-free), xAI premium (toggle, highest tier, hands-free capable),
+    // Only paths now: local system voices (primary for hands-free + daily use), xAI premium (toggle, on-demand for manual 🔊 when you want the Grok voice quality),
     // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
 
     function fallbackToBrowserSpeech(text) {
@@ -1490,6 +1495,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               if (lastMsg) {
                 lastMsg.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
               }
+            } else {
+              // Pre-warm the xAI TTS connection with a tiny request when user enables premium.
+              // This makes the *first* real premium voice playback feel snappier (avoids full cold start).
+              fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: "Test.", voice: localStorage.getItem('hosted_voice') || 'Ara', provider: 'xai' })
+              }).catch(() => { /* fire-and-forget warm-up */ });
             }
             // If turning on premium, we can clear or ignore custom URL for simplicity
             if (premiumToggle.checked && customTtsInput) {
@@ -1939,43 +1952,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
-          // For hands-free auto-speak: use xAI premium voices ONLY if the Voice Settings toggle is on.
-          // When off (default): local/system voices (fast, reliable, zero cost). The auto-speak
-          // checkbox and the premium voice toggle are independent: auto-speak controls *whether*
-          // replies are spoken automatically; the premium toggle controls *which* voice tier.
-          const pt = document.getElementById('premium-voices-toggle');
-          if (pt && !pt.checked && window.__voiceModalOpened && localStorage.getItem('use_premium_voices') === 'true') {
-            localStorage.setItem('use_premium_voices', 'false');
+          // Hands-free auto-speak ALWAYS uses fast local system voices for reliability and near-zero latency.
+          // This is the core experience (system voices "work great").
+          // Premium xAI Grok voices (Ara/Eve/etc.) are available on-demand via the manual 🔊 speak buttons
+          // on AI replies when the Voice Settings toggle is on. This keeps hands-free snappy while still
+          // letting users enjoy the higher-quality voices when they choose to wait a moment.
+          // Clean any premium notes.
+          const lastMsgForClean = document.querySelector('.messages .message:last-child');
+          if (lastMsgForClean) {
+            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
           }
-
-          const usePremiumHosted = localStorage.getItem('use_premium_voices') === 'true';
-          if (usePremiumHosted) {
-            // Use xAI for hands-free premium (Grok voices, highest tier).
-            const voiceNote = document.createElement('span');
-            voiceNote.className = 'voice-generating-note';
-            voiceNote.textContent = ' 🎙️ generating premium xAI Grok voice...';
-            voiceNote.style.fontSize = '11px';
-            voiceNote.style.opacity = '0.7';
-            msgEl.appendChild(voiceNote);
-
-            speakWithCustomTts(reply, 'premium', voiceNote, 'xai');
-          } else {
-            // Clean stale premium notes before local speak in hands-free auto-speak.
-            const lastMsgForClean = document.querySelector('.messages .message:last-child');
-            if (lastMsgForClean) {
-              lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-            }
-            // Force local settings so the user's chosen voice from the main dropdown is used.
-            if (voiceSettings.voiceSource !== 'local') {
-              voiceSettings.voiceSource = 'local';
-              localStorage.setItem('voice_source', 'local');
-            }
-            if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-              voiceSettings.voiceId = 'Google UK English Male';
-              localStorage.setItem('voice_id', voiceSettings.voiceId);
-            }
-            speak(reply);
+          // Force local settings so the user's chosen voice from the main dropdown is used.
+          if (voiceSettings.voiceSource !== 'local') {
+            voiceSettings.voiceSource = 'local';
+            localStorage.setItem('voice_source', 'local');
           }
+          if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+            voiceSettings.voiceId = 'Google UK English Male';
+            localStorage.setItem('voice_id', voiceSettings.voiceId);
+          }
+          speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
