@@ -399,7 +399,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (local/system voices by default; premium xAI Grok voices when the Voice Settings toggle is on — hands-free always prefers fast local for reliability)
+        Auto-speak AI replies (local/system voices by default; premium xAI Grok voices when the Voice Settings "Use Premium Grok Voices" toggle is on). The auto-speak checkbox and Voice Settings premium toggle are independent — turn auto-speak on for hands-free auto replies; use the premium toggle to choose xAI vs your local system voice. Hands-free always falls back to fast local on any premium issues.
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -441,7 +441,7 @@
 
         <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
           <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
-          <span>Use Premium Grok Voices (xAI powered, high quality). When on: manual 🔊 + hands-free auto-speak use xAI voices (highest tier). When off: fast local system voices (recommended for hands-free reliability + zero cost).</span>
+          <span>Use Premium Grok Voices (xAI powered, high quality). When on: manual 🔊 + hands-free auto-speak (if enabled) use xAI Grok voices (Ara/Eve/Leo/Rex/Sal — highest tier). When off: fast local system voices from your dropdown choice (recommended default for hands-free reliability + zero cost). This toggle is independent of the "Auto-speak AI replies" checkbox.</span>
         </label>
 
         <div style="margin:6px 0 4px;">
@@ -909,26 +909,30 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
-      // Defensive sync: if the premium toggle UI is present and unchecked, force the storage flag to false.
-      // This prevents stale 'use_premium_voices=true' (from previous sessions, saves, or race conditions)
-      // from causing the premium path (and its timeout + fallback note) even when the user has toggled it off.
+      // Defensive sync: if the premium toggle UI has been opened this session and is unchecked,
+      // force the storage flag to false. This prevents stale 'use_premium_voices=true' from
+      // previous sessions/races, but we only trust the checkbox state after openVoiceSettings
+      // has synced it (otherwise a never-opened modal's default unchecked state would nuke
+      // a legitimate premium=true from last session).
       const pt = document.getElementById('premium-voices-toggle');
-      if (pt && !pt.checked) {
+      if (pt && !pt.checked && window.__voiceModalOpened && localStorage.getItem('use_premium_voices') === 'true') {
         localStorage.setItem('use_premium_voices', 'false');
       }
 
       // Premium Grok Voices (xAI TTS via same XAI_API_KEY) or custom.
-      // The "Use Premium Grok Voices" toggle means xAI path (highest tier).
-      // Legacy TTS_SERVER_URL (if set) is only for manual non-hands-free when no premium toggle.
+      // The "Use Premium Grok Voices" toggle (use_premium_voices) strictly gates the xAI path.
+      // When off (default): always use fast local system voices (user's dropdown choice).
+      // Custom TTS URL (advanced) only applies when the premium toggle is off.
       let usePremium = localStorage.getItem('use_premium_voices') === 'true';
       const customTtsUrl = localStorage.getItem('custom_tts_url');
-      if (usePremium || customTtsUrl) {
+      if (usePremium) {
         const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
-        // Only force xai provider if the toggle is on AND we haven't seen an auth error for xAI audio.
-        // If xAI is not authorized, fall back to legacy hosted path (if TTS_SERVER_URL is configured on server)
-        // so the "premium" toggle can still give you the old free hosted neural voices for manual use.
-        const provider = (usePremium && !xaiUnavailable) ? 'xai' : null;
-        speakWithCustomTts(text, customTtsUrl || 'premium', voiceNoteEl, provider);
+        const provider = !xaiUnavailable ? 'xai' : null;
+        speakWithCustomTts(text, 'premium', voiceNoteEl, provider);
+        return;
+      } else if (customTtsUrl) {
+        // Legacy custom server path only when premium xAI toggle is explicitly off.
+        speakWithCustomTts(text, customTtsUrl, voiceNoteEl, null);
         return;
       }
 
@@ -1007,18 +1011,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
-    // Premium / custom voices via your server-side proxy (seamless from deployed app).
-    // When use_premium_voices or custom_tts_url, calls /api/tts which uses xAI TTS (Grok voices) by default.
-    // Legacy TTS_SERVER_URL (if set) provides the optional free hosted neural for manual speak only.
+    // Premium (xAI) / custom voices via your server-side proxy (seamless from deployed app).
+    // The function is *only* reached for the xAI path when use_premium_voices === 'true' (hard guard at top).
+    // Legacy custom_tts_url (if present) is handled in the speak() caller only when premium flag is off.
     async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null, xaiProvider = null) {
-      // Hard guard: if this was called but the current flag no longer says premium (stale call,
-      // race after toggle off, or storage fixed), immediately fallback to local.
-      // This stops the "premium voice slow on current tier – fell back to local" note
-      // from appearing when the user has explicitly toggled premium off and is on local/system voices.
-      if (baseUrl === 'premium' && localStorage.getItem('use_premium_voices') !== 'true') {
+      // Hard guard: the 'use_premium_voices' flag is the single source of truth for the xAI premium path.
+      // If the user has toggled it off (or it is not explicitly 'true'), *always* take the local
+      // system voice path regardless of how this function was called. This eliminates any leakage
+      // of xAI voices when the Voice Settings toggle is off.
+      if (localStorage.getItem('use_premium_voices') !== 'true') {
         fallbackToBrowserSpeech(text);
         return;
       }
+      // Additional legacy guard for custom (non-premium) path if somehow reached without the flag.
       if (baseUrl && baseUrl !== 'premium' && !localStorage.getItem('custom_tts_url')) {
         fallbackToBrowserSpeech(text);
         return;
@@ -1435,6 +1440,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function openVoiceSettings() {
+      window.__voiceModalOpened = true;  // mark so defensive checks in speak() can trust the checkbox state
       const voiceModal = document.getElementById('voice-modal');
       const voiceSelect = document.getElementById('voice-select');
       const rateSlider = document.getElementById('rate-slider');
@@ -1933,10 +1939,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
-          // For hands-free auto-speak: use xAI premium voices if toggle on (for paid highest tier).
-          // This is isolated from the old hosted premium (which is for manual non-hands-free only).
+          // For hands-free auto-speak: use xAI premium voices ONLY if the Voice Settings toggle is on.
+          // When off (default): local/system voices (fast, reliable, zero cost). The auto-speak
+          // checkbox and the premium voice toggle are independent: auto-speak controls *whether*
+          // replies are spoken automatically; the premium toggle controls *which* voice tier.
           const pt = document.getElementById('premium-voices-toggle');
-          if (pt && !pt.checked) {
+          if (pt && !pt.checked && window.__voiceModalOpened && localStorage.getItem('use_premium_voices') === 'true') {
             localStorage.setItem('use_premium_voices', 'false');
           }
 
@@ -1950,7 +1958,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             voiceNote.style.opacity = '0.7';
             msgEl.appendChild(voiceNote);
 
-            speakWithCustomTts(reply, 'premium', voiceNote, 'xai');  // pass provider xai for hands-free
+            speakWithCustomTts(reply, 'premium', voiceNote, 'xai');
           } else {
             // Clean stale premium notes before local speak in hands-free auto-speak.
             const lastMsgForClean = document.querySelector('.messages .message:last-child');

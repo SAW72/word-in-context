@@ -762,14 +762,12 @@ app.get('/api/config', (req, res) => {
 
 // === TTS proxy for seamless premium/custom voices ===
 // Call this from the frontend instead of direct localhost.
-// /api/tts now supports both:
-// - provider: 'xai' : for hands-free premium (xAI Grok voices, highest paid tier) - uses your existing XAI_API_KEY
-// - default: old hosted (free, manual non-hands-free only) via TTS_SERVER_URL if set
-// Hands-free auto-speak is isolated to local system voices only (see client code).
-// To completely shut off old hosted: unset TTS_SERVER_URL (UI will hide the old toggle).
-// xAI TTS uses same key as chat - no additional API key required.
-// For full realtime "like talking to Grok" in hands-free xAI premium: can later integrate Voice Agent realtime.
-// Debug endpoint to test if the server's XAI_API_KEY can call TTS (use in browser: /api/debug/tts )
+// /api/tts supports:
+// - provider: 'xai' when client's "Use Premium Grok Voices" toggle is on (xAI Grok voices Ara/Eve/etc).
+// - no provider: legacy hosted (only if TTS_SERVER_URL set; manual non-hands-free use only).
+// Client *never* sends provider=xai when the premium toggle is off — it uses local browser voices directly.
+// Unset TTS_SERVER_URL to remove legacy hosted entirely. Uses same XAI_API_KEY as chat.
+// Debug: GET /api/debug/tts to verify your key can do TTS.
 app.get('/api/debug/tts', async (req, res) => {
   if (!process.env.XAI_API_KEY) return res.status(500).json({ error: 'No XAI_API_KEY in env' });
   try {
@@ -802,14 +800,13 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
     if (!text) return res.status(400).json({ error: 'text is required' });
 
     // Support both:
-    // - provider: 'xai' for hands-free premium (xAI Grok voices, highest paid tier)
-    // - default or no provider for old hosted (free, manual non-hands-free only)
-    // Same XAI_API_KEY as chat — no new API key needed.
-    // xAI TTS: $15/1M chars. Voices: Ara, Eve, Leo, Rex, Sal (or your cloned custom voice ID).
-    // Old hosted still available via TTS_SERVER_URL if set (for the free manual premium).
-    // To completely shut off old hosted: unset TTS_SERVER_URL and the UI will hide the old toggle.
-    // Hands-free auto-speak always uses local system voices (isolated for reliability).
-    const useXai = provider === 'xai' || (!process.env.TTS_SERVER_URL && process.env.XAI_API_KEY);
+    // - provider: 'xai' for premium (xAI Grok voices Ara/Eve/Leo/Rex/Sal, highest paid tier) — used when the client's
+    //   "Use Premium Grok Voices" toggle is on (affects both manual speak and hands-free auto-speak).
+    // - default/no provider: legacy hosted (free neural, manual non-hands-free only) via TTS_SERVER_URL if set.
+    // Same XAI_API_KEY as chat. xAI TTS: $15/1M chars.
+    // To completely remove legacy hosted: unset TTS_SERVER_URL (client isolates to local + xAI premium only).
+    // When the premium toggle is off, client always requests local browser voices (fast/reliable).
+    const useXai = provider === 'xai';
     if (useXai && process.env.XAI_API_KEY) {
       console.log('[TTS] Attempting xAI TTS with voice_id:', voice || 'Eve', 'provider sent:', provider);
       const xaiRes = await fetch('https://api.x.ai/v1/tts', {
