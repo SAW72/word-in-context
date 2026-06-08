@@ -1049,8 +1049,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
 
         // Add timeout so slow/cold services (xAI or legacy hosted) don't hang the UI.
+        // xAI TTS can have variable latency (first call, longer text, or load), so give it more time.
         const controller = new AbortController();
-        ttsTimeout = setTimeout(() => controller.abort(), 30000);
+        const timeoutMs = isXaiIntent ? 60000 : 30000;
+        ttsTimeout = setTimeout(() => controller.abort(), timeoutMs);
 
         const body = {
           text,
@@ -1123,17 +1125,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // Only log the first time per page load to avoid spamming the console during hands-free.
           if (!window.__premiumTtsTimedOutOnce) {
             window.__premiumTtsTimedOutOnce = true;
-            console.warn('Premium TTS (xAI or legacy) timed out after 30s (cold start or slow). Falling back to local browser voice.');
+            const timeoutMsg = isXaiIntent 
+              ? 'Premium xAI TTS timed out after 60s (can be slow on first call, longer text, or server load). Falling back to local browser voice.'
+              : 'Premium TTS timed out after 30s (cold start or slow). Falling back to local browser voice.';
+            console.warn(timeoutMsg);
           }
           // Add visible feedback
           if (voiceNoteEl && voiceNoteEl.parentNode) {
-            voiceNoteEl.textContent = ' (voice slow – using local instead)';
+            voiceNoteEl.textContent = isXaiIntent ? ' (xAI voice slow – using local instead)' : ' (voice slow – using local instead)';
           } else {
             const lastMsg = document.querySelector('.messages .message:last-child');
             if (lastMsg) {
               const fb = document.createElement('span');
               fb.className = 'voice-generating-note';
-              fb.textContent = ' (premium voice slow – fell back to local)';
+              fb.textContent = isXaiIntent ? ' (premium xAI voice slow – fell back to local)' : ' (premium voice slow – fell back to local)';
               lastMsg.appendChild(fb);
             }
           }
