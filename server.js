@@ -39,6 +39,13 @@ try {
     console.error('Migration warning for password_hash:', e.message);
   }
 }
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`);
+} catch (e) {
+  if (!e.message.includes('duplicate column')) {
+    console.error('Migration warning for group_name:', e.message);
+  }
+}
 
 // Magic tokens table (short lived)
 db.exec(`
@@ -102,6 +109,25 @@ function checkDemoThrottle(ip) {
   times.push(now);
   demoUsage.set(ip, times);
   return true;
+}
+
+// Hard daily response limit for demo mode (prevents refresh abuse)
+// This is the authoritative cap. Client also enforces for UX.
+const demoResponseCounts = new Map(); // ip -> { date: 'YYYY-MM-DD', count: number }
+function checkAndIncrementDemoResponses(ip) {
+  if (!ip) return true;
+  const today = new Date().toISOString().slice(0, 10);
+  let entry = demoResponseCounts.get(ip);
+  if (!entry || entry.date !== today) {
+    entry = { date: today, count: 0 };
+  }
+  if (entry.count >= DEMO_LIMIT) {
+    demoResponseCounts.set(ip, entry);
+    return false;
+  }
+  entry.count++;
+  demoResponseCounts.set(ip, entry);
+  return { allowed: true, remaining: Math.max(0, DEMO_LIMIT - entry.count) };
 }
 
 // === Strong System Prompt for "The Word in Context" ===
@@ -557,11 +583,13 @@ app.post('/api/create-checkout', async (req, res) => {
     }
 
     // Create Checkout for subscription with trial
+    // Main monthly price: price_1TgQpW9Hq4iefeFs9jsFfcI6 (set via STRIPE_PRICE_ID env)
+    // Yearly available: price_1TgRqX9Hq4iefeFsCRXz5ES3
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: user.stripe_customer_id,
       line_items: [{
-        price: process.env.STRIPE_PRICE_ID,
+        price: process.env.STRIPE_PRICE_ID || 'price_1TgQpW9Hq4iefeFs9jsFfcI6',
         quantity: 1,
       }],
       subscription_data: {
@@ -948,7 +976,7 @@ app.get('/api/admin/users', (req, res) => {
     if (payload.role !== 'admin') throw new Error();
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
-  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, group_name, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
@@ -960,11 +988,164 @@ app.post('/api/admin/set-access', (req, res) => {
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
   const email = normalizeEmail(req.body.email);
-  const { access_granted, manual_free } = req.body;
-  db.prepare(`
-    UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
-  `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+  const { access_granted, manual_free, group_name } = req.body;
+  const params = [!!access_granted ? 1 : 0, !!manual_free ? 1 : 0];
+  let sql = `UPDATE users SET access_granted = ?, manual_free = ?`;
+  if (group_name !== undefined) {
+    sql += `, group_name = ?`;
+    params.push(group_name || null);
+  }
+  sql += ` WHERE email = ?`;
+  params.push(email);
+  db.prepare(sql).run(...params);
   res.json({ success: true });
+});
+
+// Special extended tester / congregation invite (by admin only)
+app.post('/api/admin/create-special-tester', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    if (payload.role !== 'admin') throw new Error();
+  } catch { return res.status(401).json({ error: 'Admin required' }); }
+
+  const email = normalizeEmail(req.body.email);
+  const days = parseInt(req.body.days) || 30;
+  const groupName = req.body.group_name || null;
+
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  const trialEnd = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user) {
+    db.prepare(`
+      INSERT INTO users (email, status, trial_end, access_granted, group_name)
+      VALUES (?, 'trialing', ?, 1, ?)
+    `).run(email, trialEnd, groupName);
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else {
+    db.prepare(`
+      UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1, group_name = COALESCE(?, group_name)
+      WHERE email = ?
+    `).run(trialEnd, groupName, email);
+  }
+
+  // Send magic link immediately
+  const token = require('crypto').randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+  const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
+  const subject = `Your special access to The Word in Context (${days} days)`;
+  const html = `
+    <p>You've been given special extended access to <strong>The Word in Context</strong>.</p>
+    <p>Your <strong>${days}-day access</strong> is now active. It ends automatically after ${days} days unless extended by the team.</p>
+    <p><a href="${loginUrl}">Log in now</a></p>
+    <p>This link expires in 15 minutes. If you need another, ask the admin.</p>
+    <p><small>Conversations stay in your browser. For congregation/group use as arranged.</small></p>
+  `;
+
+  if (resend) {
+    resend.emails.send({
+      from: process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>',
+      to: email,
+      subject,
+      html
+    }).catch(e => console.error('special tester email error', e));
+  }
+
+  res.json({ success: true, message: `Special ${days}-day access created for ${email} (group: ${groupName || 'none'}). Magic link sent.` });
+});
+
+// Bulk group / church grant
+app.post('/api/admin/bulk-group-grant', (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    if (payload.role !== 'admin') throw new Error();
+  } catch { return res.status(401).json({ error: 'Admin required' }); }
+
+  const { group_name, emails, days } = req.body;
+  if (!group_name || !emails || !Array.isArray(emails)) {
+    return res.status(400).json({ error: 'group_name and emails[] required' });
+  }
+
+  const trialEnd = days ? new Date(Date.now() + parseInt(days) * 24*60*60*1000).toISOString() : null;
+  const status = trialEnd ? 'trialing' : 'active';
+
+  let count = 0;
+  emails.forEach(rawEmail => {
+    const email = normalizeEmail(rawEmail);
+    if (!email) return;
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted, group_name)
+        VALUES (?, ?, ?, 1, ?)
+      `).run(email, status, trialEnd, group_name);
+    } else {
+      db.prepare(`
+        UPDATE users SET status = ?, trial_end = COALESCE(?, trial_end), access_granted = 1, group_name = ?
+        WHERE email = ?
+      `).run(status, trialEnd, group_name, email);
+    }
+    count++;
+  });
+
+  res.json({ success: true, granted: count, group: group_name });
+});
+
+// Send The Word in Context Special (discounted $3/mo retention) offer
+// Uses price_1TgRtD9Hq4iefeFs0WbyW9AD (or STRIPE_RETENTION_PRICE_ID env)
+app.post('/api/admin/send-retention-offer', async (req, res) => {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    if (payload.role !== 'admin') throw new Error();
+  } catch { return res.status(401).json({ error: 'Admin required' }); }
+
+  const email = normalizeEmail(req.body.email);
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user || !user.stripe_customer_id) {
+    return res.status(400).json({ error: 'User has no Stripe customer yet' });
+  }
+
+  // Use the provided Special / Retention price ID (The Word in Context Special - discounted $3/month)
+  const retentionPrice = process.env.STRIPE_RETENTION_PRICE_ID || 'price_1TgRtD9Hq4iefeFs0WbyW9AD';
+  if (!retentionPrice) {
+    return res.status(500).json({ error: 'STRIPE_RETENTION_PRICE_ID not configured in env' });
+  }
+
+  try {
+    // Create a checkout for the cheap retention plan, prefilled for their customer
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: user.stripe_customer_id,
+      line_items: [{ price: retentionPrice, quantity: 1 }],
+      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success`,
+      cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
+    });
+
+    const html = `
+      <p>Thanks for using The Word in Context.</p>
+      <p>As a thank you for staying with us, we're offering the <strong>The Word in Context Special</strong> plan — the discounted $3/month rate (normally $4.99).</p>
+      <p><a href="${session.url}">Switch to The Word in Context Special now</a></p>
+      <p>If you have questions, just reply to this email.</p>
+    `;
+    if (resend) {
+      await resend.emails.send({
+        from: process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>',
+        to: email,
+        subject: 'The Word in Context Special — $3/month retention offer',
+        html
+      });
+    }
+    res.json({ success: true, message: `Retention checkout created and email sent to ${email}.` });
+  } catch (err) {
+    console.error('retention checkout error', err);
+    res.status(500).json({ error: 'Failed to create retention checkout' });
+  }
 });
 
 // Stripe webhook (for subscription updates)
@@ -987,6 +1168,9 @@ app.post('/api/stripe-webhook', (req, res) => {
       `).run(email);
     }
   }
+
+  // Optional: on cancel or past_due, you can add extra "The Word in Context Special" email here if desired
+  // (the admin "The Word in Context Special" button also works for manual offers)
 
   if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
     const sub = event.data.object;
@@ -1071,7 +1255,17 @@ app.post('/api/chat', (req, res, next) => {
         console.warn('[demo] throttle hit for', ip);
         return res.status(429).json({ error: 'Too many demo requests from this IP. Please try the full trial.' });
       }
+      const demoCheck = checkAndIncrementDemoResponses(ip);
+      if (!demoCheck || !demoCheck.allowed) {
+        console.warn('[demo] hard response limit reached for', ip);
+        return res.status(429).json({ 
+          error: 'Demo limit reached for today. Please create a free account for full access.',
+          demoRemaining: 0 
+        });
+      }
       console.log('[demo] limited demo chat request (client should enforce small response cap)');
+      // Attach remaining so client can show accurate banner even after refresh
+      req.demoRemaining = demoCheck.remaining;
     }
     const { messages } = req.body;
     // NASB is the default (technical fallback is eng_lsv = Literal Standard Version, a modern NASB 2020-style literal).
@@ -1394,7 +1588,11 @@ app.post('/api/chat', (req, res, next) => {
       }
     }
 
-    res.json({ reply, sources });
+    const response = { reply, sources };
+    if (req.demo && typeof req.demoRemaining === 'number') {
+      response.demoRemaining = req.demoRemaining;
+    }
+    res.json(response);
   } catch (err) {
     console.error('xAI proxy error:', err);
     let status = err.status || 500;

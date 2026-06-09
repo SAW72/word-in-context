@@ -424,10 +424,18 @@
 
       <!-- Demo mode banner (shown only for unauthenticated /app visitors via Try the App). Prominent but not annoying. -->
       <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:6px 12px; font-size:12.5px; text-align:center; border-bottom:1px solid #ffe69c;">
-        Demo mode — limited responses for trying the app. <a href="/" style="color:#664d03; font-weight:600; text-decoration:underline;">Start free trial</a> for full access.
+        Demo mode — limited to a few responses per day for trying the app (resets daily). <a href="/" style="color:#664d03; font-weight:600; text-decoration:underline;">Start free trial</a> for full unlimited access.
       </div>
 
       <div class="messages" id="messages"></div>
+
+      <!-- Live transcription from server STT (with Bible keyterm boosting for accuracy).
+           Shown during hands-free listening so user can see the improved text as they speak
+           and correct if needed (e.g. by speaking clearly or rephrasing). -->
+      <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
+        <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Live transcription (improved for Bible accuracy):</div>
+        <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
+      </div>
 
       <div class="input-area">
         <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
@@ -814,6 +822,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let audioChunks = [];
     let lastUtteranceAudioBlob = null;
 
+    // For live server-improved STT during hands-free (debounced to avoid spam)
+    let liveSttTimer = null;
+
     // Voice settings - cleaned up persistence
     let selectedVoice = null;
     let voiceSettings = {
@@ -841,21 +852,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
     let demoResponsesUsed = parseInt(localStorage.getItem('demo_responses_used') || '0');
 
-    // Support ?demo=1 from landing "Try the App" links even if a previous login left an auth_token in localStorage.
-    // This lets you (and testers) easily exercise the limited demo flow without clearing storage.
+    // Support ?demo=1 from landing "Try the App" links.
+    // IMPORTANT: We no longer reset the counter on refresh/?demo=1.
+    // The daily reset (above) + server-side hard limit are the only things that control abuse.
     const urlParams = new URLSearchParams(window.location.search);
     const demoParam = urlParams.get('demo');
     const forceDemoMode = demoParam != null && (demoParam === '1' || demoParam === '' || demoParam === 'true');
-    if (forceDemoMode) {
-      console.log('[demo] forceDemoMode active via ?demo param - resetting count for testing');
-      // For easy testing of the limit flow from "Try the App", reset the counter when ?demo=1
-      localStorage.setItem('demo_responses_used', '0');
-      demoResponsesUsed = 0;
-
-      // Make the demo banner visible immediately (initial content), full update in enforce later
-      const b = document.getElementById('demo-banner');
-      if (b) b.style.display = 'block';
-    }
 
     function getEffectiveAuthToken() {
       if (forceDemoMode) return null;
@@ -1837,7 +1839,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const loadingMsg = addMessage("Thinking...", false, true);
       userInput.value = "";
 
-      // Demo limit for unauthenticated "Try the App" (just a few passages/responses)
+      // Demo limit for unauthenticated "Try the App" (hard-capped server-side per IP per day + client UX)
       const token = getEffectiveAuthToken();
       if (!token) {
         if (demoResponsesUsed >= DEMO_RESPONSE_LIMIT) {
@@ -1900,6 +1902,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           autoSaveCurrentChat();
           updateHeaderForCurrentChat();
           renderSidebarChats(currentSearchTerm || '');
+          // Sync demo remaining from server on 429 so refresh doesn't bypass the limit
+          const tokenForSync = getEffectiveAuthToken();
+          if (response.status === 429 && !tokenForSync && data && typeof data.demoRemaining === 'number') {
+            demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
+            localStorage.setItem('demo_responses_used', demoResponsesUsed);
+            updateDemoStatus();
+            enforceDemoLimit();
+          }
           if ((response.status === 401 || response.status === 403) && token) {
             // Only auto-prompt login modal for real accounts; demo uses the banner + Account button
             const modal = document.getElementById('subscribe-modal');
@@ -1972,6 +1982,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       renderSidebarChats(currentSearchTerm || '');
         isAwaitingResponse = false;
 
+        // If this was a demo response, sync the authoritative remaining count from server
+        // (prevents refresh abuse and keeps UI accurate)
+        const tokenAfter = getEffectiveAuthToken();
+        if (!tokenAfter && data && typeof data.demoRemaining === 'number') {
+          demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
+          localStorage.setItem('demo_responses_used', demoResponsesUsed);
+          updateDemoStatus();
+          enforceDemoLimit();
+        }
+
         // Refresh demo banner count / disabled state (in case this was a demo response)
         enforceDemoLimit();
 
@@ -2041,6 +2061,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const isFinal = result.isFinal;
 
         currentTranscript = transcript;  // for non-handsfree stop handlers etc.
+
+        // Update live display with fast browser interim (will be corrected by server STT when chunks arrive)
+        if (handsFreeEnabled) {
+          updateLiveTranscript(currentTranscript);
+        }
 
         if (handsFreeEnabled) {
           const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
@@ -2343,10 +2368,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
           // Start capturing raw audio for this utterance (hands-free only).
           // We keep using the fast browser recognizer for wake word, barge-in, and interim text.
-          // On commit we will optionally send the short clip to /api/stt for a much more accurate transcript
-          // (especially Bible references). This is the main place we use the extremely cheap xAI STT.
+          // We also send accumulating audio chunks live to /api/stt (xAI with heavy Bible keyterm boosting)
+          // for streaming improved transcription shown to the user. This uses the best available
+          // model for accuracy on scripture references (far better than raw browser STT on names/numbers).
+          // The user sees the accurate text updating live and can correct by speaking clearly.
           if (handsFreeEnabled) {
             startAudioCaptureForCurrentUtterance().catch(() => {});
+            // Show the live (server-improved) transcript container
+            const liveContainer = document.getElementById('live-transcript-container');
+            if (liveContainer) liveContainer.style.display = 'block';
+            const liveEl = document.getElementById('live-transcript');
+            if (liveEl) liveEl.textContent = 'Listening...';
           }
         } catch (e) {
           startingRecognition = false;
@@ -2367,6 +2399,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       currentTranscript = '';
       micBtn.classList.remove("listening");
       micBtn.textContent = "🎙️";
+
+      // Hide and clear the live transcript
+      const liveContainer = document.getElementById('live-transcript-container');
+      if (liveContainer) liveContainer.style.display = 'none';
+      const liveEl = document.getElementById('live-transcript');
+      if (liveEl) liveEl.textContent = '';
 
       // Finalize any in-progress audio capture for the just-ended utterance.
       // The blob (if any) will be available in lastUtteranceAudioBlob for the commit path.
@@ -2394,6 +2432,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         mediaRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) audioChunks.push(e.data);
+          // Trigger live server STT for improved (boosted) transcription display.
+          // This gives the user accurate live text using the best domain-tuned model (xAI STT + keyterms),
+          // instead of raw browser STT which is often inaccurate on Bible names/numbers.
+          triggerLiveImprovedStt();
         };
         mediaRecorder.onstop = () => {
           if (audioChunks.length > 0) {
@@ -2402,7 +2444,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           }
         };
 
-        mediaRecorder.start();
+        // Start with timeslice so ondataavailable fires periodically (for live STT updates during speaking).
+        // This enables streaming-like improved transcription using the server xAI STT (with Bible boosting).
+        mediaRecorder.start(900); // ~every 900ms chunk for responsive live updates without too much overhead
         // console.log('[audio] recording started for utterance');
       } catch (err) {
         // Permission denied or no mic support — silently fall back to browser transcript only.
@@ -2420,6 +2464,47 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         try { mediaRecorder.stop(); } catch (e) {}
       }
       // lastUtteranceAudioBlob will be set in the onstop handler above (async).
+
+      // Clear any pending live STT update
+      if (liveSttTimer) {
+        clearTimeout(liveSttTimer);
+        liveSttTimer = null;
+      }
+    }
+
+    // Debounced live call to server STT for accurate (keyterm-boosted) transcription while the user is still speaking.
+    // This provides "streaming" improved text to the user using the best available model for this domain
+    // (xAI STT with extensive Bible book/chapter/verse keyterm boosting). Browser STT is used only for fast wake/barge-in.
+    function triggerLiveImprovedStt() {
+      if (liveSttTimer) clearTimeout(liveSttTimer);
+      liveSttTimer = setTimeout(async () => {
+        liveSttTimer = null;
+        if (audioChunks.length < 2 || !handsFreeEnabled || isAwaitingResponse) return;
+        try {
+          // Use current accumulated audio for a partial improved transcript
+          const tempBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          // Short timeout so live updates don't delay the UI
+          const improved = await improveTranscriptWithSTT(currentTranscript || '', tempBlob, 2800);
+          if (improved && improved.trim().length > 2) {
+            currentTranscript = improved;
+            updateLiveTranscript(improved);
+          }
+        } catch (err) {
+          // Silent fail for live updates — we still have browser interim as fallback
+        }
+      }, 1100); // debounce ~1.1s after latest chunk
+    }
+
+    function updateLiveTranscript(text) {
+      const container = document.getElementById('live-transcript-container');
+      const el = document.getElementById('live-transcript');
+      if (!container || !el) return;
+      if (text && text.trim()) {
+        el.textContent = text;
+        container.style.display = 'block';
+      } else {
+        container.style.display = 'none';
+      }
     }
 
     // Small helper so the async onstop has time to populate the blob before we try to send it.
