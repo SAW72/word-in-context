@@ -3079,7 +3079,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             }
             setTimeout(() => { window.location.href = '/app'; }, 600);
           } else {
-            alert(data.error || 'Login failed. Use magic link if no password set.');
+            const errText = (data && data.error) || 'Login failed.';
+            if (/no password set|no account with that email/i.test(errText)) {
+              if (successDiv) {
+                successDiv.textContent = 'No password on file — sending magic link instead...';
+                successDiv.style.display = 'block';
+              }
+              try {
+                const magicRes = await fetch('/api/request-login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email })
+                });
+                const magicData = await magicRes.json();
+                if (successDiv) {
+                  successDiv.textContent = (magicRes.ok && (magicData.message || 'Check your email for magic link.')) || (magicData.error || 'Could not send magic link.');
+                }
+              } catch (_) {
+                if (successDiv) successDiv.textContent = 'Could not send magic link.';
+              }
+            } else {
+              alert(errText || 'Login failed. Use magic link if no password set.');
+            }
           }
         } catch (err) {
           alert('Network error. Please try again.');

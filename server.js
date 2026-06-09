@@ -67,6 +67,15 @@ const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '5', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 
+// Developer bypass: this email is always treated as having manual_free access.
+// Use it (e.g. spence.wight@gmail.com) so you can easily log in and test during development
+// without being cut off by trial expiration. The other test accounts (14-day tester and 7-day trial)
+// should use their real DB flags so you can validate the full signup/login/trial-cutoff UX.
+// Override or clear via DEV_BYPASS_EMAILS env (comma-separated). Remove before real production use.
+const DEV_BYPASS_EMAILS = (process.env.DEV_BYPASS_EMAILS ||
+  'spence.wight@gmail.com'
+).split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
 function normalizeEmail(e) {
   return (e || '').trim().toLowerCase();
 }
@@ -377,23 +386,48 @@ function requireAuth(req, res, next) {
     if (!user.access_granted) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
+
+    // Developer bypass: treat the configured dev email(s) as having manual_free access.
+    // This lets you (spence.wight@gmail.com by default) always get in for testing,
+    // while s.a.wight@gmail.com (14-day tester) and beyondbestservices@gmail.com (7-day trial)
+    // follow the real trial/status/manual_free rules so you can test authentic UX flows.
+    const isDevBypass = DEV_BYPASS_EMAILS.includes(user.email);
+    const effectiveManualFree = !!user.manual_free || isDevBypass;
+
+    // manual_free (or dev bypass) is the permanent access override.
+    // It must bypass ALL trial/expiry/subscription checks. Admin panel uses separate auth.
+    if (effectiveManualFree) {
+      req.userRecord = user;  // return the real DB row (so /api/me still reports the true flags)
+      next();
+      return;
+    }
+
     const now = new Date();
-    const trialExpired = user.trial_end && now >= new Date(user.trial_end);
     const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+    const hasPaidOrFree = ['active', 'free'].includes(user.status);
 
-    // Explicitly cut off expired trials (important for tester accounts with no subscription)
-    if (user.status === 'trialing' && trialExpired) {
-      db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', user.id);
-      return res.status(403).json({ error: 'Trial has expired. Please subscribe for continued access.' });
+    if (user.status === 'trialing') {
+      if (trialValid) {
+        // Still within trial window
+        req.userRecord = user;
+        next();
+        return;
+      } else {
+        // Trial expired for a trialing user (common for tester accounts or if webhook hasn't updated status yet)
+        // Only force-cancel if NOT (manual_free or dev bypass)
+        db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', user.id);
+        return res.status(403).json({ error: 'Trial has expired. Please subscribe for continued access.' });
+      }
     }
 
-    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
-    if (!effectivelyTrialing && !hasPaidOrFree) {
-      return res.status(403).json({ error: 'Subscription required or trial expired.' });
+    if (hasPaidOrFree) {
+      req.userRecord = user;
+      next();
+      return;
     }
-    req.userRecord = user;
-    next();
+
+    // Any other status (canceled, past_due, etc.) without manual free
+    return res.status(403).json({ error: 'Subscription required or trial expired.' });
   } catch (e) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
@@ -434,6 +468,10 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https:;"
   );
 
+  // Cross-origin isolation headers to support SharedArrayBuffer and suppress the deprecation warning.
+  res.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+
   next();
 });
 
@@ -453,6 +491,22 @@ app.get('/app', (req, res) => {
     'Expires': '0',
     'Surrogate-Control': 'no-store'
   });
+
+  // Ensure CSP allows eval for the app to work (browser APIs and any dynamic code).
+  // This matches the dev middleware but is explicit for the main app HTML.
+  res.set('Content-Security-Policy',
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http: ws: wss:; " +
+    "connect-src 'self' https: http: ws: wss:; " +
+    "media-src 'self' blob: data: https:; " +
+    "img-src 'self' data: https:; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+    "style-src 'self' 'unsafe-inline' https:;"
+  );
+
+  // Cross-origin isolation headers to support SharedArrayBuffer and suppress deprecation warning.
+  res.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -608,6 +662,19 @@ app.post('/api/create-checkout', async (req, res) => {
       metadata: { email }
     });
 
+    // Send magic login link immediately (user provided a password, but magic link is convenient,
+    // matching the "check your email" experience in the success page and tester flow).
+    // Wrapped so a temporary email failure doesn't break the checkout.
+    try {
+      const token = require('crypto').randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+      await sendMagicLink(email, token);  // no isTester flag for paid trial
+    } catch (e) {
+      console.error('Failed to send magic link after initiating paid trial checkout (non-fatal):', e.message);
+    }
+
     res.json({ url: session.url });
   } catch (err) {
     console.error('create-checkout error:', err);
@@ -696,8 +763,11 @@ app.post('/api/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user || !user.password_hash) {
-      return res.status(401).json({ error: 'No password set for this account. Use the magic link login or sign up again with a password.' });
+    if (!user) {
+      return res.status(401).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
+    }
+    if (!user.password_hash) {
+      return res.status(401).json({ error: 'No password set for this account. Use the magic link login (or the "Tester Sign Up or Login" form above to set one), or request a magic link.' });
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -778,9 +848,11 @@ app.get('/api/me', requireAuth, (req, res) => {
   const u = req.userRecord;
   const now = new Date();
   const trialExpired = u.trial_end && now >= new Date(u.trial_end);
+  const isDevBypass = DEV_BYPASS_EMAILS.includes(u.email);
 
-  // Keep status in sync for expired trials (testers etc.)
-  if (u.status === 'trialing' && trialExpired) {
+  // Keep status in sync for expired trials (testers etc.), but NEVER override/cancel manual_free accounts
+  // or the developer bypass email (used for easy testing access).
+  if (!u.manual_free && !isDevBypass && u.status === 'trialing' && trialExpired) {
     db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', u.id);
     u.status = 'canceled';
   }
@@ -790,7 +862,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free,
+    manual_free: !!u.manual_free || isDevBypass,
     has_password: !!u.password_hash
   });
 });
@@ -1006,11 +1078,20 @@ app.post('/api/admin/set-access', (req, res) => {
 
   const email = normalizeEmail(req.body.email);
   const { access_granted, manual_free, group_name } = req.body;
-  const params = [!!access_granted ? 1 : 0, !!manual_free ? 1 : 0];
+  const wantManualFree = !!manual_free;
+  const wantAccess = !!access_granted;
+
+  const params = [wantAccess ? 1 : 0, wantManualFree ? 1 : 0];
   let sql = `UPDATE users SET access_granted = ?, manual_free = ?`;
   if (group_name !== undefined) {
     sql += `, group_name = ?`;
     params.push(group_name || null);
+  }
+  // When granting manual free forever, also mark status active so lists and UIs are consistent (bypass still works even without this)
+  if (wantManualFree) {
+    sql += `, status = 'active'`;
+  } else if (wantAccess === false) {
+    // On revoke, also clear any lingering manual_free just in case, but caller controls the flag
   }
   sql += ` WHERE email = ?`;
   params.push(email);
@@ -1213,8 +1294,9 @@ app.get('/success', (req, res) => {
   res.send(`
     <html><head><title>Success - The Word in Context</title><meta http-equiv="refresh" content="1;url=/app"></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
-    <p>Your trial or subscription is active. Redirecting you to the app...</p>
-    <p>If not redirected, <a href="/app">click here to open the App</a>. Check your email for a secure login link if needed.</p>
+    <p>Your ${TRIAL_DAYS}-day trial (or subscription) is now active. Redirecting you into the app...</p>
+    <p>You can log in immediately using the password you chose on the landing page, or check your email for a secure magic login link (sent when you started checkout).</p>
+    <p>If not redirected, <a href="/app">click here to open the App</a>.</p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     </body></html>
   `);

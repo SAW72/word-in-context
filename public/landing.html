@@ -40,10 +40,11 @@
     <div class="container">
       <nav>
         <a href="/" class="logo">📖 The Word in Context</a>
-        <div>
-          <a href="#features" style="color:white; margin-right:20px; text-decoration:none;">Features</a>
-          <a href="#pricing" style="color:white; margin-right:20px; text-decoration:none;">Pricing</a>
-          <a href="/app?demo=1" class="btn" style="padding:8px 20px; font-size:14px;">Try the App (demo)</a>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <a href="#features" style="color:white; margin-right:8px; text-decoration:none;">Features</a>
+          <a href="#pricing" style="color:white; margin-right:8px; text-decoration:none;">Pricing</a>
+          <a href="/app?demo=1" class="btn" style="padding:8px 16px; font-size:13px;">Try demo</a>
+          <button onclick="document.getElementById('signup').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ var le=document.getElementById('login-email'); if(le){le.focus(); le.select && le.select();} }, 650);" class="btn" style="padding:8px 18px; font-size:13px; background:#fff; color:#1a252f; border:1px solid #c9a227;">Log in</button>
         </div>
       </nav>
     </div>
@@ -285,8 +286,33 @@
             window.location.href = '/app';
           }, 600);
         } else {
-          errDiv.textContent = data.error || 'Login failed. Check email/password or use magic link.';
-          errDiv.style.display = 'block';
+          const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
+          // Graceful fallback: if no password on file for this account (common for admin-created special testers, bulk grants, or legacy magic-only),
+          // auto-send a magic link instead of showing a hard error. This makes the "Log in with password" form work for all existing accounts in the admin panel.
+          if (/no password set|no account with that email/i.test(errText)) {
+            errDiv.style.display = 'none';
+            successDiv.textContent = 'No password on file for this account — sending a secure magic login link to your email instead...';
+            successDiv.style.display = 'block';
+            // Fire the magic request (same as the "Send magic login link" link)
+            try {
+              const magicRes = await fetch('/api/request-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+              });
+              const magicData = await magicRes.json();
+              if (magicRes.ok) {
+                successDiv.textContent = magicData.message || 'Check your email for the secure magic login link.';
+              } else {
+                successDiv.textContent = (magicData && magicData.error) || 'Could not send magic link. Try the link below or tester form.';
+              }
+            } catch (_) {
+              successDiv.textContent = 'Could not send magic link right now. Use the "Send magic login link instead" link below or the tester form.';
+            }
+          } else {
+            errDiv.textContent = errText;
+            errDiv.style.display = 'block';
+          }
         }
       } catch (err) {
         errDiv.textContent = 'Network error. Please try again later.';
