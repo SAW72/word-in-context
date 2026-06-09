@@ -44,7 +44,7 @@
           <a href="#features" style="color:white; margin-right:8px; text-decoration:none;">Features</a>
           <a href="#pricing" style="color:white; margin-right:8px; text-decoration:none;">Pricing</a>
           <a href="/app?demo=1" class="btn" style="padding:8px 16px; font-size:13px;">Try demo</a>
-          <button onclick="document.getElementById('signup').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ var le=document.getElementById('login-email'); if(le){le.focus(); le.select && le.select();} }, 650);" class="btn" style="padding:8px 18px; font-size:13px; background:#fff; color:#1a252f; border:1px solid #c9a227;">Log in</button>
+          <button onclick="showLoginModal()" class="btn" style="padding:8px 18px; font-size:13px; background:#fff; color:#1a252f; border:1px solid #c9a227;">Log in</button>
         </div>
       </nav>
     </div>
@@ -133,55 +133,40 @@
 
   <section id="signup" class="container">
     <h2 style="text-align:center;">Start your free trial or tester access</h2>
-    <div class="signup-form">
+    <div class="signup-form" style="max-width:480px; margin:0 auto;">
+
+      <!-- 7-Day Paid Trial (Stripe) -->
       <form id="trial-form">
         <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <input type="password" id="trial-password" placeholder="Choose password (min 8 chars — saved by your browser for easy login)" required minlength="8" style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%;">Start 7-Day Free Trial (card required after trial ends)</button>
-        <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">
-          Card details collected securely by Stripe for after the trial (no charge during trial). We’ll send a login link after checkout.<br>
-          <strong>We will never sell your information.</strong> Payment details handled securely by Stripe. Your chats stay private in your browser only. Full account control — we can grant free access or cut off access at any time.
+        <input type="password" id="trial-password" placeholder="Choose password (min 8 chars — for future logins)" required minlength="8" style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
+        <button type="submit" class="btn" style="width:100%;">Start 7-Day Free Trial (card required after)</button>
+        <p style="font-size:12px; text-align:center; margin-top:10px; opacity:0.7;">
+          Card collected by Stripe for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top of this page with the password you chose.
         </p>
       </form>
 
-      <!-- Separate card-free tester path: email only, full access for 14 days, ends automatically. No Stripe. -->
-      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e8d9c2; text-align: center;">
-        <p style="font-size:13px; margin-bottom:8px;"><strong>Tester Sign Up &amp; Login (14-day card-free access):</strong><br>
-        <span style="font-size:12px; opacity:0.8;">Use this for new testers or to log back in with your tester email + password.</span></p>
-        <form id="tester-form" style="max-width: 400px; margin: 0 auto;">
-          <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
-          <input type="password" id="tester-password" placeholder="Choose password (min 8 chars — saved by browser)" required minlength="8" style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
-          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Tester Sign Up or Login (14 days, email only, no card)</button>
-        </form>
-        <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Tester account ready. Check your email for the secure login link (or you should be logged in automatically if password was accepted). Your 14-day tester access is now active and will end automatically.
-        </div>
-        <div id="tester-error" style="display:none; margin-top:8px; color:#c0392b; font-size:13px; font-weight:500;"></div>
-        <p style="font-size:11px; opacity:0.7; margin-top:6px;">Testers: use the email + password fields above for both sign up and login. Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
-      </div>
-      <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
-        <h3>Check your email!</h3>
-        <p>Complete payment to activate your trial. Then use the login link we send.</p>
+      <!-- Trial success is rarely shown because we redirect to Stripe, but kept for edge cases -->
+      <div id="trial-success" style="display:none; text-align:center; color:#2c3e50; margin-top:16px; padding:12px; background:#f8f1e3; border-radius:8px;">
+        <strong>Account created.</strong><br>
+        Complete payment on Stripe. Then return here and click the <strong>Log in</strong> button at the top (or check your email for a magic link).
       </div>
 
-      <hr style="margin:30px 0;">
-      <div style="text-align:center; margin-bottom:8px;">
-        <button type="button" onclick="document.getElementById('login-form').scrollIntoView({behavior:'smooth'}); setTimeout(function(){ document.getElementById('login-email').focus(); }, 400);" class="btn" style="background:#555; font-size:14px; padding:8px 20px;">Already have an account? Log in with email</button>
+      <!-- 14-day Tester (card-free) -->
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid #e8d9c2;">
+        <p style="font-size:13px; margin-bottom:8px; text-align:center;"><strong>14-day Tester access (no card, ends automatically)</strong></p>
+        <form id="tester-signup-form" style="max-width:420px; margin:0 auto;">
+          <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+          <input type="password" id="tester-password" placeholder="Choose password (min 8 chars)" required minlength="8" style="width:100%;padding:12px;margin-bottom:10px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Create 14-day Tester Account</button>
+        </form>
+        <div id="tester-signup-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center; padding:10px; background:#f8f1e3; border-radius:8px;">
+          <strong>Account created.</strong><br>
+          Use the <strong>Log in</strong> button at the top of this page with the email + password you just chose. Or check your email for a magic login link.
+        </div>
+        <div id="tester-signup-error" style="display:none; margin-top:8px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
+        <p style="font-size:11px; opacity:0.7; margin-top:8px; text-align:center;">14 days full access. No payment required. Access ends automatically unless extended.</p>
       </div>
-      <p style="text-align:center; font-size:12px; opacity:0.7; margin-bottom:8px;">Testers (14-day): the form above supports both sign up and login. The login below also works for testers (once you have set a password).</p>
-      <form id="login-form" style="max-width:400px;margin:0 auto;">
-        <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <input type="password" id="login-password" placeholder="Your password" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%; background:#555;">Log in with password</button>
-      </form>
-      <p style="text-align:center; font-size:11px; opacity:0.65; margin-top:4px;">Works for regular accounts and 14-day testers.</p>
-      <p style="text-align:center; font-size:12px; margin-top:8px; opacity:0.7;">
-        Forgot password or never set one? <a href="#" id="use-magic-link" style="color:inherit; text-decoration:underline;">Send magic login link instead</a>
-      </p>
-      <div id="login-success" style="display:none; text-align:center; color:#2c3e50; margin-top:10px;">
-        <p>Check your email for the secure login link.</p>
-      </div>
-      <div id="login-error" style="display:none; text-align:center; color:#c0392b; font-size:13px; margin-top:8px; font-weight:500;"></div>
+
     </div>
   </section>
 
@@ -190,6 +175,32 @@
       <strong>100% transparent sources:</strong> Every citation of The Word — including live SBL Greek NT and WLC Hebrew — is fetched on demand from the public bible.helloao.org API. Nothing is hardcoded. Full citations are always shown and spoken.
     </div>
   </section>
+
+  <!-- Login Modal -->
+  <div id="login-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:2000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:28px 24px; border-radius:12px; width:100%; max-width:360px; box-shadow:0 10px 30px rgba(0,0,0,0.2); position:relative;">
+      <button onclick="closeLoginModal()" style="position:absolute; top:10px; right:14px; background:none; border:none; font-size:22px; cursor:pointer; line-height:1; color:#666;">&times;</button>
+      
+      <h3 style="margin:0 0 16px; text-align:center;">Log in</h3>
+      
+      <form id="modal-login-form">
+        <input type="email" id="modal-login-email" placeholder="Your email" required style="width:100%; padding:12px; margin-bottom:8px; border:1px solid #ccc; border-radius:8px; font-size:15px;">
+        <input type="password" id="modal-login-password" placeholder="Your password" required style="width:100%; padding:12px; margin-bottom:14px; border:1px solid #ccc; border-radius:8px; font-size:15px;">
+        <button type="submit" class="btn" style="width:100%;">Log in with password</button>
+      </form>
+      
+      <div id="modal-login-error" style="display:none; margin-top:10px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
+      <div id="modal-login-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center;"></div>
+      
+      <p style="text-align:center; font-size:12px; margin-top:14px; opacity:0.7;">
+        Forgot password or no password set? <a href="#" id="modal-magic-link" style="color:inherit; text-decoration:underline;">Send magic login link</a>
+      </p>
+      
+      <p style="text-align:center; font-size:11px; margin-top:8px; opacity:0.6;">
+        Works for 7-day trial accounts and 14-day tester accounts.
+      </p>
+    </div>
+  </div>
 
   <footer>
     <div class="container">
@@ -200,134 +211,184 @@
   </footer>
 
   <script>
-    // New configurable trial (TRIAL_DAYS env) + Stripe flow; tester path is separate no-card
-    document.getElementById('trial-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('trial-email').value;
-      const password = document.getElementById('trial-password').value;
-      try {
-        const res = await fetch('/api/create-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (data.url) {
-          window.location.href = data.url; // go to Stripe Checkout
-        } else {
-          alert(data.error || 'Something went wrong.');
-        }
-      } catch (err) {
-        alert('Network error. Please try again later.');
-      }
-    });
-
-    // New card-free tester sign up / login (14 days full access, no Stripe, ends automatically). The same form handles both new signups and returning logins for testers (the general login form below also works for them).
-    document.getElementById('tester-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('tester-email').value;
-      const password = document.getElementById('tester-password').value;
-      try {
-        const res = await fetch('/api/tester-signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        const errDiv = document.getElementById('tester-error');
-        errDiv.style.display = 'none';
-        if (res.ok) {
-          document.getElementById('tester-form').style.display = 'none';
-          const successDiv = document.getElementById('tester-success');
-          const days = (typeof getTesterDays === 'function' ? getTesterDays() : 14);
-          successDiv.innerHTML = `Tester account ready (sign up or login). Logging you in if possible... or check email for magic link. Your <strong>${days}-day</strong> tester access is active.`;
-          successDiv.style.display = 'block';
-
-          if (data.token) {
-            localStorage.setItem('auth_token', data.token);
-            localStorage.setItem('user_email', data.email || email);
-            setTimeout(() => { window.location.href = '/app'; }, 700);
+    // === 7-Day Trial (Stripe checkout) — only creates account + starts payment. No auto-login. ===
+    const trialForm = document.getElementById('trial-form');
+    if (trialForm) {
+      trialForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('trial-email').value;
+        const password = document.getElementById('trial-password').value;
+        try {
+          const res = await fetch('/api/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          if (data.url) {
+            // After Stripe success, user will use the Login modal (top of page) or magic link
+            window.location.href = data.url;
+          } else {
+            alert(data.error || 'Something went wrong.');
           }
-        } else {
-          errDiv.textContent = data.error || 'Something went wrong.';
-          errDiv.style.display = 'block';
+        } catch (err) {
+          alert('Network error. Please try again later.');
         }
-      } catch (err) {
-        const errDiv = document.getElementById('tester-error');
-        errDiv.textContent = 'Network error. Please try again later.';
-        errDiv.style.display = 'block';
-      }
-    });
+      });
+    }
 
-    // Password login (primary — allows browser password manager to save credentials)
-    document.getElementById('login-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
-      const errDiv = document.getElementById('login-error');
-      const successDiv = document.getElementById('login-success');
-      errDiv.style.display = 'none';
-      successDiv.style.display = 'none';
-      try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (res.ok && data.token) {
-          // Store JWT like magic link does
-          localStorage.setItem('auth_token', data.token);
-          localStorage.setItem('user_email', data.email || email);
-          successDiv.textContent = 'Logged in! Redirecting...';
-          successDiv.style.display = 'block';
-          // Redirect to app
-          setTimeout(() => {
-            window.location.href = '/app';
-          }, 600);
-        } else {
-          const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
-          // Graceful fallback: if no password on file for this account (common for admin-created special testers, bulk grants, or legacy magic-only),
-          // auto-send a magic link instead of showing a hard error. This makes the "Log in with password" form work for all existing accounts in the admin panel.
-          if (/no password set|no account with that email/i.test(errText)) {
-            errDiv.style.display = 'none';
-            successDiv.textContent = 'No password on file for this account — sending a secure magic login link to your email instead...';
-            successDiv.style.display = 'block';
-            // Fire the magic request (same as the "Send magic login link" link)
-            try {
-              const magicRes = await fetch('/api/request-login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-              });
-              const magicData = await magicRes.json();
-              if (magicRes.ok) {
-                successDiv.textContent = magicData.message || 'Check your email for the secure magic login link.';
-              } else {
-                successDiv.textContent = (magicData && magicData.error) || 'Could not send magic link. Try the link below or tester form.';
-              }
-            } catch (_) {
-              successDiv.textContent = 'Could not send magic link right now. Use the "Send magic login link instead" link below or the tester form.';
+    // === 14-day Tester signup — only creates the account. No auto-login. ===
+    const testerSignupForm = document.getElementById('tester-signup-form');
+    if (testerSignupForm) {
+      testerSignupForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('tester-email').value;
+        const password = document.getElementById('tester-password').value;
+        const errDiv = document.getElementById('tester-signup-error');
+        const successDiv = document.getElementById('tester-signup-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/tester-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+
+          if (res.ok) {
+            if (testerSignupForm) testerSignupForm.style.display = 'none';
+            if (successDiv) {
+              successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Use the <strong>Log in</strong> button at the top of this page with the password you chose, or check your email for a magic link.`;
+              successDiv.style.display = 'block';
             }
           } else {
-            errDiv.textContent = errText;
+            if (errDiv) {
+              errDiv.textContent = data.error || 'Something went wrong.';
+              errDiv.style.display = 'block';
+            }
+          }
+        } catch (err) {
+          if (errDiv) {
+            errDiv.textContent = 'Network error. Please try again later.';
             errDiv.style.display = 'block';
           }
         }
-      } catch (err) {
-        errDiv.textContent = 'Network error. Please try again later.';
-        errDiv.style.display = 'block';
-      }
-    });
+      });
+    }
 
-    // Fallback: magic link request (for forgot password or legacy no-password accounts)
-    const magicLinkLink = document.getElementById('use-magic-link');
-    if (magicLinkLink) {
-      magicLinkLink.addEventListener('click', async function(e) {
+    // === Login Modal functions ===
+    function showLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        // Pre-fill email if user was looking at a signup form
+        const trialEmail = document.getElementById('trial-email');
+        const testerEmail = document.getElementById('tester-email');
+        const modalEmail = document.getElementById('modal-login-email');
+        if (modalEmail) {
+          if (trialEmail && trialEmail.value) modalEmail.value = trialEmail.value;
+          else if (testerEmail && testerEmail.value) modalEmail.value = testerEmail.value;
+          setTimeout(() => modalEmail.focus(), 50);
+        }
+      }
+    }
+
+    function closeLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) modal.style.display = 'none';
+      // clear messages
+      const err = document.getElementById('modal-login-error');
+      const suc = document.getElementById('modal-login-success');
+      if (err) err.style.display = 'none';
+      if (suc) suc.style.display = 'none';
+    }
+
+    // Unified password login inside the modal (works for both 7-day trial and 14-day tester accounts)
+    const modalLoginForm = document.getElementById('modal-login-form');
+    if (modalLoginForm) {
+      modalLoginForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        const email = document.getElementById('login-email').value;
+        const email = document.getElementById('modal-login-email').value;
+        const password = document.getElementById('modal-login-password').value;
+        const errDiv = document.getElementById('modal-login-error');
+        const successDiv = document.getElementById('modal-login-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+
+          if (res.ok && data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('user_email', data.email || email);
+            if (successDiv) {
+              successDiv.textContent = 'Logged in! Redirecting to the app...';
+              successDiv.style.display = 'block';
+            }
+            setTimeout(() => {
+              window.location.href = '/app';
+            }, 550);
+          } else {
+            const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
+            // Graceful fallback for accounts that have no password_hash yet (e.g. some admin-created accounts)
+            if (/no password set|no account with that email/i.test(errText)) {
+              if (errDiv) errDiv.style.display = 'none';
+              if (successDiv) {
+                successDiv.textContent = 'No password on file — sending a magic login link to your email...';
+                successDiv.style.display = 'block';
+              }
+              try {
+                const magicRes = await fetch('/api/request-login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email })
+                });
+                const magicData = await magicRes.json();
+                if (magicRes.ok && successDiv) {
+                  successDiv.textContent = magicData.message || 'Check your email for the secure magic login link.';
+                } else if (successDiv) {
+                  successDiv.textContent = (magicData && magicData.error) || 'Could not send magic link.';
+                }
+              } catch (_) {
+                if (successDiv) successDiv.textContent = 'Could not send magic link right now.';
+              }
+            } else {
+              if (errDiv) {
+                errDiv.textContent = errText;
+                errDiv.style.display = 'block';
+              }
+            }
+          }
+        } catch (err) {
+          if (errDiv) {
+            errDiv.textContent = 'Network error. Please try again later.';
+            errDiv.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    // Magic link from inside the login modal
+    const modalMagicLink = document.getElementById('modal-magic-link');
+    if (modalMagicLink) {
+      modalMagicLink.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const emailInput = document.getElementById('modal-login-email');
+        const email = emailInput ? emailInput.value.trim() : '';
+        const errDiv = document.getElementById('modal-login-error');
+        const successDiv = document.getElementById('modal-login-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
         if (!email) {
-          alert('Enter your email above first.');
+          alert('Enter your email first.');
           return;
         }
         try {
@@ -337,45 +398,44 @@
             body: JSON.stringify({ email })
           });
           const data = await res.json();
-          const errDiv = document.getElementById('login-error');
-          const successDiv = document.getElementById('login-success');
-          errDiv.style.display = 'none';
           if (res.ok) {
-            successDiv.textContent = data.message || 'Check your email for the magic login link.';
-            successDiv.style.display = 'block';
+            if (successDiv) {
+              successDiv.textContent = data.message || 'Check your email for the magic login link.';
+              successDiv.style.display = 'block';
+            }
           } else {
-            errDiv.textContent = data.error || 'Could not send link.';
-            errDiv.style.display = 'block';
+            if (errDiv) {
+              errDiv.textContent = data.error || 'Could not send link.';
+              errDiv.style.display = 'block';
+            }
           }
         } catch (err) {
-          const errDiv = document.getElementById('login-error');
-          errDiv.textContent = 'Network error.';
-          errDiv.style.display = 'block';
+          if (errDiv) {
+            errDiv.textContent = 'Network error.';
+            errDiv.style.display = 'block';
+          }
         }
       });
     }
 
-    // Pull current trial lengths from server so marketing text matches your env
-    let normalDays = 7;
-    let testerDays = 14;
+    // Close modal when clicking outside the content box
+    const loginModal = document.getElementById('login-modal');
+    if (loginModal) {
+      loginModal.addEventListener('click', function(e) {
+        if (e.target === loginModal) closeLoginModal();
+      });
+    }
+
+    // Pull current trial lengths from server for dynamic button text
     fetch('/api/config').then(r => r.json()).then(c => {
-      normalDays = c.trialDays || 7;
-      testerDays = c.testerTrialDays || 14;
-      // Update main trial button if present
+      const normalDays = c.trialDays || 7;
+      const testerDays = c.testerTrialDays || 14;
+
       const trialBtn = document.querySelector('#trial-form button');
       if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
-      // Update tester texts (the tester section supports both new signups and returning logins for 14-day testers; general login below also works)
-      const testerP = document.querySelector('#tester-error + p') || document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
-      if (testerP) testerP.innerHTML = `Testers: use the email + password fields above for sign up <strong>or login</strong>. (The login form at the bottom also works for testers.) Access ends automatically after ${testerDays} days unless we extend it for you.`;
-      const testerBtn = document.querySelector('#tester-form button');
-      if (testerBtn) testerBtn.textContent = `Tester Sign Up or Login (${testerDays} days, email only, no card)`;
-      // Update the h2 if present
-      const h2 = document.querySelector('h2');
-      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial or tester access (${normalDays} days / ${testerDays} for testers)`;
-    }).catch(() => {});
 
-    // Helper to get live tester days for success message
-    function getTesterDays() { return testerDays; }
+      // Optional: you can add a small note about tester days if desired
+    }).catch(() => {});
   </script>
 </body>
 </html>

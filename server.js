@@ -723,9 +723,8 @@ app.post('/api/tester-signup', async (req, res) => {
 
     res.json({ 
       success: true, 
-      token: jwtToken,
       email,
-      message: `Account created with password. You can log in immediately below (or check email for magic link). Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
+      message: `Account created. Use the Login button at the top of the page with the password you chose, or check your email for a magic link. Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
     });
   } catch (err) {
     console.error('tester-signup error:', err);
