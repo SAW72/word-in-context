@@ -470,6 +470,7 @@
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
+        <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test "John 3:16"</button>
       </label>
 
       <label for="rate-slider" style="font-size:13px;display:block;margin-bottom:4px;">Speed: <span id="rate-value">0.95</span>
@@ -482,7 +483,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (always uses fast local/system voices for hands-free reliability and zero lag). Premium xAI Grok voices are available on-demand via the manual 🔊 buttons on replies when the Voice Settings toggle is on. The two checkboxes are independent.
+        Auto-speak AI replies (always uses your selected local/system voice for hands-free reliability and zero lag). The two checkboxes are independent.
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -545,8 +546,9 @@
 
         <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
           After installing a new voice (e.g. from Piper), it may not appear immediately. 
-          <strong>Click "Refresh voices list"</strong> above the dropdown, or restart your browser. 
+          <strong>Click "Reload system voices"</strong> above the dropdown, or restart your browser. 
           Make sure the voice is enabled in macOS System Settings → Accessibility → Spoken Content.
+          Click the <strong>Test "John 3:16"</strong> button to preview any voice instantly.
         </p>
       </div>
 
@@ -1159,11 +1161,36 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // ====================== VOICE SETTINGS (unchanged, excellent) ======================
     function formatVoiceName(fullName) {
+      const lower = fullName.toLowerCase();
+
+      // Piper voices (user-installed via Piper app) — label them clearly even if the OS name is just "Alba"
+      const piperVoices = ['alba', 'amy', 'aria', 'danny', 'emily', 'jane', 'josh', 'karen', 'kevin', 'laura', 'lily', 'matthew', 'mike', 'nicole', 'oliver', 'rachel', 'ryan', 'sarah', 'thomas'];
+      for (const pv of piperVoices) {
+        if (lower.includes(pv) && !lower.includes('google') && !lower.includes('siri')) {
+          return fullName + ' (Piper Neural)';
+        }
+      }
+      if (lower.includes('piper')) return fullName + ' (Piper Neural)';
+
+      // Siri voices — make them friendlier
       if (fullName.includes("Siri Voice")) {
         const match = fullName.match(/Siri Voice \d+/);
-        return match ? match[0] : fullName;
+        if (match) {
+          // Try to guess gender/region from common patterns, otherwise keep simple
+          if (lower.includes('us') || lower.includes('female')) return match[0] + ' (US Female)';
+          if (lower.includes('male')) return match[0] + ' (US Male)';
+          return match[0] + ' (Siri)';
+        }
+        return fullName;
       }
+
       if (fullName.includes("(Enhanced)")) return fullName;
+
+      // Generic numbered system voices (common on macOS) — give them a cleaner label
+      if (/^\d+/.test(fullName) || lower.includes('voice ')) {
+        return fullName.replace(/^\d+\s*/, '') + ' (System)';
+      }
+
       return fullName;
     }
 
@@ -1199,6 +1226,33 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 250);
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 700);
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 1500);
+    }
+
+    function testSelectedVoice() {
+      const sel = document.getElementById('voice-select');
+      if (!sel || !sel.value) {
+        alert('Please select a voice first.');
+        return;
+      }
+
+      const voiceName = sel.value.replace('local:', '');
+      const voice = findLocalVoiceById(voiceName);
+      if (!voice) {
+        alert('Could not find that voice. Try reloading the voice list.');
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(
+        "John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life."
+      );
+      utterance.voice = voice;
+      utterance.rate = voiceSettings.rate || 0.95;
+      utterance.pitch = voiceSettings.pitch || 1.0;
+
+      // Stop anything currently speaking
+      if (synth.speaking) synth.cancel();
+
+      synth.speak(utterance);
     }
 
     function loadVoices() {
@@ -1292,9 +1346,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voicesToShow.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        let label = formatVoiceName(voice.name) + " (System)";
-      if (voice.name.toLowerCase().includes('piper')) label = formatVoiceName(voice.name) + " (Piper Neural)";
-      option.textContent = label;
+        option.textContent = formatVoiceName(voice.name) + " (System)";
         voiceSelect.appendChild(option);
 
         if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
