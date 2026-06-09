@@ -318,6 +318,73 @@
       padding: 4px;
       opacity: 0.7;
     }
+
+    /* Mobile responsiveness improvements */
+    @media (max-width: 768px) {
+      .chat-container {
+        max-width: 100%;
+        margin: 0;
+        border-radius: 0;
+        height: calc(100dvh - 120px); /* better for mobile with dynamic viewport */
+      }
+      .input-area {
+        padding: 8px;
+        gap: 6px;
+      }
+      #user-input {
+        font-size: 16px; /* prevent iOS zoom */
+        padding: 10px;
+      }
+      .mic-btn, #send-btn, .stop-btn {
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 18px;
+      }
+      .modal-content {
+        width: 95vw;
+        max-width: 95vw;
+        max-height: 85dvh;
+        padding: 12px;
+        margin: 5vh auto;
+        border-radius: 8px;
+      }
+      .modal-content h3 {
+        font-size: 16px;
+      }
+      .voice-btn, .sources-btn, .upgrade-btn {
+        font-size: 13px;
+        padding: 6px 8px;
+      }
+      .sidebar {
+        width: 70vw;
+        max-width: 260px;
+      }
+      .message {
+        font-size: 15px;
+        padding: 8px 10px;
+      }
+      .voice-generating-note {
+        font-size: 10px;
+      }
+      /* Make voice settings more usable on small screens */
+      #default-trans-select, #hosted-voice-select, #voice-select {
+        font-size: 14px;
+        padding: 6px;
+      }
+      .handsfree-toggle, label[for="premium-voices-toggle"] {
+        font-size: 12px;
+      }
+    }
+
+    /* Extra tweaks for very small phones */
+    @media (max-width: 480px) {
+      .chat-container {
+        height: calc(100dvh - 100px);
+      }
+      .input-area button {
+        padding: 8px 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1061,7 +1128,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Add timeout so slow/cold services (xAI or legacy hosted) don't hang the UI.
         // xAI TTS can have variable latency (first call, longer text, or load), so give it more time.
         const controller = new AbortController();
-        const timeoutMs = isXaiIntent ? 60000 : 30000;
+        const timeoutMs = isXaiIntent ? 20000 : 30000;  // 20s for xAI to keep it reasonably close to instant local voices; fallback after that
         ttsTimeout = setTimeout(() => controller.abort(), timeoutMs);
 
         const body = {
@@ -1136,19 +1203,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if (!window.__premiumTtsTimedOutOnce) {
             window.__premiumTtsTimedOutOnce = true;
             const timeoutMsg = isXaiIntent 
-              ? 'Premium xAI TTS timed out after 60s (can be slow on first call, longer text, or server load). Falling back to local browser voice.'
+              ? 'Premium xAI TTS timed out after 20s (cloud latency on first call or longer text). Falling back to fast local voice.'
               : 'Premium TTS timed out after 30s (cold start or slow). Falling back to local browser voice.';
             console.warn(timeoutMsg);
           }
           // Add visible feedback
           if (voiceNoteEl && voiceNoteEl.parentNode) {
-            voiceNoteEl.textContent = isXaiIntent ? ' (xAI voice slow – using local instead)' : ' (voice slow – using local instead)';
+            voiceNoteEl.textContent = isXaiIntent ? ' (xAI slow – using fast local instead)' : ' (slow – using local instead)';
           } else {
             const lastMsg = document.querySelector('.messages .message:last-child');
             if (lastMsg) {
               const fb = document.createElement('span');
               fb.className = 'voice-generating-note';
-              fb.textContent = isXaiIntent ? ' (premium xAI voice slow – fell back to local)' : ' (premium voice slow – fell back to local)';
+              fb.textContent = isXaiIntent ? ' (premium xAI slow – fell back to fast local)' : ' (premium slow – fell back to local)';
               lastMsg.appendChild(fb);
             }
           }
@@ -1498,11 +1565,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             } else {
               // Pre-warm the xAI TTS connection with a tiny request when user enables premium.
               // This makes the *first* real premium voice playback feel snappier (avoids full cold start).
-              fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: "Test.", voice: localStorage.getItem('hosted_voice') || 'Ara', provider: 'xai' })
-              }).catch(() => { /* fire-and-forget warm-up */ });
+              // Use short timeout and only once per session to avoid hanging or rate issues.
+              if (!window.__xaiWarmed) {
+                window.__xaiWarmed = true;
+                const warmController = new AbortController();
+                setTimeout(() => warmController.abort(), 8000); // short warm attempt
+                fetch('/api/tts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: "Hi.", voice: localStorage.getItem('hosted_voice') || 'Ara', provider: 'xai' }),
+                  signal: warmController.signal
+                }).catch(() => { /* fire-and-forget warm-up, ignore errors/timeouts */ });
+              }
             }
             // If turning on premium, we can clear or ignore custom URL for simplicity
             if (premiumToggle.checked && customTtsInput) {
