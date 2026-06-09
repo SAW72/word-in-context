@@ -40,46 +40,52 @@ try {
   console.log(`[DB] Using fallback local DB at ${fallbackPath}`);
 }
 
-// Users table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
-    stripe_customer_id TEXT,
-    stripe_subscription_id TEXT,
-    status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
-    trial_end TEXT,
-    access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
-    manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
-
-// Migration for existing DBs (safe if column already exists)
+// Schema initialization wrapped so a bad DB (dummy or permission issue) does not crash the entire process on startup
 try {
-  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
-} catch (e) {
-  if (!e.message.includes('duplicate column')) {
-    console.error('Migration warning for password_hash:', e.message);
-  }
-}
-try {
-  db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`);
-} catch (e) {
-  if (!e.message.includes('duplicate column')) {
-    console.error('Migration warning for group_name:', e.message);
-  }
-}
+  // Users table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT,
+      status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
+      trial_end TEXT,
+      access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
+      manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 
-// Magic tokens table (short lived)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS magic_tokens (
-    token TEXT PRIMARY KEY,
-    email TEXT NOT NULL,
-    expires_at TEXT NOT NULL
-  );
-`);
+  // Migration for existing DBs (safe if column already exists)
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+  } catch (e) {
+    if (!e.message.includes('duplicate column')) {
+      console.error('Migration warning for password_hash:', e.message);
+    }
+  }
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`);
+  } catch (e) {
+    if (!e.message.includes('duplicate column')) {
+      console.error('Migration warning for group_name:', e.message);
+    }
+  }
+
+  // Magic tokens table (short lived)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS magic_tokens (
+      token TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+  `);
+  console.log('[DB] Schema initialized');
+} catch (schemaErr) {
+  console.error('[DB] Schema init failed (routes using DB may error until fixed):', schemaErr.message);
+}
 
 // === Email (Resend) ===
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -550,7 +556,6 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // === Simple beta tester signup (stores emails for launch) ===
 // For production: replace with real email service (Mailchimp, ConvertKit, or Supabase)
-const fs = require('fs');
 const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
