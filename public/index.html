@@ -462,11 +462,14 @@
       </div>
 
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All non-English voices are shown (full language support). For English we only show the better/enhanced ones (Google voices, Enhanced, Samantha, Daniel, etc. — older ones like Karen/Allison/Alex hidden). The dropdown is sorted with the best English options (Google UK English Male first) at the top, then non-English alphabetically. Install more via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default.
+        We use your device's built-in voices (high quality on modern macOS, iOS, Windows, Android). 
+        After installing better neural voices (see "Better Voices" below, e.g. Piper "Alba"), click <strong>"Reload system voices"</strong> under the dropdown, or restart the browser. 
+        We hide only the old low-quality ones (Karen, Allison, etc.). "Google UK English Male" (or equivalent best available) is preferred by default.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
-        <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;"></select>
+        <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
+        <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
       </label>
 
       <label for="rate-slider" style="font-size:13px;display:block;margin-bottom:4px;">Speed: <span id="rate-value">0.95</span>
@@ -539,49 +542,20 @@
             No extra app needed. Go to Settings → Accessibility → Narrator → Add natural voices and download Microsoft Guy (Natural).
           </p>
         </div>
-      </div>
 
-      <!-- Premium xAI Grok Voices -->
-      <hr style="margin: 10px 0; border-color: #ddd;">
-      <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">🎙️ Premium Grok Voices (xAI)</div>
-        
-        <p style="font-size:11px; color:#333; margin:0 0 6px; line-height:1.3;">
-          Higher-quality Grok voices (Ara, Eve, Leo, Rex, Sal). These run through xAI's TTS service using the same API key as chat.
-          <strong>Expect small added latency</strong> (cloud round-trip + generation) compared to instant local system voices.
-          Best for deliberate/manual listen; hands-free auto-speak stays on fast local for reliability.
-        </p>
-
-        <label style="font-size:12px; display:flex; align-items:center; gap:8px; margin:8px 0;">
-          <input type="checkbox" id="premium-voices-toggle" style="accent-color:#4caf50;">
-          <span>Use Premium Grok Voices (xAI). When on: manual 🔊 speak buttons on replies use the chosen Grok voice (highest tier). Hands-free auto-speak and fast interaction always use your local system voice (recommended for reliability + zero lag). Toggle is independent of the Auto-speak checkbox.</span>
-        </label>
-
-        <div style="margin:6px 0 4px;">
-          <label for="hosted-voice-select" style="font-size:11px; display:block; margin-bottom:3px; color:#333;">Choose Grok voice (xAI):</label>
-          <select id="hosted-voice-select" style="width:100%; padding:5px; font-size:13px; border:1px solid #4caf50; border-radius:4px; background:white;">
-            <option value="Ara">Ara (Female) — natural &amp; recommended</option>
-            <option value="Eve">Eve (Female)</option>
-            <option value="Leo">Leo (Male)</option>
-            <option value="Rex">Rex (Male)</option>
-            <option value="Sal">Sal (Male)</option>
-          </select>
-        </div>
-
-        <p style="font-size:10px; color:#555; margin:4px 0 0;">
-          Uses xAI Grok voices through our backend (same XAI_API_KEY as chat). 
-          Requires Voice/TTS access on your xAI team/key. You will automatically fall back to fast local if not authorized.
-          <br><small>To enable: console.x.ai → correct Team → Voice / TTS playground. After enabling, run <code>localStorage.removeItem('xai_audio_unavailable')</code> here and refresh.</small>
+        <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
+          After installing a new voice (e.g. from Piper), it may not appear immediately. 
+          <strong>Click "Refresh voices list"</strong> above the dropdown, or restart your browser. 
+          Make sure the voice is enabled in macOS System Settings → Accessibility → Spoken Content.
         </p>
       </div>
 
       <!-- Advanced custom local TTS UI removed (was clutter; the custom_tts_url localStorage key is still respected in code for power users if needed) -->
 
-      <!-- Future realtime teaser -->
+      <!-- Future realtime teaser (higher price tier, planned later) -->
       <div style="margin-top:12px; padding:8px; background:#fff8e1; border:1px dashed #c9a227; border-radius:4px; font-size:11px; color:#555;">
         <strong>Future:</strong> Realtime conversational voice (full-duplex, very low latency, like talking naturally).
-        Planning a separate higher tier (~$30/mo) once the app is more mature, after more testing and reaching ~100 paid users.
-        This would use xAI's realtime voice capabilities (different from the current batch TTS).
+        We may offer this as a higher-priced tier later once the app is stable with more users.
       </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
@@ -1028,56 +1002,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
-      // Defensive sync: if the premium toggle UI has been opened this session and is unchecked,
-      // force the storage flag to false. This prevents stale 'use_premium_voices=true' from
-      // previous sessions/races, but we only trust the checkbox state after openVoiceSettings
-      // has synced it (otherwise a never-opened modal's default unchecked state would nuke
-      // a legitimate premium=true from last session).
-      const pt = document.getElementById('premium-voices-toggle');
-      if (pt && !pt.checked && window.__voiceModalOpened && localStorage.getItem('use_premium_voices') === 'true') {
-        localStorage.setItem('use_premium_voices', 'false');
+      // Always use fast local system voices. We no longer support cloud/XAI voices
+      // because good local neural voices (especially after installing via Piper etc.) sound better
+      // and have zero lag.
+      if (voiceSettings.voiceSource !== 'local') {
+        voiceSettings.voiceSource = 'local';
+        localStorage.setItem('voice_source', 'local');
       }
-
-      // Premium Grok Voices (xAI TTS via same XAI_API_KEY) or custom.
-      // The "Use Premium Grok Voices" toggle (use_premium_voices) strictly gates the xAI path.
-      // When off (default): always use fast local system voices (user's dropdown choice).
-      // Custom TTS URL (advanced) only applies when the premium toggle is off.
-      let usePremium = localStorage.getItem('use_premium_voices') === 'true';
-      const customTtsUrl = localStorage.getItem('custom_tts_url');
-      if (usePremium) {
-        const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
-        const provider = !xaiUnavailable ? 'xai' : null;
-        speakWithCustomTts(text, 'premium', voiceNoteEl, provider);
-        return;
-      } else if (customTtsUrl) {
-        // Legacy custom server path only when premium xAI toggle is explicitly off.
-        speakWithCustomTts(text, customTtsUrl, voiceNoteEl, null);
-        return;
+      if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+        voiceSettings.voiceId = 'Google UK English Male';
+        localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
-
-      // When premium is off, force local voice settings and resolution so the main dropdown
-      // selection is always honored and we don't fall back to default Mac voice.
-      if (!usePremium) {
-        if (voiceSettings.voiceSource !== 'local') {
-          voiceSettings.voiceSource = 'local';
-          localStorage.setItem('voice_source', 'local');
-        }
-        if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-          voiceSettings.voiceId = 'Google UK English Male';
-          localStorage.setItem('voice_id', voiceSettings.voiceId);
-        }
-        // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
-        // user's chosen local voice (e.g. the English male from the dropdown).
-        if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-          const resolved = findLocalVoiceById(voiceSettings.voiceId);
-          if (resolved) {
-            selectedVoice = resolved;
-          }
+      // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
+      // user's chosen local voice (e.g. the English male from the dropdown).
+      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
+        const resolved = findLocalVoiceById(voiceSettings.voiceId);
+        if (resolved) {
+          selectedVoice = resolved;
         }
       }
 
-      // Clean any stale "premium voice slow" or "generating premium" notes that may have been
-      // left from a previous speak that went through the premium path (e.g. before flag was forced off).
+      // Clean any old voice notes.
       const lastMsgForClean = document.querySelector('.messages .message:last-child');
       if (lastMsgForClean) {
         lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
@@ -1126,190 +1071,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
-      // Fall through to local or premium (xAI/hosted) paths.
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
     // Premium (xAI) / custom voices via your server-side proxy (seamless from deployed app).
     // The function is *only* reached for the xAI path when use_premium_voices === 'true' (hard guard at top).
     // Legacy custom_tts_url (if present) is handled in the speak() caller only when premium flag is off.
-    async function speakWithCustomTts(text, baseUrl, voiceNoteEl = null, xaiProvider = null) {
-      // Hard guard: the 'use_premium_voices' flag is the single source of truth for the xAI premium path.
-      // If the user has toggled it off (or it is not explicitly 'true'), *always* take the local
-      // system voice path regardless of how this function was called. This eliminates any leakage
-      // of xAI voices when the Voice Settings toggle is off.
-      if (localStorage.getItem('use_premium_voices') !== 'true') {
-        fallbackToBrowserSpeech(text);
-        return;
-      }
-      // Additional legacy guard for custom (non-premium) path if somehow reached without the flag.
-      if (baseUrl && baseUrl !== 'premium' && !localStorage.getItem('custom_tts_url')) {
-        fallbackToBrowserSpeech(text);
-        return;
-      }
-
-      let ttsTimeout = null;
-
-      // If this call is for Grok xAI premium, sanitize the voice to something the xAI audio endpoint accepts.
-      // Old lingering values like "en-US-AvaNeural" will cause upstream errors → 502 from our proxy.
-      let hostedVoice = localStorage.getItem('hosted_voice') || 'Ara';
-      const isXaiIntent = (xaiProvider === 'xai') || (baseUrl === 'premium');
-      if (isXaiIntent) {
-        const looksLegacy = !hostedVoice || /[- ]|Neural|en-|Ava|Jenny|Guy|Davis|Christopher/i.test(hostedVoice);
-        if (looksLegacy) {
-          hostedVoice = 'Ara';  // safe, natural default for xAI TTS
-        }
-      }
-
-      try {
-        // Stop any previous hosted audio (prevents overlapping voices when clicking multiple speakers quickly)
-        if (hostedAudio) {
-          try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
-          hostedAudio = null;
-        }
-
-        // Always go through backend proxy.
-        // For the "Premium Grok Voices" toggle (xaiProvider or base 'premium'), we force the xAI path
-        // + a known-good xAI voice name (Ara/Eve/Leo/Rex/Sal). This prevents falling through to a
-        // possibly-misconfigured or down legacy TTS_SERVER_URL (which was causing the 502s).
-        // Add timeout so slow/cold services (xAI or legacy hosted) don't hang the UI.
-        // xAI TTS can have variable latency (first call, longer text, or load), so give it more time.
-        const controller = new AbortController();
-        const timeoutMs = isXaiIntent ? 20000 : 30000;  // 20s for xAI to keep it reasonably close to instant local voices; fallback after that
-        ttsTimeout = setTimeout(() => controller.abort(), timeoutMs);
-
-        const body = {
-          text,
-          voice: hostedVoice
-        };
-        if (isXaiIntent || xaiProvider === 'xai') {
-          body.provider = 'xai';
-        }
-        const res = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: controller.signal
-        });
-
-        clearTimeout(ttsTimeout);
-        ttsTimeout = null;
-
-        if (!res.ok) {
-          // Try to get a bit more detail for debugging (xAI errors, legacy upstream, etc.)
-          let detail = '';
-          try { const j = await res.json(); detail = j?.detail || j?.error || ''; } catch (_) {}
-          const msg = 'TTS proxy returned ' + res.status + (detail ? ' - ' + detail : '');
-          throw new Error(msg);
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        hostedAudio = audio;
-
-        // Success on xAI path: clear the unavailable flag so the xAI voice dropdown appears next time
-        localStorage.removeItem('xai_audio_unavailable');
-
-        // Remove the "generating voice…" note as soon as we have the audio and start playback.
-        // This makes the extra latency of the hosted path feel intentional.
-        if (voiceNoteEl && voiceNoteEl.parentNode) {
-          voiceNoteEl.parentNode.removeChild(voiceNoteEl);
-        }
-
-        audio.play().catch(e => console.warn('Audio playback blocked or failed', e));
-
-        audio.onended = () => {
-          hostedAudio = null;
-          try { URL.revokeObjectURL(url); } catch (e) {}
-          // In hands-free mode, after the AI finishes speaking, auto-restart listening
-          // so the user can speak the next command without pressing anything.
-          // Use a longer delay (matching local synth) to let speaker echo / room acoustics settle
-          // before the mic starts listening again. Short delays (e.g. 450ms) are the main cause
-          // of "hearing itself" / false triggers from the app's own TTS output.
-          if (handsFreeEnabled && !isListening) {
-            scheduleHandsFreeRestart(1000);
-          }
-        };
-
-        audio.onerror = () => {
-          hostedAudio = null;
-          try { URL.revokeObjectURL(url); } catch (e) {}
-          if (voiceNoteEl && voiceNoteEl.parentNode) {
-            voiceNoteEl.parentNode.removeChild(voiceNoteEl);
-          }
-          fallbackToBrowserSpeech(text);
-        };
-      } catch (err) {
-        if (ttsTimeout) clearTimeout(ttsTimeout);
-        hostedAudio = null;
-        if (voiceNoteEl && voiceNoteEl.parentNode) {
-          voiceNoteEl.parentNode.removeChild(voiceNoteEl);
-        }
-        if (err.name === 'AbortError') {
-          // Only log the first time per page load to avoid spamming the console during hands-free.
-          if (!window.__premiumTtsTimedOutOnce) {
-            window.__premiumTtsTimedOutOnce = true;
-            const timeoutMsg = isXaiIntent 
-              ? 'Premium xAI TTS timed out after 20s (cloud latency on first call or longer text). Falling back to fast local voice.'
-              : 'Premium TTS timed out after 30s (cold start or slow). Falling back to local browser voice.';
-            console.warn(timeoutMsg);
-          }
-          // Add visible feedback
-          if (voiceNoteEl && voiceNoteEl.parentNode) {
-            voiceNoteEl.textContent = isXaiIntent ? ' (xAI slow – using fast local instead)' : ' (slow – using local instead)';
-          } else {
-            const lastMsg = document.querySelector('.messages .message:last-child');
-            if (lastMsg) {
-              const fb = document.createElement('span');
-              fb.className = 'voice-generating-note';
-              fb.textContent = isXaiIntent ? ' (premium xAI slow – fell back to fast local)' : ' (premium slow – fell back to local)';
-              lastMsg.appendChild(fb);
-            }
-          }
-          fallbackToBrowserSpeech(text);
-        } else {
-          console.warn('Premium TTS failed, falling back to browser voice:', err);
-          const msg = (err && err.message) || '';
-          const isXaiAuthError = /not authorized|Team is not authorized|permission/i.test(msg);
-          const isRateLimit = /429|rate limit|too many requests/i.test(msg) || err.message.includes('429');
-          if (isXaiAuthError) {
-            // Special clear handling for xAI permission issue (common when audio/TTS not enabled for the key/team yet)
-            localStorage.setItem('xai_audio_unavailable', 'true');
-            if (!window.__xaiTtsAuthErrorShown) {
-              window.__xaiTtsAuthErrorShown = true;
-              const lastMsg = document.querySelector('.messages .message:last-child');
-              if (lastMsg) {
-                const fb = document.createElement('span');
-                fb.className = 'voice-generating-note';
-                fb.style.color = '#c94e4e';
-                fb.textContent = ' (xAI TTS not authorized for this key/team yet — using local system voice instead. Check console.x.ai or your xAI account for audio access.)';
-                lastMsg.appendChild(fb);
-              }
-            }
-            // Stop hammering the failing xAI path this session
-            localStorage.setItem('use_premium_voices', 'false');
-            const pt = document.getElementById('premium-voices-toggle');
-            if (pt) pt.checked = false;
-          } else if (isRateLimit) {
-            // xAI tier rate limit (RPM/TPM). Tell user and fallback. Limits scale with spend tier.
-            if (!window.__xaiRateLimitShown) {
-              window.__xaiRateLimitShown = true;
-              const lastMsg = document.querySelector('.messages .message:last-child');
-              if (lastMsg) {
-                const fb = document.createElement('span');
-                fb.className = 'voice-generating-note';
-                fb.style.color = '#c94e4e';
-                fb.textContent = ' (xAI rate limited — your tier caps RPM/TPM. Using local voice. Limits increase with spend on xAI.)';
-                lastMsg.appendChild(fb);
-              }
-            }
-            // Don't disable toggle permanently for rate limits, just this time
-          } else {
-            fallbackToBrowserSpeech(text);
-          }
-        }
-      }
-    }
+    // speakWithCustomTts removed — we are now 100% local system voices only (no more XAI/cloud TTS).
+    // Local voices (especially after installing good ones via Piper etc.) are faster and sound better.
 
     // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
     // Only paths now: local system voices (primary for hands-free + daily use), xAI premium (toggle, on-demand for manual 🔊 when you want the Grok voice quality),
@@ -1423,11 +1192,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return null;
     }
 
+    function reloadSystemVoices() {
+      // Aggressively reload voices from the OS — some (Piper, premium Mac voices, Google voices) only appear after multiple calls or after the browser has "woken up" the speech engine.
+      try { synth.getVoices(); } catch (e) {}
+      loadVoices();
+      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 250);
+      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 700);
+      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 1500);
+    }
+
     function loadVoices() {
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect) return;
 
-      const voices = synth.getVoices();
+      // Multiple kicks help newly installed voices (Piper, premium Mac voices) appear.
+      let voices = synth.getVoices();
+      if (voices.length < 5) {
+        // Try again shortly — macOS sometimes populates lazily
+        setTimeout(() => {
+          voices = synth.getVoices();
+          if (voiceSelect.options.length < 3) loadVoices();
+        }, 400);
+      }
       voiceSelect.innerHTML = '';
 
       // Keep ALL voices in non-English languages (users may want Spanish, French, German, Japanese, etc.).
@@ -1439,11 +1225,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
       };
       const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
+      const modernNeuralIndicators = ['piper', 'neural', 'high quality', 'premium', 'natural', 'alta', 'alba']; // support user-installed neural voices like Piper
       let voicesToShow = voices.filter(v => {
         if (!isEnglishVoice(v)) return true; // keep every non-English voice
+
         const n = v.name.toLowerCase();
-        if (n.includes('karen') || n.includes('allison')) return false; // user dislikes Karen and Allison as defaults
-        return goodEnglishKeywords.some(kw => n.includes(kw));
+
+        // Explicitly hide the old low-quality Mac voices the user dislikes
+        if (n.includes('karen') || n.includes('allison') || n.includes('alex') || n.includes('bruce')) return false;
+
+        // Show any voice that matches our known good keywords
+        if (goodEnglishKeywords.some(kw => n.includes(kw))) return true;
+
+        // Also show modern / user-installed neural voices (Piper, etc.)
+        if (modernNeuralIndicators.some(ind => n.includes(ind))) return true;
+
+        // For other English voices, be permissive — show them (user may have good ones installed via Piper or system)
+        return true;
       });
       if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
 
@@ -1494,7 +1292,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voicesToShow.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = formatVoiceName(voice.name) + " (System)";
+        let label = formatVoiceName(voice.name) + " (System)";
+      if (voice.name.toLowerCase().includes('piper')) label = formatVoiceName(voice.name) + " (Piper Neural)";
+      option.textContent = label;
         voiceSelect.appendChild(option);
 
         if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
@@ -1567,6 +1367,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const rateValue = document.getElementById('rate-value');
       const pitchValue = document.getElementById('pitch-value');
 
+      // Force multiple loads — newly installed voices (Piper, etc.) often appear late or after the first getVoices() call
+      loadVoices();
+      setTimeout(loadVoices, 600);
+      setTimeout(loadVoices, 1500);
+
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
 
@@ -1578,117 +1383,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         customTtsInput.value = localStorage.getItem('custom_tts_url') || 'http://localhost:5050';
       }
 
-      // Premium hosted voices toggle (seamless server-side, no user Docker)
-      const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
-      const premiumToggle = document.getElementById('premium-voices-toggle');
-      if (premiumToggle) {
-        if (xaiUnavailable) {
-          premiumToggle.parentElement.style.display = 'none';
-          // Add a prominent reset link so user can re-enable after fixing access in xAI console
-          const resetNote = document.createElement('div');
-          resetNote.style.cssText = 'font-size:11px; color:#c94e4e; margin:4px 0 8px;';
-          resetNote.innerHTML = 'xAI TTS was previously unavailable. If you now have access in the <a href="https://console.x.ai/team/default/voice/text-to-speech" target="_blank">Voice playground</a>, <a href="#" style="color:#c9a227; font-weight:bold;" onclick="localStorage.removeItem(\'xai_audio_unavailable\'); location.reload(); return false;">click here to re-enable the Grok voices option</a> and refresh.';
-          premiumToggle.parentElement.parentElement.insertBefore(resetNote, premiumToggle.parentElement);
-        } else {
-          premiumToggle.checked = localStorage.getItem('use_premium_voices') === 'true';
-          premiumToggle.onchange = () => {
-            localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
-            if (!premiumToggle.checked) {
-              // Force back to local voices so the dropdown works and speak uses system voices immediately
-              voiceSettings.voiceSource = 'local';
-              voiceSettings.voiceId = '';
-              localStorage.setItem('voice_source', voiceSettings.voiceSource);
-              localStorage.setItem('voice_id', voiceSettings.voiceId);
-              localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
-              // Refresh dropdown to show local voices
-              setTimeout(loadVoices, 30);
-
-              // Clean any "premium voice slow" or "generating premium" notes from the last message
-              // so they don't linger when user switches to local.
-              const lastMsg = document.querySelector('.messages .message:last-child');
-              if (lastMsg) {
-                lastMsg.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-              }
-            } else {
-              // Pre-warm the xAI TTS connection with a tiny request when user enables premium.
-              // This makes the *first* real premium voice playback feel snappier (avoids full cold start).
-              // Use short timeout and only once per session to avoid hanging or rate issues.
-              if (!window.__xaiWarmed) {
-                window.__xaiWarmed = true;
-                const warmController = new AbortController();
-                setTimeout(() => warmController.abort(), 8000); // short warm attempt
-                fetch('/api/tts', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ text: "Hi.", voice: localStorage.getItem('hosted_voice') || 'Ara', provider: 'xai' }),
-                  signal: warmController.signal
-                }).catch(() => { /* fire-and-forget warm-up, ignore errors/timeouts */ });
-              }
-            }
-            // If turning on premium, we can clear or ignore custom URL for simplicity
-            if (premiumToggle.checked && customTtsInput) {
-              // keep the value but premium path takes precedence in speak()
-            }
-          };
-        }
-      }
-
-      // Hosted voice picker (shown under the premium toggle)
-      const hostedVoiceSelect = document.getElementById('hosted-voice-select');
-      const xaiUnavailableForVoices = localStorage.getItem('xai_audio_unavailable') === 'true';
-      if (hostedVoiceSelect) {
-        if (xaiUnavailableForVoices && window.hasHostedTTS) {
-          // Repopulate with common legacy Microsoft voices so the "premium" toggle can still
-          // give you the old free hosted neural for manual (non-hands-free) use.
-          hostedVoiceSelect.innerHTML = '';
-          const legacyVoices = [
-            {id: 'en-US-AvaNeural', label: 'Ava (US Female) — recommended'},
-            {id: 'en-US-GuyNeural', label: 'Guy (US Male)'},
-            {id: 'en-US-JennyNeural', label: 'Jenny (US Female)'},
-            {id: 'en-US-DavisNeural', label: 'Davis (US Male)'},
-            {id: 'en-GB-SoniaNeural', label: 'Sonia (UK Female)'},
-            {id: 'en-GB-RyanNeural', label: 'Ryan (UK Male)'}
-          ];
-          legacyVoices.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = v.label;
-            hostedVoiceSelect.appendChild(opt);
-          });
-          // Update the label above it if present
-          const label = document.querySelector('label[for="hosted-voice-select"]');
-          if (label) label.textContent = 'Choose voice (legacy hosted):';
-          const saved = localStorage.getItem('hosted_voice');
-          const looksLikeXai = saved && !saved.includes('Neural') && !saved.includes('en-');
-          if (looksLikeXai) {
-            localStorage.setItem('hosted_voice', 'en-US-AvaNeural');
-          }
-          hostedVoiceSelect.value = (saved && legacyVoices.some(v => v.id === saved) && !looksLikeXai) ? saved : 'en-US-AvaNeural';
-        } else {
-          // Restore xAI voices (in case they were previously overwritten by the legacy repopulation)
-          hostedVoiceSelect.innerHTML = '';
-          const xaiVoices = [
-            {id: 'Ara', label: 'Ara (Female) — natural & recommended'},
-            {id: 'Eve', label: 'Eve (Female)'},
-            {id: 'Leo', label: 'Leo (Male)'},
-            {id: 'Rex', label: 'Rex (Male)'},
-            {id: 'Sal', label: 'Sal (Male)'}
-          ];
-          xaiVoices.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = v.label;
-            hostedVoiceSelect.appendChild(opt);
-          });
-          // Reset label
-          const label = document.querySelector('label[for="hosted-voice-select"]');
-          if (label) label.textContent = 'Choose Grok voice (xAI):';
-          hostedVoiceSelect.value = localStorage.getItem('hosted_voice') || 'Ara';
-        }
-        hostedVoiceSelect.onchange = () => {
-          localStorage.setItem('hosted_voice', hostedVoiceSelect.value);
-        };
-      }
+      // No more XAI/cloud voice toggle (we use only excellent local system voices).
+      // The "Better Voices" section below explains how to install even higher-quality neural voices
+      // (Piper on Mac/iOS, VoxSherpa on Android, etc.) that then appear in the dropdown above.
 
       // Live update when user clicks a different voice in the main dropdown.
       // This makes selection take effect immediately (updates voiceSettings + selectedVoice for local)
@@ -1795,13 +1492,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voiceSettings.rate = parseFloat(rateSlider.value);
       voiceSettings.pitch = parseFloat(pitchSlider.value);
 
-      // Premium toggle is saved live on change; persist it here too for safety.
-      const premiumToggleAfter = document.getElementById('premium-voices-toggle');
-      if (premiumToggleAfter) {
-        localStorage.setItem('use_premium_voices', premiumToggleAfter.checked ? 'true' : 'false');
-      }
-
-      // Save custom local TTS server URL (advanced/power-user path)
+      // Save custom local TTS server URL (advanced/power-user path) if present
       const customTtsInput = document.getElementById('custom-tts-url');
       if (customTtsInput) {
         const url = (customTtsInput.value || '').trim();
@@ -1810,26 +1501,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         } else {
           localStorage.removeItem('custom_tts_url');
         }
-      }
-
-      // The premium toggle is saved live on change above; ensure it's persisted
-      const premiumToggle = document.getElementById('premium-voices-toggle');
-      if (premiumToggle) {
-        localStorage.setItem('use_premium_voices', premiumToggle.checked ? 'true' : 'false');
-      }
-
-      // If premium hosted is now off, force local voice so dropdown selection takes effect
-      if (!premiumToggle || !premiumToggle.checked) {
-        if (voiceSettings.voiceSource !== 'local') {
-          voiceSettings.voiceSource = 'local';
-          voiceSettings.voiceId = '';
-        }
-      }
-
-      // Persist chosen hosted neural voice (used by the /api/tts proxy when toggle is on)
-      const hostedVoiceSelect = document.getElementById('hosted-voice-select');
-      if (hostedVoiceSelect) {
-        localStorage.setItem('hosted_voice', hostedVoiceSelect.value || 'en-US-AvaNeural');
       }
 
       // Persist the clean voice choice
@@ -3671,6 +3342,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
       synth.onvoiceschanged = loadVoices;
       setTimeout(loadVoices, 300);
+      setTimeout(loadVoices, 900);
+      setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
 
       // On startup, if premium hosted voices are OFF, force voiceSettings to a local voice
       // so the dropdown works and speak() uses system voices (prevents stuck state after previously using hosted).
