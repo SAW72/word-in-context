@@ -13,18 +13,32 @@ const app = express();
 const PORT = process.env.PORT || 8787;
 
 // === Simple SQLite DB for users ===
-// IMPORTANT: On Render we use a persistent disk mounted at /data so accounts survive deploys.
-// Locally (or without RENDER env) we fall back to the project folder.
-const dbPath = process.env.RENDER ? '/data/users.db' : path.join(__dirname, 'users.db');
-
-// Ensure the directory exists (important for the persistent disk on Render)
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+// Use persistent disk on Render at /data (configured in render.yaml) so user accounts
+// (trials, passwords, access flags, etc.) survive deploys and restarts.
+// Locally we use the project directory.
+let dbPath = path.join(__dirname, 'users.db');
+if (process.env.RENDER) {
+  dbPath = '/data/users.db';
 }
 
-const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
+let db;
+try {
+  // Ensure dir exists (for local or if disk mount not yet ready)
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  console.log(`[DB] Opened SQLite at ${dbPath}`);
+} catch (err) {
+  console.error(`[DB] Failed to open ${dbPath}:`, err.message);
+  // Fallback to local path to prevent crash (data will be ephemeral until disk is attached)
+  const fallbackPath = path.join(__dirname, 'users.db');
+  db = new Database(fallbackPath);
+  db.pragma('journal_mode = WAL');
+  console.log(`[DB] Using fallback local DB at ${fallbackPath}`);
+}
 
 // Users table
 db.exec(`
