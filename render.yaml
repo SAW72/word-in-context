@@ -5,8 +5,10 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    # Persistent disk so SQLite database (user accounts, trials, etc.) survives deploys and restarts.
-    # Without this, the filesystem is ephemeral and accounts get wiped on every deploy.
+    # Persistent disk for SQLite (users.db). This is REQUIRED so accounts, trials, manual_free etc.
+    # survive deploys and container restarts. The code auto-detects /data if the disk is mounted.
+    # IMPORTANT: After pushing this YAML, go to Render dashboard > your service > Disks tab
+    # and confirm/add the disk if it doesn't appear. Then redeploy.
     disks:
       - name: data
         mountPath: /data

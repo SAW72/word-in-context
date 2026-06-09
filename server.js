@@ -13,13 +13,17 @@ const app = express();
 const PORT = process.env.PORT || 8787;
 
 // === Simple SQLite DB for users ===
-// Use persistent disk on Render at /data (configured in render.yaml) so user accounts
-// (trials, passwords, access flags, etc.) survive deploys and restarts.
-// Locally we use the project directory.
+// Persistent disk: On Render, we mount a disk at /data (see render.yaml).
+// This survives deploys/restarts. We detect the disk reliably by checking
+// if /data exists at startup (more robust than just env var).
+// Fallback to local (ephemeral) only if disk not present.
 let dbPath = path.join(__dirname, 'users.db');
-if (process.env.RENDER) {
+const hasPersistentDisk = fs.existsSync('/data') && fs.statSync('/data').isDirectory();
+if (hasPersistentDisk || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
   dbPath = '/data/users.db';
 }
+
+console.log(`[DB] Persistent disk detected: ${hasPersistentDisk}, using path: ${dbPath}`);
 
 let db;
 try {
@@ -30,14 +34,16 @@ try {
   }
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
-  console.log(`[DB] Opened SQLite at ${dbPath}`);
+  console.log(`[DB] Successfully opened SQLite at ${dbPath}`);
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  console.log(`[DB] Current users in DB: ${userCount}`);
 } catch (err) {
-  console.error(`[DB] Failed to open ${dbPath}:`, err.message);
-  // Fallback to local path to prevent crash (data will be ephemeral until disk is attached)
+  console.error(`[DB] CRITICAL: Failed to open ${dbPath}:`, err.message);
+  // Last-resort fallback (will lose data on restart)
   const fallbackPath = path.join(__dirname, 'users.db');
   db = new Database(fallbackPath);
   db.pragma('journal_mode = WAL');
-  console.log(`[DB] Using fallback local DB at ${fallbackPath}`);
+  console.log(`[DB] FALLBACK to ephemeral local DB at ${fallbackPath} - DATA WILL BE LOST ON REDEPLOY`);
 }
 
 // Schema initialization wrapped so a bad DB (dummy or permission issue) does not crash the entire process on startup
@@ -904,6 +910,21 @@ app.get('/api/config', (req, res) => {
     testerTrialDays: TESTER_TRIAL_DAYS,
     hasSTT: !!process.env.XAI_API_KEY
   });
+});
+
+// Debug endpoint: check current DB path and user count (safe to call from browser)
+app.get('/api/debug/db', (req, res) => {
+  try {
+    const count = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    res.json({
+      dbPath,
+      isPersistent: dbPath.includes('/data'),
+      userCount: count,
+      note: 'If isPersistent is false after a redeploy, the disk is not attached. Check Render dashboard > Disks for the service.'
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, dbPath });
+  }
 });
 
 // === TTS proxy for seamless premium/custom voices ===
