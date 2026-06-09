@@ -462,16 +462,23 @@
       </div>
 
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        We use your device's built-in voices (high quality on modern macOS, iOS, Windows, Android). 
-        After installing better neural voices (see "Better Voices" below, e.g. Piper "Alba"), click <strong>"Reload system voices"</strong> under the dropdown, or restart the browser. 
-        We hide only the old low-quality ones (Karen, Allison, etc.). "Google UK English Male" (or equivalent best available) is preferred by default.
+        All voices come from your device (macOS Spoken Content / Accessibility settings + any TTS apps you install like Piper).
+        The "numbered" voices are real built-in system voices that macOS exposes with internal IDs.
+        After installing new neural voices (Piper, etc.), click <strong>"Reload system voices"</strong> or restart the browser.
+        We hide only the old low-quality ones (Karen, Allison, etc.).
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
-        <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test "John 3:16"</button>
+        <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test selected</button>
       </label>
+
+      <!-- Voice preview list so user can test ANY voice without selecting it first -->
+      <div style="margin-bottom:8px;">
+        <div style="font-size:11px; color:#666; margin-bottom:3px;">Test any voice (click speaker to hear John 3:16):</div>
+        <div id="voice-preview-list" style="max-height: 140px; overflow-y: auto; border:1px solid #ccc; border-radius:4px; padding:4px; background:#fafafa; font-size:12px;"></div>
+      </div>
 
       <label for="rate-slider" style="font-size:13px;display:block;margin-bottom:4px;">Speed: <span id="rate-value">0.95</span>
         <input type="range" id="rate-slider" min="0.6" max="1.4" step="0.05" value="0.95" style="width:100%;margin-top:4px;margin-bottom:10px;">
@@ -809,7 +816,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let selectedVoice = null;
     let voiceSettings = {
       voiceSource: localStorage.getItem('voice_source') || 'local', // default local for zero cost
-      voiceId: localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '',
+      voiceId: (localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '')
+        .replace(/\s*\(System\)\s*$/i, '')
+        .replace(/\s*\(System Voice\)\s*$/i, '')
+        .replace(/\s*\(Piper Neural\)\s*$/i, '')
+        .trim(),
       rate: parseFloat(localStorage.getItem('voice_rate')) || 0.95,
       pitch: parseFloat(localStorage.getItem('voice_pitch')) || 1.0
     };
@@ -1161,37 +1172,56 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // ====================== VOICE SETTINGS (unchanged, excellent) ======================
     function formatVoiceName(fullName) {
+      // Sanitize in case we ever get a previously-labeled string (from old buggy saves or direct calls)
+      fullName = fullName
+        .replace(/\s*\(System\)\s*$/i, '')
+        .replace(/\s*\(System Voice\)\s*$/i, '')
+        .replace(/\s*\(Piper Neural\)\s*$/i, '')
+        .replace(/\s*\(Siri\)\s*$/i, '')
+        .trim();
+
       const lower = fullName.toLowerCase();
 
-      // Piper voices (user-installed via Piper app) — label them clearly even if the OS name is just "Alba"
+      // Piper voices (user-installed via the Piper Neural TTS app)
+      // Even if the system only reports the base name like "Alba", we label it clearly as a better neural voice.
       const piperVoices = ['alba', 'amy', 'aria', 'danny', 'emily', 'jane', 'josh', 'karen', 'kevin', 'laura', 'lily', 'matthew', 'mike', 'nicole', 'oliver', 'rachel', 'ryan', 'sarah', 'thomas'];
       for (const pv of piperVoices) {
         if (lower.includes(pv) && !lower.includes('google') && !lower.includes('siri')) {
           return fullName + ' (Piper Neural)';
         }
       }
-      if (lower.includes('piper')) return fullName + ' (Piper Neural)';
+      if (lower.includes('piper')) {
+        return fullName + ' (Piper Neural)';
+      }
 
-      // Siri voices — make them friendlier
+      // Siri voices — give them nicer labels
       if (fullName.includes("Siri Voice")) {
         const match = fullName.match(/Siri Voice \d+/);
         if (match) {
-          // Try to guess gender/region from common patterns, otherwise keep simple
-          if (lower.includes('us') || lower.includes('female')) return match[0] + ' (US Female)';
-          if (lower.includes('male')) return match[0] + ' (US Male)';
-          return match[0] + ' (Siri)';
+          let label = match[0];
+          if (lower.includes('female') || lower.includes('us')) label += ' (US Female)';
+          else if (lower.includes('male')) label += ' (US Male)';
+          else label += ' (Siri)';
+          return label;
         }
         return fullName;
       }
 
-      if (fullName.includes("(Enhanced)")) return fullName;
-
-      // Generic numbered system voices (common on macOS) — give them a cleaner label
-      if (/^\d+/.test(fullName) || lower.includes('voice ')) {
-        return fullName.replace(/^\d+\s*/, '') + ' (System)';
+      if (fullName.includes("(Enhanced)")) {
+        return fullName; // already has good info
       }
 
-      return fullName;
+      // Generic numbered / internal system voices (very common on macOS)
+      // These come from the operating system's Spoken Content voices (System Settings → Accessibility → Spoken Content).
+      // The browser often exposes them with raw numeric IDs or "Voice N" because they are internal entries.
+      // They are legitimate voices (many are high-quality variants). We give them a clear "(System Voice)" label.
+      if (/^\d+/.test(fullName) || /^voice\s*\d+/i.test(fullName) || lower.includes('voice ')) {
+        const cleaned = fullName.replace(/^\d+\s*/, '').replace(/^voice\s*/i, '').trim();
+        return (cleaned || fullName) + ' (System Voice)';
+      }
+
+      // Default for regular system voices: append (System) so the user knows it's a local voice
+      return fullName + ' (System)';
     }
 
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
@@ -1226,6 +1256,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 250);
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 700);
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 1500);
+      setTimeout(populateVoicePreviews, 200);
+      setTimeout(populateVoicePreviews, 900);
     }
 
     function testSelectedVoice() {
@@ -1253,6 +1285,83 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (synth.speaking) synth.cancel();
 
       synth.speak(utterance);
+    }
+
+    // Populate a separate preview list with speaker buttons so user can test ANY voice
+    // without having to select it in the main dropdown first.
+    function populateVoicePreviews() {
+      const container = document.getElementById('voice-preview-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const voices = synth.getVoices();
+      if (!voices || voices.length === 0) {
+        container.innerHTML = '<div style="padding:4px; color:#888; font-size:11px;">No voices loaded yet. Try the Reload button above.</div>';
+        return;
+      }
+
+      // Reuse the same filtering logic as the main dropdown for consistency
+      const isEnglishVoice = (v) => {
+        const lang = (v.lang || '').toLowerCase();
+        const name = v.name.toLowerCase();
+        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
+      };
+      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
+      const modernNeuralIndicators = ['piper', 'neural', 'high quality', 'premium', 'natural', 'alta', 'alba'];
+
+      let voicesToShow = voices.filter(v => {
+        if (!isEnglishVoice(v)) return true;
+        const n = v.name.toLowerCase();
+        if (n.includes('karen') || n.includes('allison') || n.includes('alex') || n.includes('bruce')) return false;
+        if (goodEnglishKeywords.some(kw => n.includes(kw))) return true;
+        if (modernNeuralIndicators.some(ind => n.includes(ind))) return true;
+        return true;
+      });
+
+      if (voicesToShow.length === 0) voicesToShow = voices;
+
+      voicesToShow.forEach(voice => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:3px 6px; border-radius:3px; cursor:pointer;';
+        row.onmouseover = () => row.style.background = '#f0f0f0';
+        row.onmouseout = () => row.style.background = '';
+
+        const label = document.createElement('span');
+        label.textContent = formatVoiceName(voice.name);
+        label.style.flex = '1';
+        label.style.fontSize = '12px';
+
+        // Clicking the name selects it in the main dropdown
+        label.onclick = () => {
+          const sel = document.getElementById('voice-select');
+          if (sel) {
+            const target = `local:${voice.name}`;
+            sel.value = target;
+            // trigger the existing onchange logic
+            sel.dispatchEvent(new Event('change'));
+          }
+        };
+
+        const testBtn = document.createElement('button');
+        testBtn.textContent = '🔊';
+        testBtn.style.cssText = 'font-size:11px; padding:1px 6px; border:1px solid #c9a227; background:#fff; border-radius:3px; cursor:pointer;';
+        testBtn.title = 'Test this voice with John 3:16';
+        testBtn.onclick = (e) => {
+          e.stopImmediatePropagation();
+          const utterance = new SpeechSynthesisUtterance(
+            "John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life."
+          );
+          utterance.voice = voice;
+          utterance.rate = voiceSettings.rate || 0.95;
+          utterance.pitch = voiceSettings.pitch || 1.0;
+          if (synth.speaking) synth.cancel();
+          synth.speak(utterance);
+        };
+
+        row.appendChild(label);
+        row.appendChild(testBtn);
+        container.appendChild(row);
+      });
     }
 
     function loadVoices() {
@@ -1346,7 +1455,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voicesToShow.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = formatVoiceName(voice.name) + " (System)";
+        // formatVoiceName() now returns the complete user-friendly label
+        // (e.g. "Alba (Piper Neural)", "Siri Voice 4 (US Female)", "Voice 112 (System Voice)")
+        option.textContent = formatVoiceName(voice.name);
         voiceSelect.appendChild(option);
 
         if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
@@ -1408,6 +1519,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
       }
+
+      // Populate the independent preview list with per-voice speaker test buttons
+      setTimeout(populateVoicePreviews, 30);
     }
 
     function openVoiceSettings() {
@@ -1426,6 +1540,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
+
+      // Populate the per-voice preview list with speaker buttons
+      setTimeout(populateVoicePreviews, 100);
+      setTimeout(populateVoicePreviews, 800);
 
       // No legacy premium key input (11Labs fully removed).
 
