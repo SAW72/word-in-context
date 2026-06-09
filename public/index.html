@@ -843,7 +843,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Demo / free tier limiting (for "Try the App" button — unauthenticated visitors get just a few responses)
     // Defaults overridden at runtime from /api/config (env-driven on server)
-    let DEMO_RESPONSE_LIMIT = 10;
+    let DEMO_RESPONSE_LIMIT = 5;
     let TRIAL_DAYS = 7;
     const today = new Date().toISOString().slice(0,10);
     if (localStorage.getItem('demo_last_date') !== today) {
@@ -858,6 +858,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     const urlParams = new URLSearchParams(window.location.search);
     const demoParam = urlParams.get('demo');
     const forceDemoMode = demoParam != null && (demoParam === '1' || demoParam === '' || demoParam === 'true');
+
+    if (forceDemoMode) {
+      // Demo restrictions: no sidebar, no history, limited questions only
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar) sidebar.style.display = 'none';
+      // Clear any loaded history
+      conversation = [];
+      const msgs = document.getElementById('messages');
+      if (msgs) msgs.innerHTML = '';
+    }
 
     function getEffectiveAuthToken() {
       if (forceDemoMode) return null;
@@ -1013,6 +1023,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function speak(text, voiceNoteEl = null) {
+      text = cleanTextForSpeech(text);
       stopSpeaking();
 
       // Make sure we're not listening while the AI is speaking its reply.
@@ -1102,6 +1113,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
 
     function fallbackToBrowserSpeech(text) {
+      // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
+      text = cleanTextForSpeech(text);
       currentUtterance = new SpeechSynthesisUtterance(text);
       lastSpokenText = text;
       currentUtterance.rate = voiceSettings.rate || 0.95;
@@ -1302,7 +1315,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       const utterance = new SpeechSynthesisUtterance(
-        "John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life."
+        cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
       );
       utterance.voice = voice;
       utterance.rate = voiceSettings.rate || 0.95;
@@ -1411,7 +1424,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         testBtn.onclick = (e) => {
           e.stopImmediatePropagation();
           const utterance = new SpeechSynthesisUtterance(
-            "John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life."
+            cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
           );
           utterance.voice = voice;
           utterance.rate = voiceSettings.rate || 0.95;
@@ -2507,6 +2520,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
     }
 
+    // Remove markdown and symbols before TTS so the voice reads naturally
+    function cleanTextForSpeech(text) {
+      if (!text) return '';
+      return text
+        .replace(/\*\*(.+?)\*\*/g, '$1')   // bold **text**
+        .replace(/\*(.+?)\*/g, '$1')       // italic *text*
+        .replace(/`(.+?)`/g, '$1')         // inline code
+        .replace(/^#{1,6}\s*/gm, '')       // headers
+        .replace(/^\s*[-*+]\s+/gm, '')     // list bullets
+        .replace(/[*\-#`~_]/g, '')         // stray symbols
+        .replace(/\n{2,}/g, '. ')          // paragraph breaks as pauses
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
     // Small helper so the async onstop has time to populate the blob before we try to send it.
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -2800,12 +2829,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // better base text for Bible refs means the existing normalize + server grounding
       // succeed far more often ("John one" / "first John one" / "Romans 5" etc.).
       // We use a short timeout so it never makes voice input feel slower.
-      let textForCommit = finalText;
+      // Prefer the live server-improved transcription (what the user sees in the accurate live box)
+      // over the raw browser finalText. This ensures the AI gets the boosted accurate text.
+      let textForCommit = currentTranscript || finalText;
       if (lastUtteranceAudioBlob) {
         try {
-          textForCommit = await improveTranscriptWithSTT(finalText, lastUtteranceAudioBlob);
+          textForCommit = await improveTranscriptWithSTT(textForCommit, lastUtteranceAudioBlob);
         } catch (e) {
-          textForCommit = finalText;
+          textForCommit = currentTranscript || finalText;
         }
         // Clear so we don't accidentally re-use the same clip on a restart
         lastUtteranceAudioBlob = null;
@@ -2813,6 +2844,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // === Wake-word gated commit ===
+      // Prefer the live server-improved transcription (from the visible box) over the raw browser finalText.
+      // This ensures the AI receives the accurate boosted transcript, not the often-inaccurate browser one.
+      textForCommit = currentTranscript || textForCommit;
       textForCommit = normalizeBibleTranscript(textForCommit);
       let cmd = getCommandAfterWake(textForCommit);
       const recentlyWoke = Date.now() < wakeWordActiveUntil;
@@ -3277,6 +3311,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function saveChats() {
+      if (forceDemoMode) return; // demo has no persistent history or sidebar
       try { localStorage.setItem('winc_chats', JSON.stringify(chats)); } catch (e) {}
     }
 
@@ -3603,16 +3638,25 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
     // ====================== INITIALIZATION ======================
     function init() {
-      loadChats();
+      if (!forceDemoMode) {
+        loadChats();
 
-      // ensure we have a current chat
-      if (!currentChatId || !getCurrentChat()) {
-        if (chats.length > 0) {
-          // load most recent
-          currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
-        } else {
-          createNewChat();
+        // ensure we have a current chat
+        if (!currentChatId || !getCurrentChat()) {
+          if (chats.length > 0) {
+            // load most recent
+            currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
+          } else {
+            createNewChat();
+          }
         }
+      } else {
+        // Demo: no history, start fresh empty
+        chats = [];
+        currentChatId = null;
+        conversation = [];
+        const msgs = document.getElementById('messages');
+        if (msgs) msgs.innerHTML = '';
       }
 
       // load messages for current chat into memory

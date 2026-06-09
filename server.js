@@ -64,7 +64,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 
 // Configurable for easy tuning without code changes (set in Render env)
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
-const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
+const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '5', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 
 function normalizeEmail(e) {
@@ -378,8 +378,16 @@ function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
     const now = new Date();
+    const trialExpired = user.trial_end && now >= new Date(user.trial_end);
     const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
     const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+
+    // Explicitly cut off expired trials (important for tester accounts with no subscription)
+    if (user.status === 'trialing' && trialExpired) {
+      db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', user.id);
+      return res.status(403).json({ error: 'Trial has expired. Please subscribe for continued access.' });
+    }
+
     const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
     if (!effectivelyTrialing && !hasPaidOrFree) {
       return res.status(403).json({ error: 'Subscription required or trial expired.' });
@@ -595,7 +603,7 @@ app.post('/api/create-checkout', async (req, res) => {
       subscription_data: {
         trial_period_days: effectiveTrialDays,
       },
-      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/app`,
       cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
       metadata: { email }
     });
@@ -768,6 +776,15 @@ app.get('/api/verify-magic', (req, res) => {
 // Get current user status
 app.get('/api/me', requireAuth, (req, res) => {
   const u = req.userRecord;
+  const now = new Date();
+  const trialExpired = u.trial_end && now >= new Date(u.trial_end);
+
+  // Keep status in sync for expired trials (testers etc.)
+  if (u.status === 'trialing' && trialExpired) {
+    db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', u.id);
+    u.status = 'canceled';
+  }
+
   res.json({
     email: u.email,
     status: u.status,
@@ -1123,7 +1140,7 @@ app.post('/api/admin/send-retention-offer', async (req, res) => {
       mode: 'subscription',
       customer: user.stripe_customer_id,
       line_items: [{ price: retentionPrice, quantity: 1 }],
-      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success`,
+      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/app`,
       cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
     });
 
@@ -1191,16 +1208,14 @@ app.post('/api/stripe-webhook', (req, res) => {
   res.json({ received: true });
 });
 
-// Simple success page after Stripe Checkout
+// Simple success page after Stripe Checkout - immediately redirects user into the app
 app.get('/success', (req, res) => {
   res.send(`
-    <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
+    <html><head><title>Success - The Word in Context</title><meta http-equiv="refresh" content="1;url=/app"></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
-    <p>Your ${TRIAL_DAYS}-day trial has started (or subscription activated).</p>
-    <p>Check your email for a secure login link.</p>
-    <p><a href="/app">Open the App</a> (log in with the link we emailed you)</p>
+    <p>Your trial or subscription is active. Redirecting you to the app...</p>
+    <p>If not redirected, <a href="/app">click here to open the App</a>. Check your email for a secure login link if needed.</p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
-    <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
     </body></html>
   `);
 });
