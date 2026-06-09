@@ -468,9 +468,10 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https:;"
   );
 
-  // Cross-origin isolation headers to support SharedArrayBuffer and suppress the deprecation warning.
-  res.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  // Note: We intentionally do not set Cross-Origin-Embedder-Policy / Cross-Origin-Opener-Policy here.
+  // Those headers (require-corp + same-origin) were causing scrolling, layout, and viewport problems
+  // for users (page not scrollable, content not sitting right). We can re-add them later only on specific
+  // paths if a future feature truly requires SharedArrayBuffer.
 
   next();
 });
@@ -503,9 +504,8 @@ app.get('/app', (req, res) => {
     "style-src 'self' 'unsafe-inline' https:;"
   );
 
-  // Cross-origin isolation headers to support SharedArrayBuffer and suppress deprecation warning.
-  res.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  // (Isolation headers removed globally — see middleware above for explanation.
+  // They were breaking normal scrolling and page layout for many users.)
 
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
