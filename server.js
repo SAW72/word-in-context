@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const OpenAI = require('openai');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Database = require('better-sqlite3');
@@ -11,8 +12,18 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-// === Simple SQLite DB for users (persistent on Render disk for beta; migrate to Postgres later) ===
-const db = new Database(path.join(__dirname, 'users.db'));
+// === Simple SQLite DB for users ===
+// IMPORTANT: On Render we use a persistent disk mounted at /data so accounts survive deploys.
+// Locally (or without RENDER env) we fall back to the project folder.
+const dbPath = process.env.RENDER ? '/data/users.db' : path.join(__dirname, 'users.db');
+
+// Ensure the directory exists (important for the persistent disk on Render)
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // Users table
