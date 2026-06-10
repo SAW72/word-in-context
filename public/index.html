@@ -813,7 +813,7 @@
         Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
         Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
         After installing Piper voices, click <strong>"Reload system voices"</strong>.
-        <br><strong>For iPhone premium/enhanced voices:</strong> After downloading in Settings &gt; Accessibility &gt; Spoken Content, tap the Voice button, then immediately tap the new <strong>"🔊 Speak test (unlock iPhone voices)"</strong> button below (it will say "Hello" audibly). Then check the dropdown and the list of 🔊 below. Reload may also help. A real audible speak from a tap is usually required by iOS.
+        <br><strong>For iPhone premium/enhanced voices:</strong> After downloading in Settings &gt; Accessibility &gt; Spoken Content, tap the Voice button (it will auto do a short audible speak to try to unlock). If not enough, tap the <strong>"🔊 Speak test (unlock iPhone voices)"</strong> button (says "Hello" louder). Check dropdown + the 🔊 preview list below. Use Reload after. iOS requires an audible user-initiated speak.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
@@ -2013,6 +2013,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(loadVoices, 1100);
       setTimeout(populateVoicePreviews, 200);
       setTimeout(populateVoicePreviews, 800);
+
+      // Auto audible wake on modal open to help iPhone populate premium/enhanced voices
+      setTimeout(() => {
+        try {
+          const u = new SpeechSynthesisUtterance('a');
+          u.volume = 0.2;
+          u.rate = 1.5;
+          u.onend = () => {
+            try { synth.getVoices(); } catch(e) {}
+            loadVoices();
+            populateVoicePreviews();
+          };
+          if (synth.speaking) synth.cancel();
+          synth.speak(u);
+        } catch(e) {}
+      }, 600);
 
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
