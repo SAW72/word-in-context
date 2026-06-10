@@ -25,7 +25,7 @@
     .container {
       max-width: 1080px;
       margin: 0 auto;
-      padding: 0 20px;
+      padding: 0 24px;
     }
 
     header {
@@ -54,7 +54,7 @@
 
     .hero {
       text-align: center;
-      padding: 72px 20px 64px;
+      padding: 88px 20px 80px;
       background: linear-gradient(135deg, #1a252f 0%, #2c3e50 100%);
       color: white;
       position: relative;
@@ -74,41 +74,51 @@
     }
 
     .hero h1 {
-      font-size: 42px;
-      margin: 0 0 14px;
-      line-height: 1.15;
-      font-weight: 700;
-      letter-spacing: -0.5px;
+      font-size: 58px;
+      margin: 0 0 24px;
+      line-height: 1.08;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
     .hero p {
-      font-size: 19px;
-      max-width: 620px;
-      margin: 0 auto 28px;
+      font-size: 18px;
+      max-width: 700px;
+      margin: 0 auto 14px;
       opacity: 0.92;
       line-height: 1.5;
+    }
+
+    .hero-sub {
+      font-size: 21px;
+      font-weight: 500;
+      max-width: 720px;
+      margin: 0 auto 12px;
+      opacity: 0.9;
+      line-height: 1.45;
     }
 
     .btn {
       display: inline-block;
       background: #c9a227;
       color: #1a252f;
-      padding: 13px 30px;
-      border-radius: 8px;
+      padding: 14px 36px;
+      border-radius: 10px;
       text-decoration: none;
-      font-weight: 600;
-      font-size: 15px;
-      margin: 6px;
+      font-weight: 700;
+      font-size: 17px;
+      margin: 8px;
       transition: all 0.2s ease;
-      box-shadow: 0 2px 6px rgba(201, 162, 39, 0.25);
+      box-shadow: 0 3px 8px rgba(201, 162, 39, 0.3);
       border: none;
       cursor: pointer;
       line-height: 1;
     }
 
     .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 10px rgba(201, 162, 39, 0.35);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(201, 162, 39, 0.4);
       background: #d4b14a;
     }
 
@@ -116,11 +126,26 @@
       transform: translateY(0);
     }
 
+    .btn-primary {
+      padding: 18px 48px;
+      font-size: 19px;
+      font-weight: 800;
+      box-shadow: 0 4px 12px rgba(201, 162, 39, 0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 18px rgba(201, 162, 39, 0.45);
+      background: #d8b44f;
+    }
+
     .btn-outline {
       background: transparent;
       border: 2px solid #c9a227;
       color: #c9a227;
       box-shadow: none;
+      padding: 12px 28px;
+      font-size: 15px;
     }
 
     .btn-outline:hover {
@@ -134,7 +159,7 @@
     }
 
     section {
-      padding: 56px 0;
+      padding: 64px 0;
     }
 
     h2 {
@@ -236,12 +261,12 @@
     }
 
     .signup-form {
-      max-width: 460px;
-      margin: 32px auto;
+      max-width: 480px;
+      margin: 40px auto;
       background: white;
-      padding: 28px 26px;
-      border-radius: 14px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+      padding: 32px 28px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
       border: 1px solid #f0e6d2;
     }
 
@@ -371,6 +396,148 @@
     #login-modal input {
       font-size: 15px;
     }
+
+    /* Password visibility toggle (eye icon) */
+    .password-wrapper {
+      position: relative;
+      display: block;
+    }
+    .password-wrapper input {
+      padding-right: 38px;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 18px;
+      user-select: none;
+      opacity: 0.7;
+      color: #666;
+    }
+    .password-toggle:hover {
+      opacity: 1;
+    }
+
+    /* Fully responsive mobile styles for iPhone and small screens */
+    @media (max-width: 768px) {
+      .hero {
+        padding: 56px 15px 48px;
+      }
+      .hero h1 {
+        font-size: 34px;
+        line-height: 1.12;
+        letter-spacing: -0.8px;
+      }
+      .hero p {
+        font-size: 15px;
+        margin-bottom: 16px;
+      }
+      .hero-sub {
+        font-size: 17px;
+      }
+      .motto {
+        font-size: 15px;
+        margin-bottom: 12px;
+      }
+      .btn {
+        padding: 12px 20px;
+        font-size: 15px;
+        margin: 6px 4px;
+      }
+      .btn-primary {
+        padding: 16px 32px;
+        font-size: 17px;
+      }
+      .pricing {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      .plan {
+        width: 100%;
+        max-width: 100%;
+        padding: 18px 14px;
+      }
+      .signup-form {
+        padding: 18px 14px;
+        margin: 16px auto;
+      }
+      .features {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .feature {
+        padding: 14px 12px;
+      }
+      .container {
+        padding: 0 12px;
+      }
+      section {
+        padding: 32px 0;
+      }
+      h2 {
+        font-size: 22px;
+        margin-bottom: 8px;
+      }
+      .section-subtitle {
+        margin-bottom: 20px;
+        font-size: 14px;
+      }
+      .social-proof {
+        font-size: 12px;
+        margin: 20px 0;
+      }
+      footer {
+        padding: 24px 12px;
+        font-size: 12px;
+      }
+      .sources-note {
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      /* Better touch targets */
+      .signup-form input,
+      .auth-input {
+        padding: 14px;
+        font-size: 16px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero {
+        padding: 36px 12px 28px;
+      }
+      .hero h1 {
+        font-size: 28px;
+        line-height: 1.1;
+      }
+      .hero p {
+        font-size: 14px;
+      }
+      .hero-sub {
+        font-size: 15px;
+      }
+      .btn {
+        padding: 14px 18px;
+        font-size: 15px;
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        margin: 8px auto;
+        text-align: center;
+        box-sizing: border-box;
+      }
+      .btn-primary {
+        padding: 16px 24px;
+        font-size: 17px;
+        max-width: 340px;
+      }
+      .plan {
+        padding: 14px 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -390,10 +557,11 @@
 
   <div class="hero">
     <div class="container">
-      <h1>The Word in Context<br>Voice-first study of Scripture<br>in original languages + literary context <span class="cross" aria-hidden="true" style="font-size:0.7em; opacity:0.6; vertical-align: middle;"></span></h1>
-      <p>Speak naturally with "John". Hear precise, citable text from the Greek New Testament (SBL) and Hebrew Old Testament (WLC) — fetched live and spoken back to you. Low monthly fee. Excellent free local voices.</p>
-      <p class="motto">Learn His Word in Context, Listen to His Voice, and Live Free.</p>
-      <a href="#signup" class="btn">Start 7-Day Free Trial</a>
+      <h1>Understand the Bible the way it was meant to be read.</h1>
+      <p class="hero-sub">Discover what Jesus really taught and what the disciples actually meant — in their original context.</p>
+      <p class="hero-sub">No more relying on someone else’s interpretation.</p>
+      <p class="motto">Read Scripture in context. Listen to His voice. Live free.</p>
+      <a href="#signup" class="btn btn-primary">Start 7-Day Free Trial</a>
       <a href="/app?demo=1" class="btn btn-outline">Try the App (limited demo)</a>
       <div class="social-proof">Trusted by Bible students, pastors, and scholars • 100% private chats • No data sold</div>
       <div class="cross-divider"></div>
@@ -589,7 +757,9 @@
       });
     }
 
-    // === 14-day Tester signup — only creates the account. No auto-login. ===
+    // === 14-day Tester signup — creates the account, sends magic link for convenience,
+    // then immediately auto-logs the user in with a JWT and redirects to /app.
+    // This matches the 7-day paid trial experience the user requested.
     const testerSignupForm = document.getElementById('tester-signup-form');
     if (testerSignupForm) {
       testerSignupForm.addEventListener('submit', async function(e) {
@@ -610,10 +780,23 @@
           const data = await res.json();
 
           if (res.ok) {
-            if (testerSignupForm) testerSignupForm.style.display = 'none';
-            if (successDiv) {
-              successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Use the <strong>Log in</strong> button at the top of this page with the password you chose, or check your email for a magic link.`;
-              successDiv.style.display = 'block';
+            if (data.token) {
+              localStorage.setItem('auth_token', data.token);
+              localStorage.setItem('user_email', data.email || email);
+              if (successDiv) {
+                successDiv.innerHTML = `Account created. Logging you in...`;
+                successDiv.style.display = 'block';
+              }
+              setTimeout(() => {
+                window.location.href = '/app';
+              }, 550);
+            } else {
+              // Fallback (magic link only)
+              if (testerSignupForm) testerSignupForm.style.display = 'none';
+              if (successDiv) {
+                successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Check your email for the magic link or use the Log in button at the top.`;
+                successDiv.style.display = 'block';
+              }
             }
           } else {
             if (errDiv) {
@@ -788,6 +971,38 @@
 
       // Optional: you can add a small note about tester days if desired
     }).catch(() => {});
+
+    // Add eye-icon show/hide password for all password fields on landing + modal
+    function addPasswordToggles() {
+      const pwInputs = document.querySelectorAll('input[type="password"]');
+      pwInputs.forEach(input => {
+        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
+
+        const wrapper = document.createElement('span');
+        wrapper.className = 'password-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        const toggle = document.createElement('span');
+        toggle.className = 'password-toggle';
+        toggle.textContent = '👁';
+        toggle.setAttribute('aria-label', 'Show password');
+        wrapper.appendChild(toggle);
+
+        toggle.addEventListener('click', () => {
+          if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '🙈';
+            toggle.setAttribute('aria-label', 'Hide password');
+          } else {
+            input.type = 'password';
+            toggle.textContent = '👁';
+            toggle.setAttribute('aria-label', 'Show password');
+          }
+        });
+      });
+    }
+    addPasswordToggles();
   </script>
 </body>
 </html>
