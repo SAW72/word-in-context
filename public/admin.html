@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Admin • The Word in Context</title>
 <style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { overflow-x: hidden; -webkit-overflow-scrolling: touch; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#f5e8d3; color:#2c3e50; margin:0; padding:20px; }
   .container { max-width: 960px; margin: 0 auto; }
   h1 { color:#1a252f; }
@@ -9,14 +11,29 @@
   th, td { padding:10px 12px; text-align:left; border-bottom:1px solid #e8d9c2; }
   th { background:#1a252f; color:#f5e8d3; }
   tr:last-child td { border-bottom:none; }
-  .btn { background:#c9a227; color:#1a252f; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; margin:2px; }
+  .btn { background:#c9a227; color:#1a252f; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; margin:2px; min-height: 36px; }
   .btn.danger { background:#c94e4e; color:white; }
   .btn.gray { background:#555; color:white; }
   .login-box { background:white; padding:24px; border-radius:12px; max-width:360px; margin:40px auto; box-shadow:0 8px 24px rgba(0,0,0,0.1); }
-  .login-box input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; }
+  .login-box input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; font-size:16px; }
   .status { font-size:13px; margin:8px 0; color:#8b5e3c; }
   .user-row td { font-size:13px; }
   .small { font-size:11px; opacity:0.7; }
+
+  /* Mobile friendly admin */
+  @media (max-width: 768px) {
+    body { padding: 10px; font-size: 14px; }
+    .container { padding: 0; }
+    h1 { font-size: 20px; }
+    .login-box { margin: 20px 0; padding: 16px; max-width: 100%; }
+    .login-box input { font-size: 16px; padding: 12px; }
+    table { display: block; overflow-x: auto; white-space: nowrap; }
+    th, td { padding: 6px 8px; font-size: 12px; }
+    .btn { padding: 8px 10px; font-size: 11px; min-height: 40px; }
+    input, textarea, button { font-size: 16px; } /* prevent iOS zoom, good touch */
+    #special-email, #bulk-group { width: 100%; }
+    .user-row td { font-size: 12px; }
+  }
 </style>
 </head><body>
 <div class="container">

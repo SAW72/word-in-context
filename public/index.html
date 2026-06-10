@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>The Word in Context</title>
   <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     html, body {
       height: 100%;
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
     }
     body {
       background: #f5e8d3;
@@ -397,6 +402,109 @@
         padding: 8px 10px;
       }
     }
+
+    /* Full mobile-friendly drawer sidebar for iPhone */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 78vw;
+        max-width: 280px;
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: 4px 0 12px rgba(0,0,0,0.3);
+        background: #1a252f;
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
+      .main-area {
+        padding: 8px;
+      }
+      .chat-container {
+        max-width: 100%;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      }
+      .header {
+        padding: 8px 10px;
+      }
+      .header h1 {
+        font-size: 16px;
+      }
+      .header .subtitle {
+        font-size: 10px;
+      }
+      .policy-note {
+        font-size: 11px;
+        padding: 4px 8px;
+      }
+      .messages {
+        padding: 12px 8px;
+      }
+      .message {
+        max-width: 88%;
+        font-size: 15px;
+        padding: 10px 12px;
+      }
+      .input-area {
+        padding: 8px 6px;
+      }
+      #user-input {
+        font-size: 16px; /* prevent iOS zoom */
+        padding: 10px 14px;
+      }
+      .mic-btn, #send-btn {
+        min-width: 44px;
+        min-height: 44px;
+      }
+      /* Show hamburger on mobile */
+      #mobile-sidebar-toggle {
+        display: block !important;
+      }
+      /* Subtle backdrop effect on mobile when drawer open (click outside handled in JS) */
+      body.sidebar-open::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: 150;
+        pointer-events: none;
+      }
+      .header .left {
+        flex-wrap: wrap;
+        gap: 3px;
+      }
+      .voice-btn, .sources-btn, .upgrade-btn {
+        font-size: 11px;
+        padding: 3px 6px;
+      }
+    }
+
+    /* Password visibility toggle (eye icon) */
+    .password-wrapper {
+      position: relative;
+      display: block;
+    }
+    .password-wrapper input {
+      padding-right: 32px;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 16px;
+      user-select: none;
+      opacity: 0.65;
+    }
+    .password-toggle:hover {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -421,6 +529,7 @@
           <div id="current-chat-title" style="font-size:11px; opacity:0.85; margin-top:1px; color:#ddd;"></div>
         </div>
         <div class="left">
+          <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" aria-label="Open chat list" style="display:none; background:#2c3e50; color:#eee; border:none; padding:4px 8px; border-radius:4px; font-size:16px; margin-right:6px; cursor:pointer;">☰</button>
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
           <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3; margin-left:6px;">📚 Sources</button>
           <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; margin-left:6px; font-size:12px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer;">Account</button>
@@ -3505,6 +3614,37 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       });
     }
 
+    // Add eye icon show/hide for password fields (set-password and any login passwords in modals)
+    function addPasswordToggles() {
+      const pwInputs = document.querySelectorAll('input[type="password"]');
+      pwInputs.forEach(input => {
+        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
+
+        const wrapper = document.createElement('span');
+        wrapper.className = 'password-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        const toggle = document.createElement('span');
+        toggle.className = 'password-toggle';
+        toggle.textContent = '👁';
+        toggle.setAttribute('aria-label', 'Show password');
+        wrapper.appendChild(toggle);
+
+        toggle.addEventListener('click', () => {
+          if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '🙈';
+            toggle.setAttribute('aria-label', 'Hide password');
+          } else {
+            input.type = 'password';
+            toggle.textContent = '👁';
+            toggle.setAttribute('aria-label', 'Show password');
+          }
+        });
+      });
+    }
+
     // Sidebar collapse (Grok-like)
     function initSidebarCollapse() {
       const sidebar = document.getElementById('sidebar');
@@ -3533,6 +3673,37 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           localStorage.setItem('winc_sidebar_collapsed', 'false');
         }
       });
+
+      // Mobile drawer support
+      const mobileToggle = document.getElementById('mobile-sidebar-toggle');
+      if (mobileToggle) {
+        mobileToggle.addEventListener('click', (e) => {
+          e.stopImmediatePropagation();
+          const isOpen = sidebar.classList.toggle('open');
+          document.body.classList.toggle('sidebar-open', isOpen);
+        });
+      }
+
+      // Close drawer when clicking backdrop or selecting a chat on mobile
+      document.addEventListener('click', (e) => {
+        if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+          if (!sidebar.contains(e.target) && !mobileToggle.contains(e.target)) {
+            sidebar.classList.remove('open');
+            document.body.classList.remove('sidebar-open');
+          }
+        }
+      });
+
+      // Close drawer after selecting a chat on mobile
+      const chatsList = document.getElementById('sidebar-chats-list');
+      if (chatsList) {
+        chatsList.addEventListener('click', () => {
+          if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+            sidebar.classList.remove('open');
+            document.body.classList.remove('sidebar-open');
+          }
+        });
+      }
     }
 
     function createNewChat() {
@@ -3704,6 +3875,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       updateHeaderForCurrentChat();
       renderSidebarChats(''); // render Grok-like sidebar on init
       initSidebarCollapse();
+      addPasswordToggles();
 
       if (handsFreeEnabled) {
         micBtn.style.background = '#c9a227';
