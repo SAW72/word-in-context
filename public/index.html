@@ -490,12 +490,42 @@
         padding: 3px 5px;
         font-size: 14px;
       }
+
+      /* Mobile header: ☰ top left, "The Word in Context" (with book) above the Voice/Sources/Account buttons.
+         Subtitle hidden on mobile. */
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px 8px;
+        position: relative;
+      }
+      .header-left {
+        position: absolute;
+        left: 6px;
+        top: 6px;
+      }
+      .center {
+        text-align: center;
+        padding: 0 30px 2px; /* space for absolute left button */
+      }
+      .header-right {
+        display: flex;
+        justify-content: center;
+        gap: 4px;
+        margin-top: 2px;
+      }
+      .header .subtitle {
+        display: none; /* hide on mobile as requested */
+      }
       .policy-note {
         font-size: 9px;
         padding: 2px 4px;
         line-height: 1.2;
         /* On phone, minimize this beige-ish bar so the white message area dominates */
         background: #f9f5eb;
+      }
+      .policy-note .pro-signup-link {
+        display: none;
       }
       /* When keyboard is up on mobile, reclaim vertical space for the message window */
       .chat-container.mobile-keyboard .policy-note,
@@ -524,6 +554,23 @@
         align-items: center;
         background: #fff; /* keep the bottom input clean white */
       }
+
+      /* When input focused on mobile, fix the input bar (with send arrow and handsfree) static at the bottom,
+         just above the iOS keyboard/accessory bar (the checkmark bar). Prevents it jumping to the top.
+         Messages get padding so content isn't hidden under the fixed bar. */
+      .chat-container.input-focused .input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
+        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+      }
+      .chat-container.input-focused .messages {
+        padding-bottom: 72px; /* approx height of fixed input bar */
+      }
       /* Hands-free toggle sits next to the Send arrow button (not below).
          Slightly smaller buttons to fit nicely on iPhone. */
       .handsfree-toggle {
@@ -532,6 +579,9 @@
         white-space: nowrap;
         flex-shrink: 0;
         align-items: center;
+        background: #f5f0e6;
+        padding: 1px 3px;
+        border-radius: 3px;
       }
       .handsfree-toggle input {
         width: 14px;
@@ -666,7 +716,6 @@
         <div class="center">
           <h1>📖 The Word in Context</h1>
           <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
-          <div id="current-chat-title" style="font-size:11px; opacity:0.85; margin-top:1px; color:#ddd;"></div>
         </div>
         <div class="header-right">
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
@@ -678,8 +727,14 @@
       <div class="policy-note">
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
-        <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
+        <span class="pro-signup-link" style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
+      </div>
+
+      <!-- Current chat title moved under policy note on mobile, with label, centered. -->
+      <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
+        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">Chat: </span>
+        <span id="current-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
       </div>
 
       <!-- Demo mode banner (shown only when no valid login token). -->
@@ -3540,8 +3595,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           textSpan.className = 'hf-text';
           label.appendChild(textSpan);
         }
-        // Clean short label the user requested style: "handsfree (wakeword John)"
-        textSpan.textContent = 'handsfree' + (extra ? ' ' + extra : '');
+        // On mobile use compact "HF (John)" so the toggle is visible next to the send arrow.
+        // On desktop use fuller "handsfree (wakeword John)".
+        let base = (window.innerWidth <= 768) ? 'HF' : 'handsfree';
+        textSpan.textContent = base + (extra ? ' ' + extra : '');
       }
     }
     updateHandsFreeLabel();
@@ -3554,8 +3611,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (window.innerWidth <= 768) {
           if (document.activeElement === userInput) {
             chatCont.classList.add('mobile-keyboard');
+            chatCont.classList.add('input-focused');
           } else {
             chatCont.classList.remove('mobile-keyboard');
+            chatCont.classList.remove('input-focused');
           }
         }
       };
