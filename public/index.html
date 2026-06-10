@@ -247,6 +247,13 @@
       background: #c9a227; color: white; border: none;
       padding: 0 26px; border-radius: 30px; font-size: 15px; font-weight: 600;
       cursor: pointer; height: 46px;
+      display: flex; align-items: center; justify-content: center;
+      min-width: 70px;
+    }
+    #send-btn .send-arrow {
+      display: none;
+      font-size: 20px;
+      line-height: 1;
     }
     .mic-btn {
       background: #e8e0d5; color: #2c3e50; border: none;
@@ -301,10 +308,14 @@
     .chat-item .del-btn { background: #c94e4e; color: white; }
     .handsfree-toggle {
       display: flex; align-items: center; gap: 6px;
-      font-size: 13px; color: #5c4630; margin-left: 8px;
+      font-size: 12px; color: #5c4630; margin-left: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .handsfree-toggle input {
       accent-color: #c9a227;
+      width: 16px;
+      height: 16px;
     }
     .modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -357,7 +368,6 @@
       .mic-btn, #send-btn, .stop-btn {
         min-width: 44px;
         min-height: 44px;
-        font-size: 18px;
       }
       .modal-content {
         width: 95vw;
@@ -456,8 +466,15 @@
         padding: 3px 6px;
         line-height: 1.25;
       }
+      /* When keyboard is up on mobile, reclaim vertical space for the message window */
+      .chat-container.mobile-keyboard .policy-note,
+      .chat-container.mobile-keyboard #demo-banner,
+      .chat-container.mobile-keyboard #live-transcript-container {
+        display: none !important;
+      }
       .messages {
         padding: 10px 6px;
+        padding-bottom: 18px; /* clear the fixed tiny "Secure..." line at bottom of screen */
       }
       /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
       .chat-container {
@@ -469,7 +486,38 @@
         padding: 10px 12px;
       }
       .input-area {
-        padding: 8px 6px;
+        padding: 6px 4px;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      /* Hands-free toggle on its own line or clearly visible next to controls on mobile.
+         Short clear label so people understand what the checkbox does. */
+      .handsfree-toggle {
+        width: 100%;
+        margin-top: 2px;
+        font-size: 11px;
+        order: 10; /* push to end of wrapped row */
+        justify-content: flex-start;
+      }
+
+      /* Secure footer text: tiny, at the very bottom of the screen on mobile.
+         The previous internal placement was eating vertical space in the input card. */
+      .status {
+        font-size: 8px;
+        padding: 1px 6px;
+        margin: 0;
+        opacity: 0.5;
+        text-align: center;
+        position: fixed;
+        bottom: env(safe-area-inset-bottom, 2px);
+        left: 0;
+        right: 0;
+        z-index: 5;
+        background: rgba(245, 232, 211, 0.85);
+        pointer-events: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       #user-input {
         font-size: 16px; /* prevent iOS zoom */
@@ -479,6 +527,16 @@
         min-width: 44px;
         min-height: 44px;
       }
+      /* Compact send arrow for mobile (replaces "Send" text to avoid truncation in tight input bar) */
+      #send-btn {
+        padding: 0;
+        min-width: 44px;
+        width: 44px;
+        font-size: 18px;
+        border-radius: 50%;
+      }
+      #send-btn .send-label { display: none; }
+      #send-btn .send-arrow { display: inline; }
       /* Show hamburger on mobile */
       #mobile-sidebar-toggle {
         display: block !important;
@@ -598,12 +656,15 @@
       <div class="input-area">
         <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
         <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
-        <button id="send-btn">Send</button>
+        <button id="send-btn" aria-label="Send message">
+          <span class="send-label">Send</span>
+          <span class="send-arrow">➤</span>
+        </button>
         <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
 
-        <label for="handsfree-toggle" class="handsfree-toggle">
+        <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
           <input type="checkbox" id="handsfree-toggle">
-          Hands-free
+          <span class="hf-text"></span>
         </label>
       </div>
       <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
@@ -3422,10 +3483,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const label = document.querySelector('label[for="handsfree-toggle"]');
       if (label) {
         let extra = '';
-        if (handsFreeEnabled && wakeWordEnabled && wakeWord) {
-          extra = ` (wake: ${wakeWord})`;
+        const ww = (wakeWord || 'John').trim();
+        if (handsFreeEnabled && wakeWordEnabled && ww) {
+          extra = `(wakeword ${ww})`;
         } else if (handsFreeEnabled && !wakeWordEnabled) {
-          extra = ' (always listening)';
+          extra = '(always)';
         }
         let textSpan = label.querySelector('.hf-text');
         if (!textSpan) {
@@ -3433,10 +3495,35 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           textSpan.className = 'hf-text';
           label.appendChild(textSpan);
         }
-        textSpan.textContent = ' Hands-free' + extra;
+        // Clean short label the user requested style: "handsfree (wakeword John)"
+        textSpan.textContent = 'handsfree' + (extra ? ' ' + extra : '');
       }
     }
     updateHandsFreeLabel();
+
+    // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
+    const userInput = document.getElementById('user-input');
+    const chatCont = document.querySelector('.chat-container');
+    if (userInput && chatCont) {
+      const toggleMobileKeyboardClass = () => {
+        if (window.innerWidth <= 768) {
+          if (document.activeElement === userInput) {
+            chatCont.classList.add('mobile-keyboard');
+          } else {
+            chatCont.classList.remove('mobile-keyboard');
+          }
+        }
+      };
+      userInput.addEventListener('focus', toggleMobileKeyboardClass);
+      userInput.addEventListener('blur', () => {
+        // small delay so iOS keyboard hide animation finishes
+        setTimeout(() => chatCont.classList.remove('mobile-keyboard'), 150);
+      });
+      // Also clear on resize/orientation
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) chatCont.classList.remove('mobile-keyboard');
+      });
+    }
 
     handsFreeCheckbox.addEventListener('change', () => {
       handsFreeEnabled = handsFreeCheckbox.checked;
