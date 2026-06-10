@@ -13,42 +13,14 @@ const app = express();
 const PORT = process.env.PORT || 8787;
 
 // === Simple SQLite DB for users ===
-// Persistent disk: On Render, we mount a disk at /data (see render.yaml).
-// This survives deploys/restarts. We detect the disk reliably by checking
-// if /data exists at startup (more robust than just env var).
-// Fallback to local (ephemeral) only if disk not present.
-let dbPath = path.join(__dirname, 'users.db');
-const hasPersistentDisk = fs.existsSync('/data') && fs.statSync('/data').isDirectory();
-if (hasPersistentDisk || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
-  dbPath = '/data/users.db';
-}
+// Uses a local file next to the code. On Render (free tier), the filesystem
+// is ephemeral — the DB will be wiped on every deploy/restart.
+// For production persistence later, attach a disk or switch to Postgres.
+const db = new Database(path.join(__dirname, 'users.db'));
+db.pragma('journal_mode = WAL');
 
-console.log(`[DB] Persistent disk detected: ${hasPersistentDisk}, using path: ${dbPath}`);
-
-let db;
+// Users table
 try {
-  // Ensure dir exists (for local or if disk mount not yet ready)
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  console.log(`[DB] Successfully opened SQLite at ${dbPath}`);
-  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  console.log(`[DB] Current users in DB: ${userCount}`);
-} catch (err) {
-  console.error(`[DB] CRITICAL: Failed to open ${dbPath}:`, err.message);
-  // Last-resort fallback (will lose data on restart)
-  const fallbackPath = path.join(__dirname, 'users.db');
-  db = new Database(fallbackPath);
-  db.pragma('journal_mode = WAL');
-  console.log(`[DB] FALLBACK to ephemeral local DB at ${fallbackPath} - DATA WILL BE LOST ON REDEPLOY`);
-}
-
-// Schema initialization wrapped so a bad DB (dummy or permission issue) does not crash the entire process on startup
-try {
-  // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +36,7 @@ try {
     );
   `);
 
-  // Migration for existing DBs (safe if column already exists)
+  // Migrations (safe if column already exists)
   try {
     db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
   } catch (e) {
@@ -88,9 +60,11 @@ try {
       expires_at TEXT NOT NULL
     );
   `);
-  console.log('[DB] Schema initialized');
-} catch (schemaErr) {
-  console.error('[DB] Schema init failed (routes using DB may error until fixed):', schemaErr.message);
+
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  console.log(`[DB] Simple local SQLite ready. Current users: ${userCount} (will be 0 after redeploy on Render free tier)`);
+} catch (err) {
+  console.error('DB schema error:', err.message);
 }
 
 // === Email (Resend) ===
@@ -912,18 +886,16 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Debug endpoint: check current DB path and user count (safe to call from browser)
+// Simple debug endpoint (useful after deploys to see if data survived)
 app.get('/api/debug/db', (req, res) => {
   try {
     const count = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
     res.json({
-      dbPath,
-      isPersistent: dbPath.includes('/data'),
       userCount: count,
-      note: 'If isPersistent is false after a redeploy, the disk is not attached. Check Render dashboard > Disks for the service.'
+      note: 'On Render free tier without a disk, the DB is ephemeral and will be wiped on redeploy. Data here is for testing only.'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message, dbPath });
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -1760,13 +1732,21 @@ app.post('/api/chat', (req, res, next) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
+  let dbInfo = { userCount: -1, error: null };
+  try {
+    const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+    dbInfo = { userCount: count, error: null };
+  } catch (e) {
+    dbInfo.error = e.message;
+  }
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
-    hasHostedTTS: !!process.env.TTS_SERVER_URL, // legacy/old hosted; premium now uses xAI TTS by default (same key)
-    hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
-    hasTTSKey: false, // 11Labs fully removed; premium voices now use xAI (XAI_API_KEY) or optional TTS_SERVER_URL legacy hosted
-    model: 'grok-4.3'
+    hasHostedTTS: !!process.env.TTS_SERVER_URL,
+    hasSTT: !!process.env.XAI_API_KEY,
+    hasTTSKey: false,
+    model: 'grok-4.3',
+    db: dbInfo
   });
 });
 
