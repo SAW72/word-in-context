@@ -735,16 +735,17 @@ app.post('/api/tester-signup', async (req, res) => {
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
 
-    // Send custom tester magic link email (optional first login)
+    // Send custom tester magic link email (optional first login / other devices)
     await sendMagicLink(email, token, { isTester: true });
 
-    // Since password was provided on signup, issue JWT immediately so they can log in right away (browser can save credentials)
+    // Issue JWT so the client can auto-login and go straight to the app (exactly like the 7-day paid trial flow)
     const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       success: true, 
+      token: jwtToken,
       email,
-      message: `Account created. Use the Login button at the top of the page with the password you chose, or check your email for a magic link. Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
+      message: `Account created. Logging you in... Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
     });
   } catch (err) {
     console.error('tester-signup error:', err);
