@@ -19,7 +19,8 @@
       background: #f5e8d3;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: flex;
-      height: 100vh;
+      height: 100vh; /* fallback */
+      min-height: 100dvh; /* better for iOS Safari dynamic bars */
       overflow: hidden;
     }
     .sidebar {
@@ -342,7 +343,8 @@
         max-width: 100%;
         margin: 0;
         border-radius: 0;
-        height: calc(100dvh - 120px); /* better for mobile with dynamic viewport */
+        /* Height tuned to leave max room for the messages read area + speak buttons after header + policy-note + input */
+        height: calc(100dvh - 78px);
       }
       .input-area {
         padding: 8px;
@@ -396,7 +398,7 @@
     /* Extra tweaks for very small phones */
     @media (max-width: 480px) {
       .chat-container {
-        height: calc(100dvh - 100px);
+        height: calc(100dvh - 68px) !important; /* even more room for the reading / speak area on the smallest phones */
       }
       .input-area button {
         padding: 8px 10px;
@@ -410,8 +412,8 @@
         top: 0;
         left: 0;
         height: 100%;
-        width: 78vw;
-        max-width: 280px;
+        width: 86vw;
+        max-width: 320px;
         z-index: 200;
         transform: translateX(-100%);
         transition: transform 0.25s ease;
@@ -421,8 +423,18 @@
       .sidebar.open {
         transform: translateX(0);
       }
+      /* When the chat list drawer is open on iPhone, dim + slightly shift the main read area
+         so the "read window" (messages + speak buttons) isn't left as an unusable sliver on the side. */
+      body.sidebar-open .main-area {
+        opacity: 0.35;
+        transform: translateX(8px);
+        pointer-events: none;
+      }
+      body.sidebar-open .chat-container {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      }
       .main-area {
-        padding: 8px;
+        padding: 0;
       }
       .chat-container {
         max-width: 100%;
@@ -430,20 +442,26 @@
         box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       }
       .header {
-        padding: 8px 10px;
+        padding: 6px 8px;
       }
       .header h1 {
-        font-size: 16px;
+        font-size: 15px;
       }
       .header .subtitle {
-        font-size: 10px;
+        font-size: 9px;
+        line-height: 1.1;
       }
       .policy-note {
-        font-size: 11px;
-        padding: 4px 8px;
+        font-size: 10px;
+        padding: 3px 6px;
+        line-height: 1.25;
       }
       .messages {
-        padding: 12px 8px;
+        padding: 10px 6px;
+      }
+      /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
+      .chat-container {
+        height: calc(100dvh - 72px) !important; /* header + policy + input + safe areas; more generous than before */
       }
       .message {
         max-width: 88%;
@@ -465,14 +483,14 @@
       #mobile-sidebar-toggle {
         display: block !important;
       }
-      /* Subtle backdrop effect on mobile when drawer open (click outside handled in JS) */
+      /* Backdrop on mobile when drawer open — captures taps to close and dims the main read area */
       body.sidebar-open::before {
         content: '';
         position: fixed;
         inset: 0;
-        background: rgba(0,0,0,0.3);
+        background: rgba(0,0,0,0.45);
         z-index: 150;
-        pointer-events: none;
+        pointer-events: all;
       }
       .header .left {
         flex-wrap: wrap;
@@ -481,6 +499,24 @@
       .voice-btn, .sources-btn, .upgrade-btn {
         font-size: 11px;
         padding: 3px 6px;
+      }
+
+      /* Much larger, tappable speak buttons (🔊) for AI replies and verse citations on iPhone.
+         The "read window" (messages) must allow easy access to these. */
+      .speak-btn {
+        font-size: 22px;
+        padding: 10px;
+        min-width: 44px;
+        min-height: 44px;
+        background: rgba(255,255,255,0.9);
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        right: 6px;
+        bottom: 6px;
+        opacity: 0.85;
+      }
+      .ai {
+        padding-bottom: 36px; /* room for the absolute speak button above the bubble bottom */
       }
     }
 
@@ -3683,6 +3719,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           document.body.classList.toggle('sidebar-open', isOpen);
         });
       }
+
+      // On mobile, always start (and stay) with the chat list drawer closed so the main "read window"
+      // (messages area + speak 🔊 buttons on replies and verses) gets the full iPhone width/height by default.
+      function forceCloseMobileDrawer() {
+        if (window.innerWidth <= 768 && sidebar) {
+          sidebar.classList.remove('open');
+          document.body.classList.remove('sidebar-open');
+        }
+      }
+      forceCloseMobileDrawer();
+      // In case of late layout or Safari quirks, double-check shortly after load
+      setTimeout(forceCloseMobileDrawer, 50);
+      setTimeout(forceCloseMobileDrawer, 300);
 
       // Close drawer when clicking backdrop or selecting a chat on mobile
       document.addEventListener('click', (e) => {
