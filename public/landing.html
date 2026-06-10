@@ -982,6 +982,8 @@
           else if (testerEmail && testerEmail.value) modalEmail.value = testerEmail.value;
           setTimeout(() => modalEmail.focus(), 50);
         }
+        // Ensure password eye toggle is attached (in case of timing)
+        setTimeout(addPasswordToggles, 50);
       }
     }
 
@@ -1140,18 +1142,18 @@
 
         const toggle = document.createElement('span');
         toggle.className = 'password-toggle';
-        toggle.textContent = '👁';
+        toggle.textContent = '🙈';
         toggle.setAttribute('aria-label', 'Show password');
         wrapper.appendChild(toggle);
 
         toggle.addEventListener('click', () => {
           if (input.type === 'password') {
             input.type = 'text';
-            toggle.textContent = '🙈';
+            toggle.textContent = '👁';
             toggle.setAttribute('aria-label', 'Hide password');
           } else {
             input.type = 'password';
-            toggle.textContent = '👁';
+            toggle.textContent = '🙈';
             toggle.setAttribute('aria-label', 'Show password');
           }
         });

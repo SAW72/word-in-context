@@ -1850,56 +1850,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
       if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
 
-      // Helper functions for sorting only (no filtering/exclusion - all voices are shown)
-      const isEnglishVoice = (v) => {
-        const lang = (v.lang || '').toLowerCase();
-        const name = v.name.toLowerCase();
-        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
-      };
-      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
-
-      // Sort for better user experience:
-      // - Good English voices first, with "Google UK English Male" on top, then other Google UK, Enhanced, etc.
-      // - Then non-English voices in alphabetical order by name.
-      // This avoids pure alphabetical mess and puts quality English defaults first while keeping all other languages.
-      voicesToShow.sort((a, b) => {
-        const na = a.name.toLowerCase();
-        const nb = b.name.toLowerCase();
-        const aIsEng = isEnglishVoice(a);
-        const bIsEng = isEnglishVoice(b);
-
-        if (aIsEng && bIsEng) {
-          // Prioritize Google UK English Male
-          const aUKMale = na.includes('google uk english male') ? 0 : (na.includes('google') && na.includes('uk') ? 1 : 2);
-          const bUKMale = nb.includes('google uk english male') ? 0 : (nb.includes('google') && nb.includes('uk') ? 1 : 2);
-          if (aUKMale !== bUKMale) return aUKMale - bUKMale;
-
-          // Other Google UK
-          const aGoogleUK = (na.includes('google') && na.includes('uk')) ? 0 : 1;
-          const bGoogleUK = (nb.includes('google') && nb.includes('uk')) ? 0 : 1;
-          if (aGoogleUK !== bGoogleUK) return aGoogleUK - bGoogleUK;
-
-          // Enhanced
-          const aEnh = na.includes('enhanced') ? 0 : 1;
-          const bEnh = nb.includes('enhanced') ? 0 : 1;
-          if (aEnh !== bEnh) return aEnh - bEnh;
-
-          // Then other good English keywords
-          const aGood = goodEnglishKeywords.some(kw => na.includes(kw)) ? 0 : 1;
-          const bGood = goodEnglishKeywords.some(kw => nb.includes(kw)) ? 0 : 1;
-          if (aGood !== bGood) return aGood - bGood;
-
-          // Alpha for rest of English
-          return na.localeCompare(nb);
-        } else if (aIsEng && !bIsEng) {
-          return -1; // English before non-English
-        } else if (!aIsEng && bIsEng) {
-          return 1;
-        } else {
-          // Both non-English: alphabetical by name
-          return na.localeCompare(nb);
-        }
-      });
+      // Simple alphabetical sort only — no English/Mac bias or any filtering (all voices from the browser are shown).
+      voicesToShow.sort((a, b) => a.name.localeCompare(b.name));
 
       // Add local voices
       voicesToShow.forEach(voice => {
@@ -1920,18 +1872,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        // Strongly prefer Google UK English Male (user-requested high quality default).
-        // Then other Google UK, Enhanced, Samantha, Daniel.
-        const preferred = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-                          voicesToShow.find(v => v.name.includes("Enhanced")) ||
-                          voicesToShow.find(v => v.name.includes('Samantha')) ||
-                          voicesToShow.find(v => v.name.includes('Daniel'));
-        let defaultVoice = preferred;
-        if (!defaultVoice) {
-          // Prefer any remaining English voice (after sort, this will be the best one like Google UK)
-          defaultVoice = voicesToShow.find(v => isEnglishVoice(v)) || voicesToShow[0];
-        }
+        // Prefer any Enhanced or Premium voice if available (for iPhone users), otherwise first in list
+        let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('enhanced') || v.name.toLowerCase().includes('premium')) || voicesToShow[0];
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
 
@@ -3959,18 +3901,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         const toggle = document.createElement('span');
         toggle.className = 'password-toggle';
-        toggle.textContent = '👁';
+        toggle.textContent = '🙈';
         toggle.setAttribute('aria-label', 'Show password');
         wrapper.appendChild(toggle);
 
         toggle.addEventListener('click', () => {
           if (input.type === 'password') {
             input.type = 'text';
-            toggle.textContent = '🙈';
+            toggle.textContent = '👁';
             toggle.setAttribute('aria-label', 'Hide password');
           } else {
             input.type = 'password';
-            toggle.textContent = '👁';
+            toggle.textContent = '🙈';
             toggle.setAttribute('aria-label', 'Show password');
           }
         });
@@ -4230,6 +4172,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       renderSidebarChats(''); // render Grok-like sidebar on init
       initSidebarCollapse();
       addPasswordToggles();
+      // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
+      setTimeout(addPasswordToggles, 100);
+      setTimeout(addPasswordToggles, 400);
 
       if (handsFreeEnabled) {
         micBtn.style.background = '#c9a227';
