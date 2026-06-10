@@ -176,6 +176,16 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    /* Desktop chat title in header */
+    .desktop-chat-title {
+      display: block;
+    }
+
+    /* Mobile version under policy note */
+    .current-chat-wrapper {
+      display: none;
+    }
     .chats-btn {
       background: rgba(255,255,255,0.15); border: none;
       color: white; font-size: 12px; padding: 4px 10px; border-radius: 6px;
@@ -517,15 +527,20 @@
       .header .subtitle {
         display: none; /* hide on mobile as requested */
       }
+
+      .desktop-chat-title {
+        display: none;
+      }
+
+      .current-chat-wrapper {
+        display: block;
+      }
       .policy-note {
         font-size: 9px;
         padding: 2px 4px;
         line-height: 1.2;
         /* On phone, minimize this beige-ish bar so the white message area dominates */
         background: #f9f5eb;
-      }
-      .policy-note .pro-signup-link {
-        display: none;
       }
       /* When keyboard is up on mobile, reclaim vertical space for the message window */
       .chat-container.mobile-keyboard .policy-note,
@@ -719,6 +734,11 @@
         <div class="center">
           <h1>📖 The Word in Context</h1>
           <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
+          <!-- Desktop chat title with label -->
+          <div class="desktop-chat-title" style="font-size: 10px; color: #ddd; margin-top: 2px;">
+            <span style="font-weight: 600;">chat title </span>
+            <span id="current-chat-title" style="font-size: 11px; opacity: 0.85;"></span>
+          </div>
         </div>
         <div class="header-right">
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
@@ -730,14 +750,13 @@
       <div class="policy-note">
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
-        <span class="pro-signup-link" style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
       </div>
 
       <!-- Current chat title moved under policy note on mobile, with label, centered. -->
       <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
-        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">Chat: </span>
-        <span id="current-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
+        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">chat title </span>
+        <span class="mobile-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
       </div>
 
       <!-- Demo mode banner (shown only when no valid login token). -->
@@ -797,6 +816,7 @@
         Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
         Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
         After installing Piper voices, click <strong>"Reload system voices"</strong>.
+        <br>On iPhone, after downloading premium/enhanced voices in Settings &gt; Accessibility &gt; Spoken Content, tap "Reload system voices" (and possibly "Test selected") — iOS often requires a speak action to expose the new voices to the browser.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
@@ -887,6 +907,7 @@
 
         <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
           After installing a new voice (e.g. from Piper), click <strong>"Reload system voices"</strong> or restart the browser.
+          On iPhone, newly downloaded enhanced/premium voices may only appear after tapping Reload + a test speak.
           The preview list below has a speaker for every voice so you can test them easily.
           Numbered voices (e.g. 925) are real macOS internal voices — tap the 🔊 to discover if they sound male or female.
         </p>
@@ -1593,22 +1614,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function reloadSystemVoices() {
       // Aggressively reload voices from the OS — some (Piper, premium Mac voices, Google voices) only appear after multiple calls or after the browser has "woken up" the speech engine.
-      // Wake the engine with silent utterance for iPhone downloaded voices.
-      try {
-        const wake = new SpeechSynthesisUtterance(' ');
-        wake.volume = 0;
-        wake.rate = 10;
-        synth.speak(wake);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
-      } catch(e) {}
+      // Extra aggressive for iPhone downloaded premium/enhanced voices.
+      function wakeSpeechEngine() {
+        try {
+          // Tiny volume + short text often needed on iOS to force-load premium/enhanced voices into getVoices()
+          const wake = new SpeechSynthesisUtterance('a');
+          wake.volume = 0.001;
+          wake.rate = 10;
+          synth.speak(wake);
+          setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
+        } catch(e) {}
+        try { synth.getVoices(); } catch(e) {}
+      }
 
-      try { synth.getVoices(); } catch (e) {}
+      wakeSpeechEngine();
       loadVoices();
-      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 250);
-      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 700);
-      setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 1500);
+      setTimeout(wakeSpeechEngine, 150);
+      setTimeout(loadVoices, 300);
+      setTimeout(wakeSpeechEngine, 500);
+      setTimeout(loadVoices, 700);
+      setTimeout(loadVoices, 1100);
       setTimeout(populateVoicePreviews, 200);
-      setTimeout(populateVoicePreviews, 900);
+      setTimeout(populateVoicePreviews, 800);
     }
 
     // --- Custom voice labels (user can rename any voice, including numbered internal ones) ---
@@ -1682,11 +1709,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const modernNeuralIndicators = ['piper', 'neural', 'high quality', 'premium', 'natural', 'alta', 'alba'];
 
       let voicesToShow = voices.filter(v => {
-        if (!isEnglishVoice(v)) return true;
         const n = v.name.toLowerCase();
-        // Always keep iPhone/Safari premium, enhanced, Siri, and internal voices — they often have downloaded premium/enhanced quality
+
+        // Always keep ANY voice with enhanced/premium/siri/internal keywords first.
+        // This is critical for iPhone downloaded premium and enhanced voices.
         if (n.includes('enhanced') || n.includes('premium') || n.includes('siri voice') || n.includes('voice ')) return true;
-        if (n.includes('karen') || n.includes('allison') || n.includes('alex') || n.includes('bruce')) return false;
+
+        if (!isEnglishVoice(v)) return true;
+        // Explicitly hide ONLY the plain old low-quality Mac voices (not their enhanced/premium versions)
+        if ((n.includes('karen') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('allison') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('alex') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('bruce') && !n.includes('enhanced') && !n.includes('premium'))) return false;
         if (goodEnglishKeywords.some(kw => n.includes(kw))) return true;
         if (modernNeuralIndicators.some(ind => n.includes(ind))) return true;
         return true;
@@ -1801,12 +1835,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
       const modernNeuralIndicators = ['piper', 'neural', 'high quality', 'premium', 'natural', 'alta', 'alba']; // support user-installed neural voices like Piper
       let voicesToShow = voices.filter(v => {
-        if (!isEnglishVoice(v)) return true; // keep every non-English voice
-
         const n = v.name.toLowerCase();
 
-        // Explicitly hide the old low-quality Mac voices the user dislikes
-        if (n.includes('karen') || n.includes('allison') || n.includes('alex') || n.includes('bruce')) return false;
+        // Always keep ANY voice with enhanced/premium/siri/internal keywords first.
+        // This is critical for iPhone downloaded premium and enhanced voices, which may not match isEnglishVoice perfectly.
+        if (n.includes('enhanced') || n.includes('premium') || n.includes('siri voice') || n.includes('voice ')) return true;
+
+        if (!isEnglishVoice(v)) return true; // keep every non-English voice
+
+        // Explicitly hide ONLY the plain old low-quality Mac voices (not their enhanced/premium versions)
+        if ((n.includes('karen') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('allison') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('alex') && !n.includes('enhanced') && !n.includes('premium')) ||
+            (n.includes('bruce') && !n.includes('enhanced') && !n.includes('premium'))) return false;
 
         // Show any voice that matches our known good keywords
         if (goodEnglishKeywords.some(kw => n.includes(kw))) return true;
@@ -1944,20 +1985,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const rateValue = document.getElementById('rate-value');
       const pitchValue = document.getElementById('pitch-value');
 
-      // Force multiple loads — newly installed voices (Piper, etc.) often appear late or after the first getVoices() call
-      // On iPhone, a silent speak is often required to "wake" the speechSynthesis engine so that
-      // newly downloaded premium/enhanced/Siri voices appear in the list.
-      try {
-        const wake = new SpeechSynthesisUtterance(' ');
-        wake.volume = 0;
-        wake.rate = 10;
-        synth.speak(wake);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
-      } catch(e) {}
+      // On iPhone, newly downloaded premium/enhanced voices often require the speech engine to be "woken"
+      // with a speak() call (even silent) before they appear in getVoices().
+      // Do multiple silent wakes + getVoices kicks.
+      function wakeSpeechEngine() {
+        try {
+          // Tiny volume + short text often needed on iOS to force-load premium/enhanced voices into getVoices()
+          const wake = new SpeechSynthesisUtterance('a');
+          wake.volume = 0.001;
+          wake.rate = 10;
+          synth.speak(wake);
+          setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
+        } catch(e) {}
+        try { synth.getVoices(); } catch(e) {}
+      }
 
+      wakeSpeechEngine();
       loadVoices();
-      setTimeout(loadVoices, 600);
-      setTimeout(loadVoices, 1500);
+      setTimeout(wakeSpeechEngine, 200);
+      setTimeout(loadVoices, 400);
+      setTimeout(wakeSpeechEngine, 700);
+      setTimeout(loadVoices, 900);
+      setTimeout(loadVoices, 1400);
 
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
@@ -3282,7 +3331,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     });
 
     stopBtn.addEventListener("click", stopSpeaking);
-    voiceBtn.addEventListener('click', openVoiceSettings);
+    voiceBtn.addEventListener('click', () => {
+      // Extra wake on iPhone before opening modal (user gesture helps unlock voices)
+      try {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0.001;
+        synth.speak(u);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 50);
+      } catch(e) {}
+      openVoiceSettings();
+    });
 
     // Backdrop click to close voice modal
     const voiceModalEl = document.getElementById('voice-modal');
@@ -4043,37 +4101,46 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function updateHeaderForCurrentChat() {
       const el = document.getElementById('current-chat-title');
-      if (!el) return;
+      const mobileEl = document.querySelector('.mobile-chat-title');
+      if (!el && !mobileEl) return;
+
       const chat = getCurrentChat();
-      if (chat) {
-        el.textContent = chat.title || 'Conversation';
-        el.title = 'Click to rename • ' + new Date(chat.updated || Date.now()).toLocaleString();
-        // make title clickable for rename (Grok-like)
-        el.onclick = () => {
-          const original = chat.title || '';
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = original;
-          input.style.cssText = 'font-size:11px; background:#1a252f; color:#ddd; border:1px solid #c9a227; border-radius:3px; padding:1px 4px; width:140px;';
-          el.replaceWith(input);
-          input.focus();
-          input.select();
-          const save = () => {
-            const newT = input.value.trim() || 'Untitled';
-            chat.title = newT;
-            saveChats();
-            updateHeaderForCurrentChat();
-            renderSidebarChats(currentSearchTerm || '');
+      const titleText = chat ? (chat.title || 'Conversation') : '';
+
+      if (el) {
+        el.textContent = titleText;
+        if (chat) {
+          el.title = 'Click to rename • ' + new Date(chat.updated || Date.now()).toLocaleString();
+          // make title clickable for rename (Grok-like) - desktop
+          el.onclick = () => {
+            const original = chat.title || '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = original;
+            input.style.cssText = 'font-size:11px; background:#1a252f; color:#ddd; border:1px solid #c9a227; border-radius:3px; padding:1px 4px; width:140px;';
+            el.replaceWith(input);
+            input.focus();
+            input.select();
+            const save = () => {
+              const newT = input.value.trim() || 'Untitled';
+              chat.title = newT;
+              saveChats();
+              updateHeaderForCurrentChat();
+              renderSidebarChats(currentSearchTerm || '');
+            };
+            input.onblur = save;
+            input.onkeydown = (ev) => {
+              if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+              if (ev.key === 'Escape') { updateHeaderForCurrentChat(); renderSidebarChats(currentSearchTerm || ''); }
+            };
           };
-          input.onblur = save;
-          input.onkeydown = (ev) => {
-            if (ev.key === 'Enter') { ev.preventDefault(); save(); }
-            if (ev.key === 'Escape') { updateHeaderForCurrentChat(); renderSidebarChats(currentSearchTerm || ''); }
-          };
-        };
-      } else {
-        el.textContent = '';
-        el.onclick = null;
+        } else {
+          el.onclick = null;
+        }
+      }
+
+      if (mobileEl) {
+        mobileEl.textContent = titleText;
       }
     }
 
