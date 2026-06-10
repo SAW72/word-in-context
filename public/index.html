@@ -1799,11 +1799,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       voiceSelect.innerHTML = '';
 
-      // No filters at all (filters removed per user request).
-      // Show every voice the browser reports so iPhone premium/enhanced voices appear.
-      // The preview list below lets you test internal voices (tap 🔊 to discover them after download).
+      // No filters at all (filters removed per user request to show all iPhone premium/enhanced voices).
+      // Show every voice the browser reports.
+      // The preview list below lets you test internal voices (tap 🔊 to discover them after download/reboot).
       let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
       if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
+
+      // Helper functions for sorting only (no filtering/exclusion - all voices are shown)
+      const isEnglishVoice = (v) => {
+        const lang = (v.lang || '').toLowerCase();
+        const name = v.name.toLowerCase();
+        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
+      };
+      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
 
       // Sort for better user experience:
       // - Good English voices first, with "Google UK English Male" on top, then other Google UK, Enhanced, etc.
