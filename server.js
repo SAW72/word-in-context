@@ -37,12 +37,10 @@ try {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   console.log(`[DB] Opened successfully at ${dbPath}`);
-  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  console.log(`[DB] Current users in DB: ${userCount}`);
 } catch (err) {
   console.error(`[DB] CRITICAL: Failed to open ${dbPath}: ${err.message}`);
   if (onRender) {
-    console.error('[DB] WARNING: Could not use /data (disk may not be attached yet). Falling back to ephemeral local DB. Users WILL be lost on redeploy!');
+    console.error('[DB] WARNING: Could not use /data. Falling back to ephemeral local DB. Users WILL be lost on redeploy!');
   }
   dbPath = path.join(__dirname, 'users.db');
   db = new Database(dbPath);
@@ -50,40 +48,25 @@ try {
   console.log(`[DB] Using fallback local path: ${dbPath}`);
 }
 
+// Schema (CREATE IF NOT EXISTS) must run before any SELECT on users table.
+// This is why a fresh disk volume was causing "no such table" and fallback.
 try {
-  // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
-      password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
+      password_hash TEXT,
       stripe_customer_id TEXT,
       stripe_subscription_id TEXT,
-      status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
+      status TEXT DEFAULT 'trialing',
       trial_end TEXT,
-      access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
-      manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
+      access_granted INTEGER DEFAULT 1,
+      manual_free INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
-
-  // Migrations (safe if column already exists)
-  try {
-    db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
-  } catch (e) {
-    if (!e.message.includes('duplicate column')) {
-      console.error('Migration warning for password_hash:', e.message);
-    }
-  }
-  try {
-    db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`);
-  } catch (e) {
-    if (!e.message.includes('duplicate column')) {
-      console.error('Migration warning for group_name:', e.message);
-    }
-  }
-
-  // Magic tokens table (short lived)
+  try { db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -91,6 +74,8 @@ try {
       expires_at TEXT NOT NULL
     );
   `);
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
 } catch (err) {
   console.error('DB schema error (non-fatal):', err.message);
 }
