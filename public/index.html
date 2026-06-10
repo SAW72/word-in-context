@@ -574,14 +574,15 @@
       /* Hands-free toggle sits next to the Send arrow button (not below).
          Slightly smaller buttons to fit nicely on iPhone. */
       .handsfree-toggle {
-        font-size: 9px;
+        font-size: 10px;
         margin-left: 2px;
         white-space: nowrap;
         flex-shrink: 0;
         align-items: center;
         background: #f5f0e6;
-        padding: 1px 3px;
-        border-radius: 3px;
+        padding: 2px 4px;
+        border-radius: 4px;
+        border: 1px solid #d8c8a8;
       }
       .handsfree-toggle input {
         width: 14px;
@@ -611,6 +612,8 @@
       #user-input {
         font-size: 16px; /* prevent iOS zoom */
         padding: 10px 14px;
+        flex: 1 1 100px;
+        min-width: 0;
       }
       .mic-btn, #send-btn {
         min-width: 38px;
@@ -760,12 +763,13 @@
           <span class="send-label">Send</span>
           <span class="send-arrow">➤</span>
         </button>
-        <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
 
         <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
           <input type="checkbox" id="handsfree-toggle">
           <span class="hf-text"></span>
         </label>
+
+        <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
       </div>
       <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
     </div>
@@ -1589,6 +1593,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function reloadSystemVoices() {
       // Aggressively reload voices from the OS — some (Piper, premium Mac voices, Google voices) only appear after multiple calls or after the browser has "woken up" the speech engine.
+      // Wake the engine with silent utterance for iPhone downloaded voices.
+      try {
+        const wake = new SpeechSynthesisUtterance(' ');
+        wake.volume = 0;
+        wake.rate = 10;
+        synth.speak(wake);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
+      } catch(e) {}
+
       try { synth.getVoices(); } catch (e) {}
       loadVoices();
       setTimeout(() => { try { synth.getVoices(); } catch (e) {} loadVoices(); }, 250);
@@ -1671,6 +1684,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let voicesToShow = voices.filter(v => {
         if (!isEnglishVoice(v)) return true;
         const n = v.name.toLowerCase();
+        // Always keep iPhone/Safari premium, enhanced, Siri, and internal voices — they often have downloaded premium/enhanced quality
+        if (n.includes('enhanced') || n.includes('premium') || n.includes('siri voice') || n.includes('voice ')) return true;
         if (n.includes('karen') || n.includes('allison') || n.includes('alex') || n.includes('bruce')) return false;
         if (goodEnglishKeywords.some(kw => n.includes(kw))) return true;
         if (modernNeuralIndicators.some(ind => n.includes(ind))) return true;
@@ -1930,6 +1945,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const pitchValue = document.getElementById('pitch-value');
 
       // Force multiple loads — newly installed voices (Piper, etc.) often appear late or after the first getVoices() call
+      // On iPhone, a silent speak is often required to "wake" the speechSynthesis engine so that
+      // newly downloaded premium/enhanced/Siri voices appear in the list.
+      try {
+        const wake = new SpeechSynthesisUtterance(' ');
+        wake.volume = 0;
+        wake.rate = 10;
+        synth.speak(wake);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
+      } catch(e) {}
+
       loadVoices();
       setTimeout(loadVoices, 600);
       setTimeout(loadVoices, 1500);
