@@ -408,7 +408,7 @@
     /* Extra tweaks for very small phones */
     @media (max-width: 480px) {
       .chat-container {
-        height: calc(100dvh - 68px) !important; /* even more room for the reading / speak area on the smallest phones */
+        /* full-bleed white message area on phone (see main mobile drawer rules) */
       }
       .input-area button {
         padding: 8px 10px;
@@ -445,11 +445,18 @@
       }
       .main-area {
         padding: 0;
+        background: transparent;
       }
+      /* On phone: make the white message area (chat-container) the dominant full-screen thing.
+         Almost no beige background should be visible — header (dark) at top, then white messages + input. */
       .chat-container {
         max-width: 100%;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        width: 100%;
+        height: 100dvh;
+        border-radius: 0;
+        box-shadow: none;
+        margin: 0;
+        background: #fff;
       }
       .header {
         padding: 6px 8px;
@@ -462,9 +469,11 @@
         line-height: 1.1;
       }
       .policy-note {
-        font-size: 10px;
-        padding: 3px 6px;
-        line-height: 1.25;
+        font-size: 9px;
+        padding: 2px 4px;
+        line-height: 1.2;
+        /* On phone, minimize this beige-ish bar so the white message area dominates */
+        background: #f9f5eb;
       }
       /* When keyboard is up on mobile, reclaim vertical space for the message window */
       .chat-container.mobile-keyboard .policy-note,
@@ -475,10 +484,11 @@
       .messages {
         padding: 10px 6px;
         padding-bottom: 18px; /* clear the fixed tiny "Secure..." line at bottom of screen */
+        background: #fff; /* pure white message area on phone */
       }
       /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
       .chat-container {
-        height: calc(100dvh - 72px) !important; /* header + policy + input + safe areas; more generous than before */
+        /* On phone we force full-bleed white below; the 100dvh rule in the drawer media takes precedence for full coverage */
       }
       .message {
         max-width: 88%;
@@ -489,6 +499,7 @@
         padding: 6px 4px;
         flex-wrap: wrap;
         gap: 6px;
+        background: #fff; /* keep the bottom input clean white */
       }
       /* Hands-free toggle on its own line or clearly visible next to controls on mobile.
          Short clear label so people understand what the checkbox does. */
@@ -513,11 +524,12 @@
         left: 0;
         right: 0;
         z-index: 5;
-        background: rgba(245, 232, 211, 0.85);
+        background: transparent;
         pointer-events: none;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: #8b5e3c; /* keep it subtle and dark enough to read on any bg */
       }
       #user-input {
         font-size: 16px; /* prevent iOS zoom */
@@ -3502,7 +3514,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     updateHandsFreeLabel();
 
     // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
-    const userInput = document.getElementById('user-input');
+    // (userInput is already declared earlier in the script — do not re-declare)
     const chatCont = document.querySelector('.chat-container');
     if (userInput && chatCont) {
       const toggleMobileKeyboardClass = () => {
