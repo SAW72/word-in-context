@@ -12,15 +12,46 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-// === Simple SQLite DB for users ===
-// Uses a local file next to the code. On Render (free tier), the filesystem
-// is ephemeral — the DB will be wiped on every deploy/restart.
-// For production persistence later, attach a disk or switch to Postgres.
-const db = new Database(path.join(__dirname, 'users.db'));
-db.pragma('journal_mode = WAL');
+// Raw body for Stripe webhook — MUST come *before* any body parser (including express.json())
+// so req.body is a Buffer when we reach constructEvent for signature verification.
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
-// Users table
+// === SQLite DB for users (with Render persistent disk support) ===
+// On Render we mount a persistent disk at /data (see render.yaml).
+// This keeps user accounts, trials, manual_free flags etc. across deploys/restarts.
+// Locally we fall back to the project directory (ephemeral in dev too if you restart).
+let dbPath = path.join(__dirname, 'users.db');
+const onRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+if (onRender) {
+  dbPath = '/data/users.db';
+}
+
+console.log(`[DB] Using ${onRender ? 'PERSISTENT' : 'LOCAL'} path: ${dbPath}`);
+
+let db;
 try {
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  console.log(`[DB] Opened successfully at ${dbPath}`);
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  console.log(`[DB] Current users in DB: ${userCount}`);
+} catch (err) {
+  console.error(`[DB] CRITICAL: Failed to open ${dbPath}: ${err.message}`);
+  if (onRender) {
+    console.error('[DB] WARNING: Persistent disk not mounted. Falling back to ephemeral storage. Users WILL be lost on redeploy!');
+  }
+  // Last resort local (will be wiped on Render redeploy)
+  dbPath = path.join(__dirname, 'users.db');
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+}
+
+try {
+  // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,11 +91,8 @@ try {
       expires_at TEXT NOT NULL
     );
   `);
-
-  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  console.log(`[DB] Simple local SQLite ready. Current users: ${userCount} (will be 0 after redeploy on Render free tier)`);
 } catch (err) {
-  console.error('DB schema error:', err.message);
+  console.error('DB schema error (non-fatal):', err.message);
 }
 
 // === Email (Resend) ===
@@ -374,9 +402,6 @@ app.use(express.json({ limit: '10mb' }));
 
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
-
-// Raw body for Stripe webhook
-app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
 // Auth middleware
 function requireAuth(req, res, next) {
@@ -886,16 +911,21 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Simple debug endpoint (useful after deploys to see if data survived)
+// Debug endpoint - hit this after a redeploy to see if the persistent DB is working
 app.get('/api/debug/db', (req, res) => {
   try {
     const count = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    const isPersistent = dbPath.includes('/data');
     res.json({
+      dbPath,
+      isPersistent,
       userCount: count,
-      note: 'On Render free tier without a disk, the DB is ephemeral and will be wiped on redeploy. Data here is for testing only.'
+      note: isPersistent 
+        ? 'Using persistent disk. Users should survive redeploys.'
+        : 'Using ephemeral storage. Users will be lost on redeploy. Make sure disk is attached in Render dashboard.'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, dbPath });
   }
 });
 
@@ -1732,10 +1762,10 @@ app.post('/api/chat', (req, res, next) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  let dbInfo = { userCount: -1, error: null };
+  let dbInfo = { dbPath, isPersistent: dbPath.includes('/data'), userCount: -1, error: null };
   try {
     const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-    dbInfo = { userCount: count, error: null };
+    dbInfo.userCount = count;
   } catch (e) {
     dbInfo.error = e.message;
   }

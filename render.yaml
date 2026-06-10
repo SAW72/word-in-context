@@ -5,11 +5,12 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    # NOTE: Using simple local SQLite (users.db next to the code).
-    # On Render free tier the filesystem is ephemeral — the DB (and all user accounts)
-    # will be wiped on every deploy/restart. This is the "simple" mode.
-    # For real persistence later: attach a disk in the dashboard and update server.js
-    # to use /data/users.db (or switch to Postgres).
+    # Persistent disk for the SQLite DB so user accounts survive deploys and restarts.
+    # Without this the free-tier filesystem is ephemeral and all admin/tester users are lost on redeploy.
+    disks:
+      - name: data
+        mountPath: /data
+        sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
