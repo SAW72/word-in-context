@@ -813,13 +813,14 @@
         Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
         Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
         After installing Piper voices, click <strong>"Reload system voices"</strong>.
-        <br>On iPhone, after downloading premium/enhanced voices in Settings &gt; Accessibility &gt; Spoken Content, tap "Reload system voices" (a quiet test speak runs automatically). If they still don't appear, tap one of the 🔊 preview buttons or "Test selected" — iOS requires a speak action to fully expose downloaded voices.
+        <br><strong>For iPhone premium/enhanced voices:</strong> After downloading in Settings &gt; Accessibility &gt; Spoken Content, tap the Voice button, then immediately tap the new <strong>"🔊 Speak test (unlock iPhone voices)"</strong> button below (it will say "Hello" audibly). Then check the dropdown and the list of 🔊 below. Reload may also help. A real audible speak from a tap is usually required by iOS.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
         <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test selected</button>
+        <button type="button" onclick="unlockiOSVoices()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Speak test (unlock iPhone voices)</button>
       </label>
 
       <!-- Voice preview list so user can test ANY voice without selecting it first -->
@@ -904,7 +905,7 @@
 
         <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
           After installing a new voice (e.g. from Piper), click <strong>"Reload system voices"</strong> or restart the browser.
-          On iPhone: after downloading enhanced/premium voices, Reload runs a quiet test speak. If still missing, use a 🔊 preview button — iOS needs an actual speak to register them.
+          On iPhone: after downloading enhanced/premium voices, use the "🔊 Speak test (unlock iPhone voices)" button (audible) or preview 🔊 buttons — iOS usually requires an actual speak from a user tap to expose the voices.
           The preview list below has a speaker for every voice so you can test them easily.
           Numbered voices (e.g. 925) are real macOS internal voices — tap the 🔊 to discover if they sound male or female.
         </p>
@@ -1619,6 +1620,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const wake = new SpeechSynthesisUtterance('test');
           wake.volume = 0.01;
           wake.rate = 2;
+          wake.onend = () => {
+            try { synth.getVoices(); } catch(e) {}
+            loadVoices();
+            setTimeout(populateVoicePreviews, 50);
+          };
           synth.speak(wake);
           setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 120);
         } catch(e) {}
@@ -1634,6 +1640,32 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(loadVoices, 1100);
       setTimeout(populateVoicePreviews, 200);
       setTimeout(populateVoicePreviews, 800);
+    }
+
+    function unlockiOSVoices() {
+      // Dedicated button for iPhone users: does an audible speak from user gesture
+      // to force the speechSynthesis engine to expose all downloaded premium/enhanced voices.
+      // Repeats for better chance on stubborn iOS.
+      try {
+        const doSpeak = () => {
+          const u = new SpeechSynthesisUtterance('Hello');
+          u.volume = 0.5;
+          u.rate = 1.0;
+          u.onend = () => {
+            try { synth.getVoices(); } catch(e) {}
+            loadVoices();
+            populateVoicePreviews();
+          };
+          if (synth.speaking) synth.cancel();
+          synth.speak(u);
+        };
+        doSpeak();
+        setTimeout(doSpeak, 800); // repeat
+        // Extra reloads after
+        setTimeout(() => { try { synth.getVoices(); } catch(e){} loadVoices(); populateVoicePreviews(); }, 2000);
+      } catch(e) {
+        alert('Could not speak. Try tapping one of the 🔊 buttons in the list below instead.');
+      }
     }
 
     // --- Custom voice labels (user can rename any voice, including numbered internal ones) ---
@@ -1682,6 +1714,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (synth.speaking) synth.cancel();
 
       synth.speak(utterance);
+
+      // After speaking, re-load voices (helps iOS show more after first use)
+      setTimeout(() => {
+        try { synth.getVoices(); } catch(e){}
+        loadVoices();
+        populateVoicePreviews();
+      }, 1500);
     }
 
     // Populate a separate preview list with speaker buttons so user can test ANY voice
@@ -1699,7 +1738,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // No filters at all (filters removed per user request).
       // Show every voice the browser reports so iPhone premium/enhanced voices appear.
-      // The preview list below lets you test internal voices (tap 🔊 to discover them after download).
+      // The preview list below (with 🔊 buttons) is the best way to discover and test iPhone voices after download/reboot.
       let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
       if (voicesToShow.length === 0) voicesToShow = voices;
 
@@ -1774,6 +1813,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           utterance.pitch = voiceSettings.pitch || 1.0;
           if (synth.speaking) synth.cancel();
           synth.speak(utterance);
+          // After speaking, re-load voices (helps iOS show more after first use)
+          setTimeout(() => {
+            try { synth.getVoices(); } catch(e){}
+            loadVoices();
+            populateVoicePreviews();
+          }, 1500);
         };
 
         // Layout: [label] [edit] [test]
@@ -1948,6 +1993,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const wake = new SpeechSynthesisUtterance('test');
           wake.volume = 0.01;
           wake.rate = 2;
+          wake.onend = () => {
+            try { synth.getVoices(); } catch(e) {}
+            loadVoices();
+            setTimeout(populateVoicePreviews, 50);
+          };
           synth.speak(wake);
           setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 120);
         } catch(e) {}
