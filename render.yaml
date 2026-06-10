@@ -5,8 +5,9 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    # Persistent disk for the SQLite DB so user accounts survive deploys and restarts.
-    # Without this the free-tier filesystem is ephemeral and all admin/tester users are lost on redeploy.
+    # Persistent disk for the SQLite DB (users.db) so admin users, tester accounts, trial status etc. survive deploys.
+    # Mount path must be a subdirectory (cannot be /). Only files under this path persist.
+    # After adding this, go to the service in Render dashboard > Disks and add/attach the disk if it doesn't show up.
     disks:
       - name: data
         mountPath: /data

@@ -17,16 +17,16 @@ const PORT = process.env.PORT || 8787;
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
 // === SQLite DB for users (with Render persistent disk support) ===
-// On Render we mount a persistent disk at /data (see render.yaml).
-// This keeps user accounts, trials, manual_free flags etc. across deploys/restarts.
-// Locally we fall back to the project directory (ephemeral in dev too if you restart).
-let dbPath = path.join(__dirname, 'users.db');
-const onRender = !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-if (onRender) {
-  dbPath = '/data/users.db';
-}
+// IMPORTANT: On Render, when adding the disk in the dashboard:
+//   - Disk name: data          (this is the "variable data" you saw)
+//   - Mount path: /data        <--- type exactly this (full path, not just "data", not root "/")
+// Only files under /data survive deploys. Code uses /data/users.db so admin users don't get deleted on redeploy.
+// Locally: normal project folder.
+// We now check fs.existsSync('/data') FIRST — this is the most reliable signal that the disk you attached is actually mounted.
+const onRender = fs.existsSync('/data') || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+let dbPath = onRender ? '/data/users.db' : path.join(__dirname, 'users.db');
 
-console.log(`[DB] Using ${onRender ? 'PERSISTENT' : 'LOCAL'} path: ${dbPath}`);
+console.log(`[DB] onRender=${onRender} (fs sees /data? ${fs.existsSync('/data')}), using path: ${dbPath}`);
 
 let db;
 try {
@@ -42,12 +42,12 @@ try {
 } catch (err) {
   console.error(`[DB] CRITICAL: Failed to open ${dbPath}: ${err.message}`);
   if (onRender) {
-    console.error('[DB] WARNING: Persistent disk not mounted. Falling back to ephemeral storage. Users WILL be lost on redeploy!');
+    console.error('[DB] WARNING: Could not use /data (disk may not be attached yet). Falling back to ephemeral local DB. Users WILL be lost on redeploy!');
   }
-  // Last resort local (will be wiped on Render redeploy)
   dbPath = path.join(__dirname, 'users.db');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  console.log(`[DB] Using fallback local path: ${dbPath}`);
 }
 
 try {
