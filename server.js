@@ -7,6 +7,7 @@ const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -22,7 +23,6 @@ app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 // Only files under /data survive deploys. Code uses /data/users.db so admin users don't get deleted on redeploy.
 // Locally: normal project folder.
 // We now check fs.existsSync('/data') FIRST — this is the most reliable signal that the disk you attached is actually mounted.
-const fs = require('fs');
 const onRender = fs.existsSync('/data') || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
 let dbPath = onRender ? '/data/users.db' : path.join(__dirname, 'users.db');
 
@@ -400,7 +400,6 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // === Simple beta tester signup (stores emails for launch) ===
 // For production: replace with real email service (Mailchimp, ConvertKit, or Supabase)
-const fs = require('fs');
 const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
