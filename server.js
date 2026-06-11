@@ -325,7 +325,9 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
       bookCode = book.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
     }
     if (!bookCode || bookCode.length < 2 || bookCode.includes(' ')) {
-      console.error(`[Bible API] Bad book code extracted from ref "${reference}": "${book}" -> "${bookCode}"`);
+      if (!(trans.includes('hbo') || trans.includes('heb'))) {
+        console.error(`[Bible API] Bad book code extracted from ref "${reference}": "${book}" -> "${bookCode}" (skipped)`);
+      }
       return null;
     }
     // Use the translation id exactly as provided (e.g. 'BSB' for English, 'grc_sbl' for SBL Greek NT, 'hbo_wlc' for Westminster Leningrad Codex Hebrew).
@@ -339,28 +341,21 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
 
     if (!res.ok) {
-      // Only log errors for actual HTTP errors, not every Hebrew source (some chapters may not be available or return non-JSON)
-      if (trans.includes('hbo') || trans.includes('heb')) {
-        return null; // silent skip for Hebrew to reduce log spam
+      if (!(trans.includes('hbo') || trans.includes('heb'))) {
+        console.error(`Bible API error for: ${url} (status: ${res.status})`);
       }
-      console.error(`Bible API error for: ${url} (status: ${res.status})`);
-      return null;
+      return null; // silent for Hebrew to reduce log spam
     }
 
-    // Guard against HTML error pages / wrong URLs (the source of the "<!doctype" errors)
-    // Try to parse JSON anyway; some endpoints may return wrong content-type even on success.
     let data;
     try {
       data = await res.json();
     } catch (e) {
-      if (trans.includes('hbo') || trans.includes('heb')) {
-        return null; // silent for Hebrew
+      if (!(trans.includes('hbo') || trans.includes('heb'))) {
+        console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
       }
-      console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
-      return null;
+      return null; // silent for Hebrew
     }
-
-    const data = await res.json();
 
     // The real structure: data.chapter.content is an array of objects
     const content = data?.chapter?.content;
