@@ -921,7 +921,7 @@ app.get('/api/config', (req, res) => {
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
-    hasSTT: false  // xAI STT endpoint unavailable (404); using browser SpeechRecognition fallback only
+    hasSTT: !!process.env.XAI_API_KEY
   });
 });
 
@@ -990,12 +990,63 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 
-// === STT disabled ===
-// xAI /audio/transcriptions returns 404 for this key/setup. We never call it.
-// All hands-free uses the browser's native SpeechRecognition (wake word "John", interim results, barge-in, final text).
-// This stops all 404 errors and keeps input working.
 app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
-  return res.json({ text: '', fallback: true, disabled: true });
+  try {
+    const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
+    if (!audio) return res.status(400).json({ error: 'audio (base64) is required' });
+
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'STT not configured on server' });
+
+    const audioBuffer = Buffer.from(audio, 'base64');
+
+    // Native FormData + Blob works on Node 18+ (Render uses 22.x)
+    const form = new FormData();
+    const blob = new Blob([audioBuffer], { type: mime });
+    const ext = mime.includes('webm') ? 'webm' : (mime.includes('wav') ? 'wav' : 'mp3');
+    form.append('file', blob, `utterance.${ext}`);
+    form.append('language', language);
+
+    // Bible-specific keyterm boosting — this is magic for your ref problems.
+    // The model will strongly prefer these tokens when they sound similar.
+    // Heavily boost "John 2" / "John two" variants because STT keeps mangling "John tell me about John two"
+    // into things like "two John two cell", "second John 2 cell", "2 John 2".
+    const bibleKeyterms = [
+      'John', 'John 2', 'John two', 'John chapter two', 'Gospel of John two', 'the gospel of John 2',
+      'John 2 tell me', 'tell me about John two', 'John tell me about John two',
+      '1 John', '2 John', '3 John', 'Romans', 'Romans 5', 'Romans five',
+      '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians',
+      'Colossians', 'Thessalonians', '1 Thessalonians', '2 Thessalonians',
+      'Timothy', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
+      'James', 'Peter', '1 Peter', '2 Peter', 'Jude', 'Revelation',
+      'chapter', 'verse', 'one', 'two', 'three', 'four', 'five', 'six',
+      'first', 'second', 'third', 'Gospel of John', 'book of Romans',
+      'John 2 cell', 'two John two', 'second John two', '2 John 2'
+    ];
+    for (const kt of bibleKeyterms) {
+      form.append('keyterm', kt);
+      form.append('keyterm', kt); // repeat critical ones
+    }
+
+    const upstream = await fetch('https://api.x.ai/v1/stt', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: form
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      console.error('[STT] upstream error:', upstream.status, errText);
+      return res.status(502).json({ error: 'STT failed', detail: errText });
+    }
+
+    const data = await upstream.json();
+    const text = (data.text || data.transcript || (typeof data === 'string' ? data : '') || '').trim();
+    res.json({ text, raw: data });
+  } catch (e) {
+    console.error('[STT] proxy error:', e);
+    res.status(500).json({ error: 'STT proxy failed' });
+  }
 });
 
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
@@ -1690,7 +1741,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
     hasHostedTTS: !!process.env.TTS_SERVER_URL,
-    hasSTT: false,  // xAI transcription disabled (404s); browser SpeechRecognition only
+    hasSTT: !!process.env.XAI_API_KEY,
     hasTTSKey: false,
     ttsVoices: 'browser-only (window.speechSynthesis)',
     model: 'grok-4.3',
@@ -1721,6 +1772,6 @@ app.listen(PORT, () => {
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used for chat + STT proxy only)`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
-  console.log(`   STT: browser SpeechRecognition only (xAI transcription endpoint disabled - no 404 calls)`);
+  console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
