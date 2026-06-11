@@ -14,33 +14,52 @@ const PORT = process.env.PORT || 8787;
 // so that req.body is the raw Buffer/string for signature verification.
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
-// === Simple SQLite DB for users (persistent on Render disk for beta; migrate to Postgres later) ===
-const db = new Database(path.join(__dirname, 'users.db'));
+// === SQLite DB for users (with Render persistent disk support) ===
+// IMPORTANT: On Render, when adding the disk in the dashboard:
+//   - Disk name: data          (this is the "variable data" you saw)
+//   - Mount path: /data        <--- type exactly this (full path, not just "data", not root "/")
+// Only files under /data survive deploys. Code uses /data/users.db so admin users don't get deleted on redeploy.
+// Locally: normal project folder.
+// We now check fs.existsSync('/data') FIRST — this is the most reliable signal that the disk you attached is actually mounted.
+const fs = require('fs');
+const onRender = fs.existsSync('/data') || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+let dbPath = onRender ? '/data/users.db' : path.join(__dirname, 'users.db');
+
+console.log(`[DB] onRender=${onRender} (fs sees /data? ${fs.existsSync('/data')}), using path: ${dbPath}`);
+
+const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
-// Users table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    stripe_customer_id TEXT,
-    stripe_subscription_id TEXT,
-    status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
-    trial_end TEXT,
-    access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
-    manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
-
-// Magic tokens table (short lived)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS magic_tokens (
-    token TEXT PRIMARY KEY,
-    email TEXT NOT NULL,
-    expires_at TEXT NOT NULL
-  );
-`);
+// Schema (CREATE IF NOT EXISTS) must run before any SELECT on users table.
+// This is why a fresh disk volume was causing "no such table" and fallback.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT,
+      status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
+      trial_end TEXT,
+      access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
+      manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  try { db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS magic_tokens (
+      token TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+  `);
+  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
+} catch (err) {
+  console.error('DB schema error (non-fatal):', err.message);
+}
 
 // === Email (Resend) ===
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;

@@ -1741,6 +1741,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (voice && voice.lang) utterance.lang = voice.lang;
 
       utterance.onerror = (ev) => {
+        if (ev.error === 'canceled' || ev.error === 'interrupted') return;
         console.error('[TTS testSelected] error:', ev && ev.error);
       };
 
@@ -1852,7 +1853,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           utterance.volume = 1.0;
           if (freshVoice && freshVoice.lang) utterance.lang = freshVoice.lang;
 
-          utterance.onerror = (ev) => { console.error('[TTS preview] error:', ev && ev.error); };
+          utterance.onerror = (ev) => { if (ev.error === 'canceled' || ev.error === 'interrupted') return; console.error('[TTS preview] error:', ev && ev.error); };
 
           if (synth.speaking) synth.cancel();
           setTimeout(() => {
