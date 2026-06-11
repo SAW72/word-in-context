@@ -2,26 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Word in Context</title>
   <style>
-    *, *::before, *::after {
-      box-sizing: border-box;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
-    }
     body {
+      margin: 0; padding: 0;
       background: #f5e8d3;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      height: 100vh; /* fallback */
-      min-height: 100dvh; /* better for iOS Safari dynamic bars */
-      overflow: hidden;
+      display: flex; min-height: 100vh; overflow: hidden;
     }
     .sidebar {
       width: 260px;
@@ -140,54 +128,30 @@
       flex: 1;
       display: flex;
       justify-content: center;
-      padding: 12px;
+      align-items: center;
+      padding: 10px;
       min-width: 0;
-      min-height: 0;   /* critical for nested flex scrolling */
     }
     .chat-container {
-      width: 100%;
-      max-width: 820px;
-      flex: 1;
-      min-height: 0;   /* allows the container to shrink and the inner .messages to scroll */
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      width: 100%; max-width: 760px; height: 96vh;
+      background: white; border-radius: 20px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+      display: flex; flex-direction: column; overflow: hidden;
     }
     .header {
       background: linear-gradient(135deg, #2c3e50, #1a252f);
-      color: white; padding: 12px 16px; display: flex; align-items: center; gap: 8px; position: relative;
+      color: white; padding: 12px 20px; display: flex; align-items: center; gap: 12px; position: relative;
     }
-    .header-left,
-    .header-right {
-      display: flex; align-items: center; gap: 4px;
-      flex-shrink: 0;
+    .header .left {
+      display: flex; align-items: center; gap: 8px;
     }
     .header .center {
-      flex: 1; text-align: center; min-width: 0;
+      flex: 1; text-align: center;
     }
     .header h1 { margin: 0; font-size: 20px; }
     .header .subtitle {
       font-size: 11px; opacity: 0.75; margin-top: 2px;
       letter-spacing: 0.5px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Chat title box with label - shown under policy note on both desktop and mobile */
-    .current-chat-wrapper {
-      display: block;
-      text-align: center;
-      margin: 4px 0 8px;
-      font-size: 11px;
-      color: #5c4630;
-    }
-    .current-chat-wrapper #current-chat-title {
-      color: #2c3e50;
-      font-weight: 500;
     }
     .chats-btn {
       background: rgba(255,255,255,0.15); border: none;
@@ -245,13 +209,6 @@
       cursor: pointer; opacity: 0.55; padding: 2px;
     }
     .speak-btn:hover { opacity: 1; }
-
-    .voice-generating-note {
-      margin-left: 6px;
-      font-size: 11px;
-      opacity: 0.65;
-      color: #666;
-    }
     .input-area {
       display: flex; padding: 14px 16px; background: white;
       border-top: 1px solid #eee; gap: 10px; align-items: center;
@@ -265,13 +222,6 @@
       background: #c9a227; color: white; border: none;
       padding: 0 26px; border-radius: 30px; font-size: 15px; font-weight: 600;
       cursor: pointer; height: 46px;
-      display: flex; align-items: center; justify-content: center;
-      min-width: 70px;
-    }
-    #send-btn .send-arrow {
-      display: none;
-      font-size: 20px;
-      line-height: 1;
     }
     .mic-btn {
       background: #e8e0d5; color: #2c3e50; border: none;
@@ -326,14 +276,10 @@
     .chat-item .del-btn { background: #c94e4e; color: white; }
     .handsfree-toggle {
       display: flex; align-items: center; gap: 6px;
-      font-size: 12px; color: #5c4630; margin-left: 6px;
-      white-space: nowrap;
-      flex-shrink: 0;
+      font-size: 13px; color: #5c4630; margin-left: 8px;
     }
     .handsfree-toggle input {
       accent-color: #c9a227;
-      width: 16px;
-      height: 16px;
     }
     .modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -365,352 +311,6 @@
       padding: 4px;
       opacity: 0.7;
     }
-
-    /* Mobile responsiveness improvements */
-    @media (max-width: 768px) {
-      .chat-container {
-        max-width: 100%;
-        margin: 0;
-        border-radius: 0;
-        /* Height tuned to leave max room for the messages read area + speak buttons after header + policy-note + input */
-        height: calc(100dvh - 78px);
-      }
-      .input-area {
-        padding: 6px 4px;
-        gap: 4px;
-        flex-wrap: nowrap;
-        align-items: center;
-      }
-      #user-input {
-        font-size: 16px; /* prevent iOS zoom */
-        padding: 10px;
-      }
-      .mic-btn, #send-btn, .stop-btn {
-        min-width: 38px;
-        min-height: 38px;
-      }
-      .modal-content {
-        width: 95vw;
-        max-width: 95vw;
-        max-height: 85dvh;
-        padding: 12px;
-        margin: 5vh auto;
-        border-radius: 8px;
-      }
-      .modal-content h3 {
-        font-size: 16px;
-      }
-      .voice-btn, .sources-btn, .upgrade-btn {
-        font-size: 13px;
-        padding: 6px 8px;
-      }
-      .sidebar {
-        width: 70vw;
-        max-width: 260px;
-      }
-      .message {
-        font-size: 15px;
-        padding: 8px 10px;
-      }
-      .voice-generating-note {
-        font-size: 10px;
-      }
-      /* Make voice settings more usable on small screens */
-      #default-trans-select, #hosted-voice-select, #voice-select {
-        font-size: 14px;
-        padding: 6px;
-      }
-      .handsfree-toggle {
-        font-size: 12px;
-      }
-    }
-
-    /* Extra tweaks for very small phones */
-    @media (max-width: 480px) {
-      .chat-container {
-        /* full-bleed white message area on phone (see main mobile drawer rules) */
-      }
-      .input-area button {
-        padding: 8px 10px;
-      }
-    }
-
-    /* Full mobile-friendly drawer sidebar for iPhone */
-    @media (max-width: 768px) {
-      .sidebar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 86vw;
-        max-width: 320px;
-        z-index: 200;
-        transform: translateX(-100%);
-        transition: transform 0.25s ease;
-        box-shadow: 4px 0 12px rgba(0,0,0,0.3);
-        background: #1a252f;
-      }
-      .sidebar.open {
-        transform: translateX(0);
-      }
-      /* When the chat list drawer is open on iPhone, dim + slightly shift the main read area
-         so the "read window" (messages + speak buttons) isn't left as an unusable sliver on the side. */
-      body.sidebar-open .main-area {
-        opacity: 0.35;
-        transform: translateX(8px);
-        pointer-events: none;
-      }
-      body.sidebar-open .chat-container {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      }
-      .main-area {
-        padding: 0;
-        background: transparent;
-      }
-      /* On phone: make the white message area (chat-container) the dominant full-screen thing.
-         Almost no beige background should be visible — header (dark) at top, then white messages + input. */
-      .chat-container {
-        max-width: 100%;
-        width: 100%;
-        height: 100dvh;
-        border-radius: 0;
-        box-shadow: none;
-        margin: 0;
-        background: #fff;
-      }
-      .header {
-        padding: 8px 10px;
-        gap: 6px;
-      }
-      .header h1 {
-        font-size: 16px;
-      }
-      .header .subtitle {
-        font-size: 8px;
-        line-height: 1.0;
-      }
-      .header-left,
-      .header-right {
-        gap: 3px;
-      }
-      .header-right .voice-btn,
-      .header-right .sources-btn,
-      .header-right .upgrade-btn {
-        font-size: 9px;
-        padding: 2px 4px;
-      }
-      #mobile-sidebar-toggle {
-        padding: 3px 5px;
-        font-size: 14px;
-      }
-
-      /* Mobile header: ☰ top left, "The Word in Context" (with book) above the Voice/Sources/Account buttons.
-         Subtitle hidden on mobile. */
-      .header {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 6px 8px;
-        position: relative;
-      }
-      .header-left {
-        position: absolute;
-        left: 6px;
-        top: 6px;
-      }
-      .center {
-        text-align: center;
-        padding: 0 30px 2px; /* space for absolute left button */
-      }
-      .header-right {
-        display: flex;
-        justify-content: center;
-        gap: 4px;
-        margin-top: 2px;
-      }
-      .header .subtitle {
-        display: none; /* hide on mobile as requested */
-      }
-
-      .current-chat-wrapper {
-        display: block;
-        font-size: 10px;
-        margin: 2px 0 4px;
-      }
-      .policy-note {
-        font-size: 9px;
-        padding: 2px 4px;
-        line-height: 1.2;
-        /* On phone, minimize this beige-ish bar so the white message area dominates */
-        background: #f9f5eb;
-      }
-      /* When keyboard is up on mobile, reclaim vertical space for the message window */
-      .chat-container.mobile-keyboard .policy-note,
-      .chat-container.mobile-keyboard #demo-banner,
-      .chat-container.mobile-keyboard #live-transcript-container {
-        display: none !important;
-      }
-      .messages {
-        padding: 10px 6px;
-        padding-bottom: 18px; /* clear the fixed tiny "Secure..." line at bottom of screen */
-        background: #fff; /* pure white message area on phone */
-      }
-      /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
-      .chat-container {
-        /* On phone we force full-bleed white below; the 100dvh rule in the drawer media takes precedence for full coverage */
-      }
-      .message {
-        max-width: 88%;
-        font-size: 15px;
-        padding: 10px 12px;
-      }
-      .input-area {
-        padding: 5px 4px;
-        flex-wrap: nowrap;
-        gap: 4px;
-        align-items: center;
-        background: #fff; /* keep the bottom input clean white */
-      }
-
-      /* When input focused on mobile, fix the input bar (with send arrow and handsfree) static at the bottom,
-         just above the iOS keyboard/accessory bar (the checkmark bar). Prevents it jumping to the top.
-         Messages get padding so content isn't hidden under the fixed bar. */
-      .chat-container.input-focused .input-area {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 30;
-        background: #fff;
-        box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
-      }
-      .chat-container.input-focused .messages {
-        padding-bottom: 72px; /* approx height of fixed input bar */
-      }
-      /* Hands-free toggle sits next to the Send arrow button (not below).
-         Slightly smaller buttons to fit nicely on iPhone. */
-      .handsfree-toggle {
-        font-size: 10px;
-        margin-left: 2px;
-        white-space: nowrap;
-        flex-shrink: 0;
-        align-items: center;
-        background: #f5f0e6;
-        padding: 2px 4px;
-        border-radius: 4px;
-        border: 1px solid #d8c8a8;
-      }
-      .handsfree-toggle input {
-        width: 14px;
-        height: 14px;
-      }
-
-      /* Secure footer text: tiny, at the very bottom of the screen on mobile.
-         The previous internal placement was eating vertical space in the input card. */
-      .status {
-        font-size: 8px;
-        padding: 1px 6px;
-        margin: 0;
-        opacity: 0.5;
-        text-align: center;
-        position: fixed;
-        bottom: env(safe-area-inset-bottom, 2px);
-        left: 0;
-        right: 0;
-        z-index: 5;
-        background: transparent;
-        pointer-events: none;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: #8b5e3c; /* keep it subtle and dark enough to read on any bg */
-      }
-      #user-input {
-        font-size: 16px; /* prevent iOS zoom */
-        padding: 10px 14px;
-        flex: 1 1 100px;
-        min-width: 0;
-      }
-      .mic-btn, #send-btn {
-        min-width: 38px;
-        min-height: 38px;
-      }
-      /* Compact send arrow for mobile, placed next to small hands-free toggle */
-      #send-btn {
-        padding: 0;
-        width: 38px;
-        height: 38px;
-        min-width: 38px;
-        min-height: 38px;
-        font-size: 16px;
-        border-radius: 50%;
-      }
-      #send-btn .send-label { display: none; }
-      #send-btn .send-arrow { display: inline; }
-      .mic-btn {
-        width: 38px;
-        height: 38px;
-        font-size: 18px;
-      }
-      /* Show hamburger on mobile */
-      #mobile-sidebar-toggle {
-        display: block !important;
-      }
-      /* Backdrop on mobile when drawer open — captures taps to close and dims the main read area */
-      body.sidebar-open::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.45);
-        z-index: 150;
-        pointer-events: all;
-      }
-      /* Header buttons are now in .header-right; old .left rule removed for balanced layout */
-      .voice-btn, .sources-btn, .upgrade-btn {
-        font-size: 10px;
-        padding: 2px 4px;
-      }
-
-      /* Much larger, tappable speak buttons (🔊) for AI replies and verse citations on iPhone.
-         The "read window" (messages) must allow easy access to these. */
-      .speak-btn {
-        font-size: 22px;
-        padding: 10px;
-        min-width: 44px;
-        min-height: 44px;
-        background: rgba(255,255,255,0.9);
-        border-radius: 50%;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-        right: 6px;
-        bottom: 6px;
-        opacity: 0.85;
-      }
-      .ai {
-        padding-bottom: 36px; /* room for the absolute speak button above the bubble bottom */
-      }
-    }
-
-    /* Password visibility toggle (eye icon) */
-    .password-wrapper {
-      position: relative;
-      display: block;
-    }
-    .password-wrapper input {
-      padding-right: 32px;
-    }
-    .password-toggle {
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      cursor: pointer;
-      font-size: 16px;
-      user-select: none;
-      opacity: 0.65;
-    }
-    .password-toggle:hover {
-      opacity: 1;
-    }
   </style>
 </head>
 <body>
@@ -729,108 +329,59 @@
   <div class="main-area">
     <div class="chat-container">
       <div class="header">
-        <div class="header-left">
-          <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" aria-label="Open chat list" style="display:none; background:#2c3e50; color:#eee; border:none; padding:4px 6px; border-radius:4px; font-size:15px; cursor:pointer;">☰</button>
-        </div>
         <div class="center">
           <h1>📖 The Word in Context</h1>
           <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
+          <div id="current-chat-title" style="font-size:11px; opacity:0.85; margin-top:1px; color:#ddd;"></div>
         </div>
-        <div class="header-right">
+        <div class="left">
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
-          <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3;">📚 Sources</button>
-          <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; font-size:11px; padding:3px 7px; border-radius:6px; border:none; cursor:pointer;">Account</button>
-          <a href="/instructions.html" style="color:#f5e8d3; font-size:11px; text-decoration:none; padding:2px 6px; opacity:0.85;">Help</a>
+          <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3; margin-left:6px;">📚 Sources</button>
+          <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; margin-left:6px; font-size:12px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer;">Account</button>
         </div>
       </div>
       
       <div class="policy-note">
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
+        <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
       </div>
 
-      <!-- Current chat title moved under policy note on mobile, with label, centered. -->
-      <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
-        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">chat title </span>
-        <span id="current-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
-      </div>
-
-      <!-- Demo mode banner (shown only when no valid login token). -->
-      <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
-        <strong>Demo mode</strong> — limited responses for trying the app.
-        If you already signed up for the 7-day trial or 14-day tester access, click the <strong>Log in</strong> button in the header above (or go to the landing page) and use the email + password you chose during signup.
+      <!-- Demo mode banner (shown only for unauthenticated /app visitors via Try the App). Prominent but not annoying. -->
+      <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:6px 12px; font-size:12.5px; text-align:center; border-bottom:1px solid #ffe69c;">
+        Demo mode — limited responses for trying the app. <a href="/" style="color:#664d03; font-weight:600; text-decoration:underline;">Start free trial</a> for full access.
       </div>
 
       <div class="messages" id="messages"></div>
 
-      <!-- Live transcription from server STT (with Bible keyterm boosting for accuracy).
-           Shown during hands-free listening so user can see the improved text as they speak
-           and correct if needed (e.g. by speaking clearly or rephrasing). -->
-      <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
-        <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Live transcription (improved for Bible accuracy):</div>
-        <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
-      </div>
-
       <div class="input-area">
         <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
         <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
-        <button id="send-btn" aria-label="Send message">
-          <span class="send-label">Send</span>
-          <span class="send-arrow">➤</span>
-        </button>
-
-        <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
-          <input type="checkbox" id="handsfree-toggle">
-          <span class="hf-text"></span>
-        </label>
-
+        <button id="send-btn">Send</button>
         <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
+
+        <label for="handsfree-toggle" class="handsfree-toggle">
+          <input type="checkbox" id="handsfree-toggle">
+          Hands-free
+        </label>
       </div>
       <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
     </div>
   </div>
 
-  <!-- Voice / Settings Modal -->
+  <!-- Voice Settings Modal -->
   <div class="modal" id="voice-modal">
-    <div class="modal-content" style="max-width: 420px;">
-      <h3 style="margin-bottom:8px;">Settings</h3>
-
-      <!-- Subscription section -->
-      <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:6px; padding:10px; margin-bottom:12px;">
-        <div style="font-size:13px; font-weight:600; color:#2e7d32; margin-bottom:4px;">Subscription</div>
-        <p style="margin:0; font-size:13px; line-height:1.3;">
-          <strong>7-day free trial</strong><br>
-          Then $4.99 per month, or $39.99 per year (save 33%)
-        </p>
-        <p style="font-size:11px; color:#555; margin:6px 0 0;">
-          Full access to the app, live Bible sources, and all features. Manage via the Account button.
-        </p>
-      </div>
-
+    <div class="modal-content" style="max-width: 380px;">
+      <h3 style="margin-bottom:4px;">Voice Settings</h3>
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All voices come from your device (macOS Spoken Content + apps like Piper).
-        <strong>No filters</strong> — every available system voice on Mac and iPhone is listed here, including every premium and enhanced voice you have installed.
-        Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
-        Use the 🔊 buttons in the preview list below to hear what they sound like.
-        After installing Piper (or any new) voices, click <strong>"Reload system voices"</strong>.
-        Reload system voices after installing new ones (e.g. Piper). Tap 🔊 buttons in the list below to test any voice.
+        All non-English voices are shown (full language support). For English we only show the better/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc. — older ones like Karen/Allison/Alex hidden). The dropdown is sorted with the best English options (Google UK English Male first) at the top, then non-English alphabetically. Install more via macOS System Settings → Accessibility → Spoken Content. "Google UK English Male" is the preferred default. Premium ElevenLabs optional.
       </p>
+      <p id="elevenlabs-quota-warning" style="font-size:11px; color:#c94e4e; margin:0 0 8px; font-weight:500; display:none;">ElevenLabs quota exceeded (your key) — using free local/system voices. Add credits to your ElevenLabs account or switch back to a system voice.</p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
-        <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
-        <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
-        <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test selected</button>
+        <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;"></select>
       </label>
-
-      <!-- Voice preview list so user can test ANY voice without selecting it first -->
-      <div style="margin-bottom:8px;">
-        <div style="font-size:11px; color:#666; margin-bottom:3px;">
-          Test any voice (click 🔊). Click ✏️ on a row to give it your own name (great for the numbered internal voices).
-          Numbered ones are real macOS voices — listen to discover male/female.
-        </div>
-        <div id="voice-preview-list" style="max-height: 140px; overflow-y: auto; border:1px solid #ccc; border-radius:4px; padding:4px; background:#fafafa; font-size:12px;"></div>
-      </div>
 
       <label for="rate-slider" style="font-size:13px;display:block;margin-bottom:4px;">Speed: <span id="rate-value">0.95</span>
         <input type="range" id="rate-slider" min="0.6" max="1.4" step="0.05" value="0.95" style="width:100%;margin-top:4px;margin-bottom:10px;">
@@ -842,7 +393,7 @@
 
       <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
         <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (uses your selected local voice). The two checkboxes are independent.
+        Auto-speak AI replies (full text for local/system voices and ElevenLabs)
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
@@ -859,65 +410,14 @@
         <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "John". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
       </div>
 
-      <!-- Default English translation for Bible grounding -->
-      <label for="default-trans-select" style="font-size:13px;display:block;margin-bottom:4px; margin-top:8px;">Default English Translation (used for live literal text & citations in replies)
-        <select id="default-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;">
-          <option value="eng_lsv" selected>NASB (via LSV — Literal Standard Version, modern NASB 2020 style literal) — current default</option>
-          <option value="BSB">BSB — Berean Standard Bible (very literal)</option>
-          <option value="eng_asv">ASV — American Standard Version (1901 classic literal)</option>
-          <option value="eng_ylt">YLT — Young\'s Literal Translation (ultra-literal)</option>
-          <option value="ENGWEBP">WEB — World English Bible (public domain formal)</option>
-        </select>
+      <!-- ElevenLabs is now bring-your-own-key only (no more shared "managed" credits in the default UI
+           to avoid confusion and reverting issues). Paste a key to unlock premium voices in the dropdown.
+           For a different/low-cost service, local system voices (including any you buy/install) are recommended
+           and fully supported. -->
+      <label for="elevenlabs-key-input" style="font-size:13px;display:block;margin-bottom:4px;">ElevenLabs API Key (optional — paste your own key for premium voices)
+        <input type="password" id="elevenlabs-key-input" placeholder="sk_..." style="width:100%;padding:8px;margin-top:4px;margin-bottom:8px;font-size:14px;">
       </label>
-
-      <!-- Better Voices: Local high-quality neural TTS (recommended for best experience) -->
-      <hr style="margin: 12px 0; border-color: #ddd;">
-      <div style="background:#f5f0e6; border:1px solid #c9a227; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#5c4630; margin-bottom:4px;">Better Voices</div>
-        <p style="font-size:12px; color:#333; margin:0 0 8px; line-height:1.35;">
-          Get much more natural-sounding voices for scripture. These free apps provide high-quality neural voices that work across your entire device.
-        </p>
-
-        <div style="margin-bottom:8px;">
-          <strong style="font-size:12px; color:#5c4630;">iPhone &amp; Mac</strong>
-          <p style="font-size:11px; margin:2px 0 4px; line-height:1.3;">
-            Download the free Piper - Neural TTS app:<br>
-            <a href="https://apps.apple.com/us/app/piper-neural-tts/id6759636010" target="_blank" style="color:#c9a227; text-decoration:underline; word-break:break-all;">https://apps.apple.com/us/app/piper-neural-tts/id6759636010</a><br>
-            Open the app and download "Alba" (female) or a male voice. The voice will then appear in your system settings.
-          </p>
-        </div>
-
-        <div style="margin-bottom:8px;">
-          <strong style="font-size:12px; color:#5c4630;">Android</strong>
-          <p style="font-size:11px; margin:2px 0 4px; line-height:1.3;">
-            Download VoxSherpa TTS:<br>
-            <a href="https://play.google.com/store/apps/details?id=com.CodeBySonu.VoxSherpa" target="_blank" style="color:#c9a227; text-decoration:underline; word-break:break-all;">https://play.google.com/store/apps/details?id=com.CodeBySonu.VoxSherpa</a><br>
-            Download a voice model and set it as your default TTS engine in Android settings.
-          </p>
-        </div>
-
-        <div>
-          <strong style="font-size:12px; color:#5c4630;">Windows</strong>
-          <p style="font-size:11px; margin:2px 0 0; line-height:1.3;">
-            No extra app needed. Go to Settings → Accessibility → Narrator → Add natural voices and download Microsoft Guy (Natural).
-          </p>
-        </div>
-
-        <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
-          After installing a new voice (e.g. from Piper), click <strong>"Reload system voices"</strong> or restart the browser.
-          On iPhone: use the "🔊 Speak test (unlock iPhone voices)" button or any preview 🔊 — iOS requires audible user speak to expose downloaded voices. On Mac: voices should now test correctly (we re-resolve fresh voice objects before speaking).
-          The preview list below has a speaker for every voice so you can test them easily.
-          Numbered voices (e.g. 925) are real macOS internal voices — tap the 🔊 to discover if they sound male or female.
-        </p>
-      </div>
-
-      <!-- Advanced custom local TTS UI removed (was clutter; the custom_tts_url localStorage key is still respected in code for power users if needed) -->
-
-      <!-- Future realtime teaser (higher price tier, planned later) -->
-      <div style="margin-top:12px; padding:8px; background:#fff8e1; border:1px dashed #c9a227; border-radius:4px; font-size:11px; color:#555;">
-        <strong>Future:</strong> Realtime conversational voice (full-duplex, very low latency, like talking naturally).
-        We may offer this as a higher-priced tier later once the app is stable with more users.
-      </div>
+      <p style="font-size:10px; color:#888; margin: -4px 0 8px;">Local system voices (all installed ones, including purchased/downloaded packs) are the default and free. Paste an ElevenLabs key here if you want their voices (billed to you directly). No shared app credits for EL in this build.</p>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
         <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
@@ -939,7 +439,7 @@
         <ul style="margin:0 0 10px 16px; padding:0;">
           <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
-          <li><strong>English grounding</strong>: NASB is the default (via LSV — a modern NASB 2020-style literal). User-selectable in Voice Settings (BSB, ASV, YLT, WEB, etc.). All formal/literal.</li>
+          <li><strong>English grounding</strong>: Primarily Berean Standard Bible (BSB) and other literal translations (ESV, NASB, etc.).</li>
           <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
           <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
@@ -984,8 +484,8 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>100% browser built-in system voices</strong> (window.speechSynthesis). Every voice your Mac or iPhone reports via getVoices() is shown with <strong>no filters</strong> — including every premium/enhanced/Siri/Piper voice you have installed. Numbered internal voices, non-English, everything appears in the dropdown and the test list. Use the 🔊 buttons to audition any of them. Fresh voice objects are resolved immediately before speaking to avoid stale Mac/iOS references.</li>
-          <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
+          <li><strong>Free &amp; unlimited</strong>: All non-English voices + curated better English voices only (Google, Enhanced, Samantha, Daniel etc.). Older English voices (Karen, Allison, Alex etc.) hidden. Dropdown sorted with best English first (Google UK English Male on top), then non-English A-Z. "Google UK English Male" preferred default when available in browser.</li>
+          <li><strong>Optional premium</strong>: ElevenLabs — you must paste your own API key in Voice Settings. You are billed directly by ElevenLabs; this app does not provide or share any ElevenLabs credits.</li>
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
@@ -1006,21 +506,9 @@
   <div class="modal" id="subscribe-modal">
     <div class="modal-content" style="max-width: 420px; text-align: left;">
       <h3 style="margin-bottom:4px;">Account</h3>
-
-      <!-- Logged in view -->
       <div id="account-info">
         <p id="account-email" style="font-size:14px; margin:8px 0;"></p>
         <p id="account-status" style="font-size:13px; margin:4px 0; color:#2c3e50;"></p>
-
-        <!-- Set password section for users who logged in via magic link (or to change password) -->
-        <div id="set-password-section" style="margin-top:8px; padding-top:8px; border-top:1px solid #eee;">
-          <p style="font-size:11px; margin:2px 0 4px; opacity:0.8;">Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser's password manager). Works after magic link login.</p>
-          <input type="password" id="set-password-input" placeholder="New password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
-          <button id="set-password-btn" style="width:100%; background:#2c3e50; color:white; padding:6px; border:none; border-radius:4px; font-size:12px;">Set / Update Password</button>
-          <div id="set-password-msg" style="font-size:11px; margin-top:4px; display:none;"></div>
-        </div>
-
-        <button id="request-login-from-account-btn" style="width:100%; background:#777; color:white; padding:8px; border:none; border-radius:6px; margin-top:6px; font-size:12px;">Request login link (for other device/browser)</button>
         <button id="logout-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; margin-top:10px;">Log out</button>
         <p style="font-size:11px; margin-top:12px; opacity:0.7;">
           Free trial (length set by TRIAL_DAYS env, default 7) or active subscription required. We will never sell your information. 
@@ -1030,27 +518,8 @@
           Manage or cancel anytime via Stripe customer portal (link in email receipts).
         </p>
       </div>
-
-      <!-- Login form for unauthenticated users (password login for saved credentials) -->
-      <div id="login-section" style="display:none;">
-        <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester (14-day) or trial account (password saved by browser). The tester sign-up/login form on the landing page also works for login.</p>
-        <input type="email" id="modal-login-email" placeholder="Your email" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
-        <input type="password" id="modal-login-password" placeholder="Your password" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
-        <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Log in with password</button>
-        <div id="modal-login-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Logged in! Redirecting...
-        </div>
-        <p style="font-size:11px; margin-top:8px; opacity:0.7;">
-          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a> (or sign up on landing).
-        </p>
-      </div>
-
       <div style="margin-top:16px; font-size:11px; opacity:0.6;">
         Full admin control: we can grant free access or cut off any account at any time.
-      </div>
-
-      <div style="margin-top:14px; text-align:right;">
-        <button id="close-account-btn" style="background:#777">Close</button>
       </div>
     </div>
   </div>
@@ -1155,27 +624,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let startingRecognition = false; // prevents re-entrant start() calls that cause "already started" InvalidStateError
     let currentUtterance = null;
 
-    // Audio capture for cheap high-accuracy xAI STT (only used on hands-free commits).
-    // Browser SpeechRecognition gives us fast interim + wake word; xAI STT gives far better
-    // Bible ref accuracy ("John one" → "John 1", "first John one" → "1 John 1", "Romans five" etc.).
-    // Cost is negligible ($0.10–0.20 per hour of actual user speaking time).
-    let mediaStream = null;
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let lastUtteranceAudioBlob = null;
-
-    // For live server-improved STT during hands-free (debounced to avoid spam)
-    let liveSttTimer = null;
-
     // Voice settings - cleaned up persistence
     let selectedVoice = null;
     let voiceSettings = {
       voiceSource: localStorage.getItem('voice_source') || 'local', // default local for zero cost
-      voiceId: (localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '')
-        .replace(/\s*\(System\)\s*$/i, '')
-        .replace(/\s*\(System Voice\)\s*$/i, '')
-        .replace(/\s*\(Piper Neural\)\s*$/i, '')
-        .trim(),
+      voiceId: localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '',
       rate: parseFloat(localStorage.getItem('voice_rate')) || 0.95,
       pitch: parseFloat(localStorage.getItem('voice_pitch')) || 1.0
     };
@@ -1185,7 +638,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Demo / free tier limiting (for "Try the App" button — unauthenticated visitors get just a few responses)
     // Defaults overridden at runtime from /api/config (env-driven on server)
-    let DEMO_RESPONSE_LIMIT = 5;
+    let DEMO_RESPONSE_LIMIT = 10;
     let TRIAL_DAYS = 7;
     const today = new Date().toISOString().slice(0,10);
     if (localStorage.getItem('demo_last_date') !== today) {
@@ -1194,21 +647,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
     let demoResponsesUsed = parseInt(localStorage.getItem('demo_responses_used') || '0');
 
-    // Support ?demo=1 from landing "Try the App" links.
-    // IMPORTANT: We no longer reset the counter on refresh/?demo=1.
-    // The daily reset (above) + server-side hard limit are the only things that control abuse.
+    // Support ?demo=1 from landing "Try the App" links even if a previous login left an auth_token in localStorage.
+    // This lets you (and testers) easily exercise the limited demo flow without clearing storage.
     const urlParams = new URLSearchParams(window.location.search);
     const demoParam = urlParams.get('demo');
     const forceDemoMode = demoParam != null && (demoParam === '1' || demoParam === '' || demoParam === 'true');
-
     if (forceDemoMode) {
-      // Demo restrictions: no sidebar, no history, limited questions only
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar) sidebar.style.display = 'none';
-      // Clear any loaded history
-      conversation = [];
-      const msgs = document.getElementById('messages');
-      if (msgs) msgs.innerHTML = '';
+      console.log('[demo] forceDemoMode active via ?demo param - resetting count for testing');
+      // For easy testing of the limit flow from "Try the App", reset the counter when ?demo=1
+      localStorage.setItem('demo_responses_used', '0');
+      demoResponsesUsed = 0;
+
+      // Make the demo banner visible immediately (initial content), full update in enforce later
+      const b = document.getElementById('demo-banner');
+      if (b) b.style.display = 'block';
     }
 
     function getEffectiveAuthToken() {
@@ -1276,12 +728,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
-    let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
+    // ElevenLabs
+    let elevenLabsApiKey = localStorage.getItem('elevenlabs_api_key') || '';
+    let elevenLabsVoices = [];
+    let elevenLabsAudio = null;
+    let elevenLabsFailedOnce = false;
+    let currentElevenLabsController = null;
+    let pendingElevenLabsText = null;
+    let elevenLabsNextAllowedTime = 0;
+    let elevenLabsQuotaExceeded = localStorage.getItem('elevenlabs_quota_exceeded') === 'true';
     let lastSpokenText = '';
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
+    let elevenLabsCurrentRequestId = 0;
+    let elevenLabsTTSLock = false;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
-    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // legacy flag (voices are now always local browser only)
+    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
 
     // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
@@ -1291,8 +753,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWord = 'john';
       localStorage.setItem('wake_word', 'John');
     }
-    let serverHasManagedTTS = false; // legacy flag only (voices are purely client window.speechSynthesis; server TTS path is disabled for voices)
-    let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
+    let serverHasManagedTTS = false; // populated on init from /api/health so we don't offer premium options (or try to use proxy) when owner hasn't configured ELEVENLABS_API_KEY
+    const elevenLabsTTSCache = new Map(); // text -> {url: string, lastUsed: number}  -- avoids re-generating same text
+    const DEFAULT_ELEVENLABS_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX';
+
+    // On startup we no longer forcibly revert elevenlabs source to local here.
+    // Selection persistence is handled in loadVoices + applySavedVoiceSelection so the dropdown
+    // doesn't "revert" visually. speak() will still safely use local if premium/key not usable.
+    // if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
+    //   voiceSettings.voiceSource = 'local';
+    //   voiceSettings.voiceId = '';
+    // }
 
     // ====================== HELPERS ======================
     function addMessage(text, isUser, isLoading = false) {
@@ -1364,42 +835,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       msgEl.appendChild(wrap);
     }
 
-    function speak(text, voiceNoteEl = null) {
-      text = cleanTextForSpeech(text);
+    function speak(text) {
       stopSpeaking();
 
       // Make sure we're not listening while the AI is speaking its reply.
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
-
-      // Prime the speech synthesis engine immediately (Mac requires recent getVoices() + gesture context for non-default voices to work reliably)
-      try { synth.getVoices(); } catch (e) {}
-
-      // Always use fast local system voices. We no longer support cloud/XAI voices
-      // because good local neural voices (especially after installing via Piper etc.) sound better
-      // and have zero lag.
-      if (voiceSettings.voiceSource !== 'local') {
-        voiceSettings.voiceSource = 'local';
-        localStorage.setItem('voice_source', 'local');
-      }
-      if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-        voiceSettings.voiceId = 'Google UK English Male';
-        localStorage.setItem('voice_id', voiceSettings.voiceId);
-      }
-      // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
-      // user's chosen local voice (e.g. the English male from the dropdown).
-      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-        const resolved = findLocalVoiceById(voiceSettings.voiceId);
-        if (resolved) {
-          selectedVoice = resolved;
-        }
-      }
-
-      // Clean any old voice notes.
-      const lastMsgForClean = document.querySelector('.messages .message:last-child');
-      if (lastMsgForClean) {
-        lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-      }
 
       // For hands-free + wake word, we LEAVE the recognition object running (even though
       // our isListening flag is false). This lets onresult still fire so we can detect
@@ -1417,106 +858,343 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelectEl = document.getElementById('voice-select');
       if (voiceModalEl && voiceModalEl.style.display === 'flex' && voiceSelectEl && voiceSelectEl.value) {
         const selVal = voiceSelectEl.value;
-        if (selVal.startsWith('local:')) {
+        if (selVal.startsWith('elevenlabs:')) {
+          const canEleven = !elevenLabsQuotaExceeded && ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
+          if (!canEleven) {
+            // keep the visual selection on the EL voice (don't revert dropdown), but speak will fallback
+            currentVoiceSource = 'elevenlabs';
+            currentVoiceId = selVal.replace('elevenlabs:', '');
+          } else {
+            currentVoiceSource = 'elevenlabs';
+            currentVoiceId = selVal.replace('elevenlabs:', '');
+          }
+        } else if (selVal.startsWith('local:')) {
           currentVoiceSource = 'local';
           currentVoiceId = selVal.replace('local:', '');
         }
       }
 
-      // Always resolve the local voice name (from settings or live dropdown) to the live
-      // SpeechSynthesisVoice object. This must happen for persisted settings (modal closed)
-      // and when voices load async.
-      if (currentVoiceSource === 'local' && currentVoiceId) {
-        let match = findLocalVoiceById(currentVoiceId);
-        if (match) {
-          selectedVoice = match;
-        } else {
-          // Fresh get + normalize to handle Mac/iOS name suffixes
-          let voices = synth.getVoices();
-          const normId = normalizeVoiceName(currentVoiceId);
-          match = voices.find(v => normalizeVoiceName(v.name) === normId) ||
-                  voices.find(v => v.name.toLowerCase() === currentVoiceId.toLowerCase()) ||
-                  voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
-          if (match) {
-            selectedVoice = match;
-          } else if (voices.length === 0) {
-            // Voices not ready yet (common on first load or some browsers). Listen once.
-            const origOnChange = synth.onvoiceschanged;
-            synth.onvoiceschanged = () => {
-              const fresh = synth.getVoices();
-              match = fresh.find(v => normalizeVoiceName(v.name) === normId) || findLocalVoiceById(currentVoiceId);
-              if (match) selectedVoice = match;
-              if (origOnChange) synth.onvoiceschanged = origOnChange;
-            };
+      if (elevenLabsQuotaExceeded && currentVoiceSource === 'elevenlabs') {
+        currentVoiceSource = 'local';
+      }
+
+      // Support BOTH: user-provided key (direct, they pay EL) OR app-managed proxy (no key needed, owner pays via sub model).
+      // Gate: explicitly chose elevenlabs voice + not quota + (own key OR (premium toggle + server actually has managed key from health))
+      const canUseEleven = currentVoiceSource === 'elevenlabs' && currentVoiceId && !elevenLabsQuotaExceeded &&
+                           ((premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey);
+      const useElevenLabs = canUseEleven;
+
+      if (currentVoiceSource === 'elevenlabs' && !canUseEleven) {
+        // Selection is for ElevenLabs but we can't use it right now (no key, premium disabled, or no server key).
+        // Keep the dropdown selection as-is (prevents visual revert to Karen etc.) but safely fallback here.
+        // User can paste their own ElevenLabs key in Voice Settings for premium.
+        console.warn('[Voice] ElevenLabs selected but not usable now - falling back to local system voice');
+      }
+
+      let textToUse = text;
+      // Always use full text (local voices free + unlimited; EL uses caller's own key so they pay directly).
+
+      if (useElevenLabs) {
+        // Set the most recent text. This ensures we only ever generate audio for the latest requested utterance.
+        pendingElevenLabsText = textToUse;
+
+        // If lock or controller, abort current (if any) and return; the completion will start the latest pending.
+        if (elevenLabsTTSLock || currentElevenLabsController) {
+          if (currentElevenLabsController) {
+            currentElevenLabsController.abort();
           }
+          return;
         }
+
+        // Start
+        if (!elevenLabsQuotaExceeded) {
+          startElevenLabsRequest(pendingElevenLabsText, currentVoiceId);
+          pendingElevenLabsText = null;
+        } else {
+          pendingElevenLabsText = null;
+        }
+        return;
       }
 
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
-    // All speech is 100% local browser system voices via window.speechSynthesis.
-    // No xAI / cloud / hosted TTS voices are used. speak() always resolves to fallbackToBrowserSpeech.
+    function startElevenLabsRequest(textToSpeak, voiceIdToUse) {
+      const now = Date.now();
+      if (now < elevenLabsNextAllowedTime) {
+        elevenLabsTTSLock = true; // keep locked during backoff wait
+        const delay = elevenLabsNextAllowedTime - now + 100;
+        setTimeout(() => startElevenLabsRequest(textToSpeak, voiceIdToUse), delay);
+        return;
+      }
+
+      // Check client cache first -- free replay, no API cost/credit burn
+      if (elevenLabsTTSCache.has(textToSpeak)) {
+        const entry = elevenLabsTTSCache.get(textToSpeak);
+        entry.lastUsed = Date.now();
+        elevenLabsAudio = new Audio();
+        elevenLabsAudio.src = entry.url;
+        elevenLabsAudio.preload = 'auto';
+
+        elevenLabsAudio.onerror = (e) => {
+          console.error('ElevenLabs (cached) audio playback error', e);
+          elevenLabsAudio = null;
+          fallbackToBrowserSpeech(textToSpeak);
+        };
+
+        elevenLabsAudio.onended = () => {
+          elevenLabsAudio = null;
+          if (handsFreeEnabled && !isListening) {
+            scheduleHandsFreeRestart(700);
+          }
+        };
+        elevenLabsAudio.play().catch((e) => {
+          console.warn('ElevenLabs (cached) audio play failed, falling back', e);
+          fallbackToBrowserSpeech(textToSpeak);
+        });
+        elevenLabsTTSLock = false;
+        // still check pending for any newer
+        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+          const nextText = pendingElevenLabsText;
+          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+          pendingElevenLabsText = null;
+          startElevenLabsRequest(nextText, nextVoiceId);
+        }
+        return;
+      }
+
+      elevenLabsTTSLock = true;
+      lastSpokenText = textToSpeak;
+      const thisRequestId = ++elevenLabsCurrentRequestId;
+      currentElevenLabsController = new AbortController();
+
+      console.log('[ElevenLabs] starting TTS request for text length', textToSpeak.length, 'id', thisRequestId, 'lock', elevenLabsTTSLock);
+
+      // Decide endpoint: user's own key (they pay ElevenLabs directly) vs app-managed proxy (our key, cost covered by low monthly sub model; defaults to local free voices)
+      const useUserKey = !!elevenLabsApiKey && !elevenLabsQuotaExceeded;
+      let fetchUrl, fetchHeaders, fetchBody;
+      if (useUserKey) {
+        fetchUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceIdToUse}`;
+        fetchHeaders = {
+          'Accept': 'audio/mpeg',
+          'xi-api-key': elevenLabsApiKey,
+          'Content-Type': 'application/json'
+        };
+        fetchBody = JSON.stringify({
+          text: textToSpeak,
+          model_id: 'eleven_turbo_v2_5', // cheapest low-latency, excellent for the price (same as Flash v2.5)
+          voice_settings: { stability: 0.55, similarity_boost: 0.8 }
+        });
+      } else {
+        // proxy uses server-side ELEVENLABS_API_KEY + turbo model. Perfect for low-fee subs with included minutes.
+        fetchUrl = '/api/tts';
+        fetchHeaders = { 'Content-Type': 'application/json' };
+        fetchBody = JSON.stringify({ text: textToSpeak, voiceId: voiceIdToUse });
+      }
+
+      currentElevenLabsController = new AbortController();
+
+      fetch(fetchUrl, {
+        method: 'POST',
+        headers: fetchHeaders,
+        body: fetchBody,
+        signal: currentElevenLabsController.signal
+      })
+      .then(async response => {
+        if (!response.ok) {
+          let detail = '';
+          try {
+            const errJson = await response.json();
+            detail = errJson?.detail || JSON.stringify(errJson);
+          } catch (_) {
+            detail = await response.text().catch(() => '');
+          }
+          const quotaCode = (typeof detail === 'object' && detail.code) || (typeof detail === 'string' && detail.includes('quota_exceeded') ? 'quota_exceeded' : null);
+          if (quotaCode === 'quota_exceeded') {
+            console.warn('ElevenLabs quota exceeded:', typeof detail === 'object' ? detail.message : detail);
+            elevenLabsQuotaExceeded = true;
+            try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
+            voiceSettings.voiceSource = 'local';
+          } else if (response.status === 429) {
+            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
+            elevenLabsNextAllowedTime = Date.now() + 5000;
+          } else {
+            console.error(`ElevenLabs TTS failed (${response.status}):`, detail);
+          }
+          const e = new Error(`ElevenLabs error: ${response.status}`);
+          e.detail = detail;
+          throw e;
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          currentElevenLabsController = null;
+          elevenLabsTTSLock = false;
+          elevenLabsFailedOnce = false; // reset on success so future errors can notify
+          console.log('[ElevenLabs] TTS request completed successfully id', thisRequestId);
+        }
+
+        if (thisRequestId !== elevenLabsCurrentRequestId) {
+          // This request was superseded by a newer speak() call; discard the audio.
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        // cache for free future replays of exact same text (saves credits)
+        elevenLabsTTSCache.set(textToSpeak, { url, lastUsed: Date.now() });
+        // prune cache
+        if (elevenLabsTTSCache.size > 20) {
+          let oldest = null, oldestTime = Infinity;
+          for (const [k, v] of elevenLabsTTSCache.entries()) {
+            if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldest = k; }
+          }
+          if (oldest) {
+            const oldEntry = elevenLabsTTSCache.get(oldest);
+            URL.revokeObjectURL(oldEntry.url);
+            elevenLabsTTSCache.delete(oldest);
+          }
+        }
+        elevenLabsAudio = new Audio();
+        elevenLabsAudio.src = url;
+        elevenLabsAudio.preload = 'auto';
+
+        elevenLabsAudio.onerror = (e) => {
+          console.error('ElevenLabs audio playback error', e);
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            elevenLabsAudio = null;
+          }
+          fallbackToBrowserSpeech(textToSpeak);
+        };
+
+        elevenLabsAudio.onended = () => {
+          // do not revoke here -- urls for cached items are managed in prune (or on key change)
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            elevenLabsAudio = null;
+          }
+          if (thisRequestId === elevenLabsCurrentRequestId && handsFreeEnabled && !isListening) {
+            // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
+            scheduleHandsFreeRestart(700);
+          }
+        };
+
+        elevenLabsAudio.play().catch((e) => {
+          console.warn('ElevenLabs audio play failed, falling back', e);
+          fallbackToBrowserSpeech(textToSpeak);
+        });
+
+        // After this one is done (request + play started), check if a newer one was requested
+        // Only for requests that are still the current one.
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+            const nextText = pendingElevenLabsText;
+            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false; // release before starting next (next will set true)
+            // start the next (this will set new controller etc.)
+            startElevenLabsRequest(nextText, nextVoiceId);
+          } else if (elevenLabsQuotaExceeded) {
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') {
+          if (thisRequestId === elevenLabsCurrentRequestId) {
+            currentElevenLabsController = null;
+            elevenLabsTTSLock = false;
+          }
+          // A newer speak() aborted us - check for pending text and start it.
+          // Even old aborts can start the *latest* pending.
+          if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+            const nextText = pendingElevenLabsText;
+            const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+            startElevenLabsRequest(nextText, nextVoiceId);
+          } else if (elevenLabsQuotaExceeded) {
+            pendingElevenLabsText = null;
+            elevenLabsTTSLock = false;
+          }
+          return;
+        }
+        if (thisRequestId === elevenLabsCurrentRequestId) {
+          currentElevenLabsController = null;
+          elevenLabsTTSLock = false;
+          console.log('[ElevenLabs] TTS request ended (error/abort) id', thisRequestId);
+        }
+
+        if (thisRequestId !== elevenLabsCurrentRequestId) {
+          return;  // ignore errors from superseded requests
+        }
+
+        const detail = err.detail;
+        const isQuota = elevenLabsQuotaExceeded || (detail && detail.code === 'quota_exceeded') || (err.message && err.message.includes('quota_exceeded'));
+        const isRate = err.message && (err.message.includes('429') || (detail && detail.code === 'rate_limit_error'));
+
+        if (!isQuota && !isRate) {
+          console.error('ElevenLabs TTS error (falling back to browser voice):', err);
+        } else if (isQuota) {
+          console.warn('ElevenLabs quota exceeded, falling back to browser voice.');
+        } else {
+          console.warn('ElevenLabs rate limit, falling back to browser voice.');
+        }
+
+        let userMessage = 'ElevenLabs TTS failed (check browser console for the exact error). Falling back to browser voice for now.';
+        if (isRate) {
+          elevenLabsNextAllowedTime = Date.now() + 5000;
+          userMessage = 'ElevenLabs rate limit hit (too many requests). Please wait a few seconds before clicking more 🔊 buttons. Falling back to browser voice.';
+        }
+        if (isQuota) {
+          elevenLabsQuotaExceeded = true;
+          try { localStorage.setItem('elevenlabs_quota_exceeded', 'true'); } catch (e) {}
+          voiceSettings.voiceSource = 'local';
+          userMessage = 'ElevenLabs quota exceeded (managed or your key). Top up at elevenlabs.io, enable your own key, or use free local Mac voices (recommended for low-cost plans). Falling back to local voice.';
+        }
+        if (!elevenLabsFailedOnce) {
+          elevenLabsFailedOnce = true;
+          addMessage(userMessage, false);
+        }
+        fallbackToBrowserSpeech(textToSpeak);
+
+        // Even on error, check if there's a pending newer request (will respect backoff inside start)
+        if (pendingElevenLabsText && !elevenLabsQuotaExceeded) {
+          const nextText = pendingElevenLabsText;
+          const nextVoiceId = voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId ? voiceSettings.voiceId : voiceIdToUse;
+          pendingElevenLabsText = null;
+          elevenLabsTTSLock = false;
+          startElevenLabsRequest(nextText, nextVoiceId);
+        } else if (elevenLabsQuotaExceeded) {
+          pendingElevenLabsText = null;
+          elevenLabsTTSLock = false;
+        }
+      });
+    }
+
+    // Also clear controller if stopSpeaking is called externally while a request is pending
+    // (already handled inside stopSpeaking)
 
     function fallbackToBrowserSpeech(text) {
-      // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
-      text = cleanTextForSpeech(text);
       currentUtterance = new SpeechSynthesisUtterance(text);
       lastSpokenText = text;
       currentUtterance.rate = voiceSettings.rate || 0.95;
       currentUtterance.pitch = voiceSettings.pitch || 1.0;
 
-      // Prime the speech engine (critical for Mac — getVoices right before use helps return valid live objects)
-      try { synth.getVoices(); } catch (e) {}
+      if (selectedVoice && selectedVoice.voiceURI) {
+        currentUtterance.voice = selectedVoice;
+      } else {
+        const voices = synth.getVoices();
+        const fallback = voices.find(v =>
+          v.name.includes('Samantha') || v.name.includes('Karen') ||
+          v.name.includes('Daniel') || v.name.includes('Serena') ||
+          (v.lang.includes('en') && v.localService)
+        ) || voices.find(v => v.lang.includes('en'));
 
-      // Always prefer the explicitly chosen local voice from settings/dropdown first.
-      // This fixes cases where selectedVoice is stale (e.g. Karen fallback) even though
-      // the dropdown and voiceSettings say "Google UK English Male".
-      let usedVoice = null;
-      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-        usedVoice = findLocalVoiceById(voiceSettings.voiceId);
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
+        if (fallback) {
+          currentUtterance.voice = fallback;
+          selectedVoice = fallback;
         }
-      }
-
-      if (!usedVoice) {
-        // Always re-fetch fresh voices and use robust normalized match (fixes stale objects on Mac/iOS)
-        const freshVoices = synth.getVoices();
-        const normId = normalizeVoiceName(voiceSettings.voiceId || '');
-        usedVoice = freshVoices.find(v => normalizeVoiceName(v.name) === normId) ||
-                    freshVoices.find(v => v.name.toLowerCase() === (voiceSettings.voiceId || '').toLowerCase()) ||
-                    freshVoices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
-
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
-        } else if (selectedVoice && selectedVoice.voiceURI) {
-          // Fallback to previously resolved object (still better than nothing)
-          currentUtterance.voice = selectedVoice;
-        } else {
-          // Last resort: pick a reasonable English voice
-          const fallback = freshVoices.find(v =>
-            v.name.toLowerCase().includes('google uk english male') ||
-            (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && v.name.toLowerCase().includes('english') && v.name.toLowerCase().includes('male')) ||
-            v.name.includes('Samantha') ||
-            v.name.includes('Daniel') || v.name.includes('Serena') ||
-            (v.lang && v.lang.includes('en') && v.localService)
-          ) || freshVoices.find(v => v.lang && v.lang.includes('en'));
-
-          if (fallback) {
-            currentUtterance.voice = fallback;
-            selectedVoice = fallback;
-          }
-        }
-      }
-
-      // Make sure we have a live voice object and set volume + lang explicitly (helps some Mac configs)
-      const finalVoice = currentUtterance.voice || usedVoice || selectedVoice;
-      currentUtterance.volume = 1.0;
-      if (finalVoice && finalVoice.lang) {
-        currentUtterance.lang = finalVoice.lang;
       }
 
       currentUtterance.onend = () => {
@@ -1527,35 +1205,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       };
 
-      currentUtterance.onerror = (ev) => {
-        console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (currentUtterance && currentUtterance.voice && currentUtterance.voice.name) || 'default');
-        // Last-ditch: try once more with no forced voice (lets browser pick its system default)
-        try {
-          if (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed' || ev.error === 'canceled') {
-            const u2 = new SpeechSynthesisUtterance(text);
-            u2.rate = currentUtterance.rate || 0.95;
-            u2.pitch = currentUtterance.pitch || 1.0;
-            u2.volume = 1.0;
-            if (synth.speaking) synth.cancel();
-            synth.speak(u2);
-          }
-        } catch (e) {}
-      };
-
-      if (synth.speaking) synth.cancel();
-      setTimeout(() => {
-        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
-      }, 0);
+      try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
     }
 
     function stopSpeaking() {
       if (synth.speaking) synth.cancel();
       currentUtterance = null;
 
-      if (hostedAudio) {
-        hostedAudio.pause();
-        hostedAudio.currentTime = 0;
-        hostedAudio = null;
+      if (elevenLabsAudio) {
+        elevenLabsAudio.pause();
+        elevenLabsAudio.currentTime = 0;
+        elevenLabsAudio = null;
+      }
+
+      if (currentElevenLabsController) {
+        currentElevenLabsController.abort();
+        currentElevenLabsController = null;
       }
 
       // User manually stopped output; clear awaiting so hands-free can restart promptly if desired
@@ -1567,336 +1232,93 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function updateStopButton() {
-      const isSpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
+      const isSpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
       stopBtn.style.display = isSpeaking ? 'inline-block' : 'none';
     }
     setInterval(updateStopButton, 400);
 
     // ====================== VOICE SETTINGS (unchanged, excellent) ======================
     function formatVoiceName(fullName) {
-      // Sanitize in case we ever get a previously-labeled string (from old buggy saves or direct calls)
-      fullName = fullName
-        .replace(/\s*\(System\)\s*$/i, '')
-        .replace(/\s*\(System Voice\)\s*$/i, '')
-        .replace(/\s*\(Piper Neural\)\s*$/i, '')
-        .replace(/\s*\(Siri\)\s*$/i, '')
-        .trim();
-
-      const lower = fullName.toLowerCase();
-
-      // Piper voices (user-installed via the Piper Neural TTS app)
-      // Even if the system only reports the base name like "Alba", we label it clearly as a better neural voice.
-      const piperVoices = ['alba', 'amy', 'aria', 'danny', 'emily', 'jane', 'josh', 'karen', 'kevin', 'laura', 'lily', 'matthew', 'mike', 'nicole', 'oliver', 'rachel', 'ryan', 'sarah', 'thomas'];
-      for (const pv of piperVoices) {
-        if (lower.includes(pv) && !lower.includes('google') && !lower.includes('siri')) {
-          return fullName + ' (Piper Neural)';
-        }
-      }
-      if (lower.includes('piper')) {
-        return fullName + ' (Piper Neural)';
-      }
-
-      // Siri voices — give them nicer labels
       if (fullName.includes("Siri Voice")) {
         const match = fullName.match(/Siri Voice \d+/);
-        if (match) {
-          let label = match[0];
-          if (lower.includes('female') || lower.includes('us')) label += ' (US Female)';
-          else if (lower.includes('male')) label += ' (US Male)';
-          else label += ' (Siri)';
-          return label;
-        }
-        return fullName;
+        return match ? match[0] : fullName;
       }
-
-      if (fullName.includes("(Enhanced)")) {
-        return fullName; // already has good info
-      }
-
-      // Generic numbered / internal system voices (very common on macOS)
-      // These come from macOS Spoken Content. The browser often only sees raw numbers because
-      // the OS doesn't provide friendly names or gender info for every internal voice entry.
-      // We give them a clear label and rely on the per-voice 🔊 test buttons so you can hear
-      // the gender/accent yourself.
-      if (/^\d+/.test(fullName) || /^voice\s*\d+/i.test(fullName) || lower.includes('voice ')) {
-        const cleaned = fullName.replace(/^\d+\s*/, '').replace(/^voice\s*/i, '').trim();
-        const base = (cleaned || fullName).trim();
-        return base + ' (macOS Internal Voice — use 🔊 to hear)';
-      }
-
-      // Default for regular system voices: append (System) so the user knows it's a local voice
-      return fullName + ' (System)';
-    }
-
-    function normalizeVoiceName(name) {
-      if (!name) return '';
-      return name
-        .replace(/\s*\(Enhanced\)/gi, '')
-        .replace(/\s*\(System Voice\)/gi, '')
-        .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
-        .replace(/\s*\(System\)/gi, '')
-        .trim();
-    }
-
-    // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
-    // Uses exact, case-insensitive, includes, normalized names (strip Enhanced/System suffixes common on Mac/iOS),
-    // and special case for UK male.
-    function findLocalVoiceById(id) {
-      if (!id) return null;
-      const voices = synth.getVoices();
-      if (!voices || voices.length === 0) return null;
-
-      const normId = normalizeVoiceName(id);
-
-      let v = voices.find(v => v.name === id);
-      if (v) return v;
-
-      v = voices.find(v => normalizeVoiceName(v.name) === normId);
-      if (v) return v;
-
-      v = voices.find(v => v.name.toLowerCase() === id.toLowerCase());
-      if (v) return v;
-
-      v = voices.find(v => normalizeVoiceName(v.name).toLowerCase() === normId.toLowerCase());
-      if (v) return v;
-
-      v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
-      if (v) return v;
-
-      v = voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
-      if (v) return v;
-
-      // Special handling for UK male preference
-      if (id.toLowerCase().includes('uk') && id.toLowerCase().includes('male')) {
-        v = voices.find(v => 
-          v.name.toLowerCase().includes('google') && 
-          v.name.toLowerCase().includes('uk') && 
-          v.name.toLowerCase().includes('english') && 
-          v.name.toLowerCase().includes('male')
-        );
-        if (v) return v;
-      }
-      return null;
-    }
-
-    function reloadSystemVoices() {
-      // Reload voices from the OS (multiple kicks help newly installed voices like Piper appear on Mac).
-      loadVoices();
-      setTimeout(loadVoices, 300);
-      setTimeout(loadVoices, 800);
-      setTimeout(populateVoicePreviews, 200);
-      setTimeout(populateVoicePreviews, 800);
-    }
-
-    // unlockiOSVoices removed (reverted to pre-premium-voice-attempt state)
-
-    // --- Custom voice labels (user can rename any voice, including numbered internal ones) ---
-    function getCustomVoiceLabels() {
-      try {
-        return JSON.parse(localStorage.getItem('custom_voice_labels') || '{}');
-      } catch (e) { return {}; }
-    }
-    function setCustomVoiceLabel(rawName, label) {
-      const labels = getCustomVoiceLabels();
-      if (label && label.trim()) {
-        labels[rawName] = label.trim();
-      } else {
-        delete labels[rawName];
-      }
-      localStorage.setItem('custom_voice_labels', JSON.stringify(labels));
-    }
-    function getDisplayVoiceName(rawName) {
-      const labels = getCustomVoiceLabels();
-      if (labels[rawName]) return labels[rawName];
-      return formatVoiceName(rawName);
-    }
-
-    function testSelectedVoice() {
-      const sel = document.getElementById('voice-select');
-      if (!sel || !sel.value) {
-        alert('Please select a voice first.');
-        return;
-      }
-
-      const voiceName = sel.value.replace('local:', '');
-      const voice = findLocalVoiceById(voiceName);
-      if (!voice) {
-        alert('Could not find that voice. Try reloading the voice list.');
-        return;
-      }
-
-      // Prime (Mac)
-      try { synth.getVoices(); } catch(e){}
-
-      const utterance = new SpeechSynthesisUtterance(
-        cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
-      );
-      utterance.voice = voice;
-      utterance.rate = voiceSettings.rate || 0.95;
-      utterance.pitch = voiceSettings.pitch || 1.0;
-      utterance.volume = 1.0;
-      if (voice && voice.lang) utterance.lang = voice.lang;
-
-      utterance.onerror = (ev) => {
-        console.error('[TTS testSelected] error:', ev && ev.error);
-      };
-
-      // Stop anything currently speaking
-      if (synth.speaking) synth.cancel();
-
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { console.error(e); }
-      }, 0);
-
-      // After speaking, re-load voices (helps iOS show more after first use)
-      setTimeout(() => {
-        try { synth.getVoices(); } catch(e){}
-        loadVoices();
-        populateVoicePreviews();
-      }, 1500);
-    }
-
-    // Populate a separate preview list with speaker buttons so user can test ANY voice
-    // without having to select it in the main dropdown first.
-    function populateVoicePreviews() {
-      const container = document.getElementById('voice-preview-list');
-      if (!container) return;
-      container.innerHTML = '';
-
-      const voices = synth.getVoices();
-      if (!voices || voices.length === 0) {
-        container.innerHTML = '<div style="padding:4px; color:#888; font-size:11px;">No voices loaded yet. Try the Reload button above.</div>';
-        return;
-      }
-
-      // Show EVERY system voice with zero filters. This includes all Mac voices,
-      // all iPhone voices (basic + every premium/enhanced the user has installed),
-      // non-English, numbered internal voices, Piper, etc. User asked for the complete raw list.
-      let voicesToShow = voices;
-
-      voicesToShow.forEach(voice => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:3px 6px; border-radius:3px; cursor:pointer; gap:6px;';
-        row.onmouseover = () => row.style.background = '#f0f0f0';
-        row.onmouseout = () => row.style.background = '';
-
-        const label = document.createElement('span');
-        label.textContent = getDisplayVoiceName(voice.name);
-        label.style.flex = '1';
-        label.style.fontSize = '12px';
-
-        // Show raw name on hover so user can report exact internal names if needed
-        row.title = `Raw name: ${voice.name}  |  lang: ${voice.lang || 'unknown'}`;
-
-        // Clicking the name selects it in the main dropdown
-        label.onclick = () => {
-          const sel = document.getElementById('voice-select');
-          if (sel) {
-            const target = `local:${voice.name}`;
-            sel.value = target;
-            // trigger the existing onchange logic
-            sel.dispatchEvent(new Event('change'));
-          }
-        };
-
-        // Edit button to let user give a custom friendly name to any voice (great for the numbered internal ones)
-        const editBtn = document.createElement('button');
-        editBtn.textContent = '✏️';
-        editBtn.style.cssText = 'font-size:10px; padding:0 4px; border:none; background:transparent; cursor:pointer; opacity:0.7;';
-        editBtn.title = 'Rename this voice';
-        editBtn.onclick = (e) => {
-          e.stopImmediatePropagation();
-          const currentLabel = getDisplayVoiceName(voice.name);
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = currentLabel;
-          input.style.cssText = 'flex:1; font-size:12px; padding:2px 4px;';
-          input.onkeydown = (ev) => {
-            if (ev.key === 'Enter') {
-              setCustomVoiceLabel(voice.name, input.value);
-              populateVoicePreviews(); // re-render list with new name
-              loadVoices();            // refresh the main dropdown too
-            }
-            if (ev.key === 'Escape') {
-              populateVoicePreviews();
-            }
-          };
-          input.onblur = () => {
-            setCustomVoiceLabel(voice.name, input.value);
-            populateVoicePreviews();
-            loadVoices();
-          };
-          row.replaceChild(input, label);
-          input.focus();
-          input.select();
-        };
-
-        const testBtn = document.createElement('button');
-        testBtn.textContent = '🔊';
-        testBtn.style.cssText = 'font-size:11px; padding:1px 6px; border:1px solid #c9a227; background:#fff; border-radius:3px; cursor:pointer; flex-shrink:0;';
-        testBtn.title = 'Test this voice with John 3:16';
-        testBtn.onclick = (e) => {
-          e.stopImmediatePropagation();
-          // Re-resolve fresh voice object right before speaking (Mac/iOS voices can go stale)
-          try { synth.getVoices(); } catch(e){}
-          const freshVoice = findLocalVoiceById(voice.name) || voice;
-          const utterance = new SpeechSynthesisUtterance(
-            cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
-          );
-          utterance.voice = freshVoice;
-          utterance.rate = voiceSettings.rate || 0.95;
-          utterance.pitch = voiceSettings.pitch || 1.0;
-          utterance.volume = 1.0;
-          if (freshVoice && freshVoice.lang) utterance.lang = freshVoice.lang;
-
-          utterance.onerror = (ev) => { console.error('[TTS preview] error:', ev && ev.error); };
-
-          if (synth.speaking) synth.cancel();
-          setTimeout(() => {
-            try { synth.speak(utterance); } catch (e) { console.error(e); }
-          }, 0);
-
-          // After speaking, re-load voices (helps iOS show more after first use)
-          setTimeout(() => {
-            try { synth.getVoices(); } catch(e){}
-            loadVoices();
-            populateVoicePreviews();
-          }, 1500);
-        };
-
-        // Layout: [label] [edit] [test]
-        row.appendChild(label);
-        row.appendChild(editBtn);
-        row.appendChild(testBtn);
-        container.appendChild(row);
-      });
+      if (fullName.includes("(Enhanced)")) return fullName;
+      return fullName;
     }
 
     function loadVoices() {
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect) return;
 
-      // Multiple kicks help newly installed voices (Piper, premium Mac voices) appear.
-      let voices = synth.getVoices();
-      if (voices.length < 5) {
-        // Try again shortly — macOS sometimes populates lazily
-        setTimeout(() => {
-          voices = synth.getVoices();
-          if (voiceSelect.options.length < 3) loadVoices();
-        }, 400);
-      }
+      const voices = synth.getVoices();
       voiceSelect.innerHTML = '';
 
-      // Show ALL voices with no filters (the state before premium voice filter attempts that broke Mac).
-      // This includes every system voice on Mac and iPhone.
-      let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
-      if (voicesToShow.length === 0) voicesToShow = voices;
+      // Keep ALL voices in non-English languages (users may want Spanish, French, German, Japanese, etc.).
+      // For English voices only: keep the good/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc.).
+      // This removes the old low-quality English Mac voices (Karen, Alex, Bruce, Fred, etc.) while preserving full language variety.
+      const isEnglishVoice = (v) => {
+        const lang = (v.lang || '').toLowerCase();
+        const name = v.name.toLowerCase();
+        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
+      };
+      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
+      let voicesToShow = voices.filter(v => {
+        if (!isEnglishVoice(v)) return true; // keep every non-English voice
+        const n = v.name.toLowerCase();
+        if (n.includes('karen') || n.includes('allison')) return false; // user dislikes Karen and Allison as defaults
+        return goodEnglishKeywords.some(kw => n.includes(kw));
+      });
+      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
+
+      // Sort for better user experience:
+      // - Good English voices first, with "Google UK English Male" on top, then other Google UK, Enhanced, etc.
+      // - Then non-English voices in alphabetical order by name.
+      // This avoids pure alphabetical mess and puts quality English defaults first while keeping all other languages.
+      voicesToShow.sort((a, b) => {
+        const na = a.name.toLowerCase();
+        const nb = b.name.toLowerCase();
+        const aIsEng = isEnglishVoice(a);
+        const bIsEng = isEnglishVoice(b);
+
+        if (aIsEng && bIsEng) {
+          // Prioritize Google UK English Male
+          const aUKMale = na.includes('google uk english male') ? 0 : (na.includes('google') && na.includes('uk') ? 1 : 2);
+          const bUKMale = nb.includes('google uk english male') ? 0 : (nb.includes('google') && nb.includes('uk') ? 1 : 2);
+          if (aUKMale !== bUKMale) return aUKMale - bUKMale;
+
+          // Other Google UK
+          const aGoogleUK = (na.includes('google') && na.includes('uk')) ? 0 : 1;
+          const bGoogleUK = (nb.includes('google') && nb.includes('uk')) ? 0 : 1;
+          if (aGoogleUK !== bGoogleUK) return aGoogleUK - bGoogleUK;
+
+          // Enhanced
+          const aEnh = na.includes('enhanced') ? 0 : 1;
+          const bEnh = nb.includes('enhanced') ? 0 : 1;
+          if (aEnh !== bEnh) return aEnh - bEnh;
+
+          // Then other good English keywords
+          const aGood = goodEnglishKeywords.some(kw => na.includes(kw)) ? 0 : 1;
+          const bGood = goodEnglishKeywords.some(kw => nb.includes(kw)) ? 0 : 1;
+          if (aGood !== bGood) return aGood - bGood;
+
+          // Alpha for rest of English
+          return na.localeCompare(nb);
+        } else if (aIsEng && !bIsEng) {
+          return -1; // English before non-English
+        } else if (!aIsEng && bIsEng) {
+          return 1;
+        } else {
+          // Both non-English: alphabetical by name
+          return na.localeCompare(nb);
+        }
+      });
 
       // Add local voices
       voicesToShow.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = getDisplayVoiceName(voice.name);
+        option.textContent = formatVoiceName(voice.name) + " (System)";
         voiceSelect.appendChild(option);
 
         if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
@@ -1905,12 +1327,56 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
 
+      // Add ElevenLabs voices (async) — only if user opted into premium (for cost control) OR provided their own key (they pay directly).
+      // This is the main lever for making a low-monthly-fee subscription viable: premium off by default = zero TTS spend.
+      // Also require serverHasManagedTTS (from health) so we don't show options or burn when owner has no ELEVENLABS_API_KEY configured.
+      // Force load even if !premium if a ElevenLabs voice was previously saved, so the selection doesn't visually revert.
+      let shouldLoadEleven = (premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey;
+      if (!shouldLoadEleven && voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        shouldLoadEleven = true;
+      }
+      if (shouldLoadEleven) {
+        const voicesUrl = elevenLabsApiKey
+          ? 'https://api.elevenlabs.io/v1/voices'
+          : '/api/voices';
+        const voicesHeaders = elevenLabsApiKey
+          ? { 'xi-api-key': elevenLabsApiKey }
+          : {};
+        fetch(voicesUrl, { headers: voicesHeaders })
+          .then(r => r.json())
+          .then(data => {
+            const voices = data?.voices || data; // proxy returns {voices: [...] } or direct
+            if (Array.isArray(voices)) {
+              elevenLabsVoices = voices;
+              voices.forEach(v => {
+                const option = document.createElement('option');
+                option.value = `elevenlabs:${v.voice_id}`;
+                option.textContent = `${v.name} (ElevenLabs)`;
+                voiceSelect.appendChild(option);
+              });
+              // Re-apply saved selection now that ElevenLabs options exist
+              applySavedVoiceSelection();
+            }
+          })
+          .catch((e) => {
+            console.error('Failed to load ElevenLabs voices list:', e);
+          });
+      }
+
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+        // Strongly prefer Google UK English Male (user-requested high quality default).
+        // Then other Google UK, Enhanced, Samantha, Daniel.
+        const preferred = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
                           voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-                          voicesToShow.find(v => v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')) ||
-                          voicesToShow[0];
+                          voicesToShow.find(v => v.name.includes("Enhanced")) ||
+                          voicesToShow.find(v => v.name.includes('Samantha')) ||
+                          voicesToShow.find(v => v.name.includes('Daniel'));
+        let defaultVoice = preferred;
+        if (!defaultVoice) {
+          // Prefer any remaining English voice (after sort, this will be the best one like Google UK)
+          defaultVoice = voicesToShow.find(v => isEnglishVoice(v)) || voicesToShow[0];
+        }
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
 
@@ -1918,38 +1384,55 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceId = defaultVoice.name;
         voiceSettings.voiceSource = 'local';
 
-        localStorage.setItem('voice_source', 'local');
-        localStorage.setItem('voice_id', defaultVoice.name);
-
+        // Force the select to the preferred value (helps with timing/order issues in some browsers)
         voiceSelect.value = `local:${defaultVoice.name}`;
       }
     }
 
-    // Helper to apply the saved voice selection after voices have loaded
+    // Helper to apply the saved voice selection after voices (especially ElevenLabs) have loaded
     function applySavedVoiceSelection() {
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect || !voiceSettings.voiceId) return;
 
-      const targetValue = `local:${voiceSettings.voiceId}`;
+      const hasPersonalKey = !!elevenLabsApiKey;
+      const canUseElevenSaved = voiceSettings.voiceSource === 'elevenlabs' && !elevenLabsQuotaExceeded &&
+                                ((premiumVoicesEnabled && serverHasManagedTTS) || hasPersonalKey);
+
+      let targetValue;
+      if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        targetValue = `elevenlabs:${voiceSettings.voiceId}`;
+      } else {
+        targetValue = `local:${voiceSettings.voiceId}`;
+      }
+
       const option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
       if (option) {
         option.selected = true;
-        const voices = synth.getVoices();
-        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
-      } else {
-        // fallback to first local
-        const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
-        if (firstLocal) firstLocal.selected = true;
-        voiceSettings.voiceSource = 'local';
-        voiceSettings.voiceId = firstLocal ? firstLocal.value.replace('local:', '') : '';
-      }
 
-      // Populate the independent preview list with per-voice speaker test buttons
-      setTimeout(populateVoicePreviews, 30);
+        // Also sync the selectedVoice variable for local voices
+        if (voiceSettings.voiceSource === 'local') {
+          const voices = synth.getVoices();
+          selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+        }
+        // IMPORTANT: do NOT force voiceSettings.voiceSource to 'local' here even if !canUseElevenSaved.
+        // This prevents the dropdown from "reverting" the saved ElevenLabs selection.
+        // The speak() function will still safely fallback to local voice if !canUseEleven.
+      } else if (voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
+        // Saved eleven but no matching option (e.g. voices not loaded yet) - keep the settings as-is
+        // so selection doesn't revert. loadVoices should have forced the fetch above.
+      } else {
+        // fallback to a good local (prefer Google UK English Male etc, or first English after our filter)
+        const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
+          const n = o.value.toLowerCase();
+          return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
+        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));  // first local (will be best English after our sort/filter)
+        if (firstGoodLocal) firstGoodLocal.selected = true;
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
+      }
     }
 
     function openVoiceSettings() {
-      window.__voiceModalOpened = true;  // mark so defensive checks in speak() can trust the checkbox state
       const voiceModal = document.getElementById('voice-modal');
       const voiceSelect = document.getElementById('voice-select');
       const rateSlider = document.getElementById('rate-slider');
@@ -1957,54 +1440,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const rateValue = document.getElementById('rate-value');
       const pitchValue = document.getElementById('pitch-value');
 
-      // Basic reloads for voices (the state before aggressive iPhone premium wake logic)
-      loadVoices();
-      setTimeout(loadVoices, 300);
-      setTimeout(loadVoices, 800);
-      setTimeout(populateVoicePreviews, 200);
-      setTimeout(populateVoicePreviews, 800);
-
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
 
-      // Populate the per-voice preview list with speaker buttons
-      setTimeout(populateVoicePreviews, 100);
-      setTimeout(populateVoicePreviews, 800);
+      // Pre-fill the ElevenLabs key input BEFORE loading voices
+      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
+      if (elevenLabsInput) elevenLabsInput.value = elevenLabsApiKey || '';
 
-      // No legacy premium key input (11Labs fully removed).
+      const quotaWarning = document.getElementById('elevenlabs-quota-warning');
+      if (quotaWarning) quotaWarning.style.display = elevenLabsQuotaExceeded ? 'block' : 'none';
 
-      // Prefill custom local TTS URL (free Docker server)
-      const customTtsInput = document.getElementById('custom-tts-url');
-      if (customTtsInput) {
-        customTtsInput.value = localStorage.getItem('custom_tts_url') || 'http://localhost:5050';
-      }
-
-      // No more XAI/cloud voice toggle (we use only excellent local system voices).
-      // The "Better Voices" section below explains how to install even higher-quality neural voices
-      // (Piper on Mac/iOS, VoxSherpa on Android, etc.) that then appear in the dropdown above.
-
-      // Live update when user clicks a different voice in the main dropdown.
-      // This makes selection take effect immediately (updates voiceSettings + selectedVoice for local)
-      // so speak() uses the new voice without requiring the Save button.
-      if (voiceSelect) {
-        voiceSelect.onchange = () => {
-          const selVal = voiceSelect.value;
-          if (selVal.startsWith('local:')) {
-            voiceSettings.voiceSource = 'local';
-            voiceSettings.voiceId = selVal.replace('local:', '');
-            // Sync selectedVoice right away so fallbackToBrowserSpeech uses it
-            const voices = synth.getVoices();
-            selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
-            localStorage.setItem('voice_source', voiceSettings.voiceSource);
-            localStorage.setItem('voice_id', voiceSettings.voiceId);
-            // Force premium hosted off when a local voice is explicitly chosen in the main dropdown
-            localStorage.setItem('use_premium_voices', 'false');
-            // Sync the premium toggle UI if the modal is currently open
-            const pt = document.getElementById('premium-voices-toggle');
-            if (pt) pt.checked = false;
-          }
-          localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
-        };
+      if (elevenLabsQuotaExceeded && voiceSettings.voiceSource === 'elevenlabs') {
+        // do not force source change here - keeps the saved EL selection visible in dropdown
+        // speak() will fallback to local automatically
       }
 
       const autoSpeakToggle = document.getElementById('auto-speak-toggle');
@@ -2034,24 +1482,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
-      const transSelect = document.getElementById('default-trans-select');
-      if (transSelect) {
-        const saved = localStorage.getItem('default_english_trans') || 'eng_lsv';
-        transSelect.value = saved;
-        transSelect.onchange = () => {
-          localStorage.setItem('default_english_trans', transSelect.value || 'eng_lsv');
-        };
-      }
-
+      // Premium toggle removed (ElevenLabs is now key-only). We still keep the variable for backward compat with saved state.
       loadVoices();
 
-      // Ensure the saved local voice is selected in the dropdown
+      // Ensure the saved voice (local or ElevenLabs) is selected in the dropdown
+      // We call it a couple times to cover async ElevenLabs population
       setTimeout(() => {
         applySavedVoiceSelection();
       }, 80);
       setTimeout(() => {
         applySavedVoiceSelection();
-      }, 300);
+      }, 300);  // give async ElevenLabs fetch time to complete and add options
 
       rateSlider.value = voiceSettings.rate;
       pitchSlider.value = voiceSettings.pitch;
@@ -2068,17 +1509,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelect = document.getElementById('voice-select');
       const rateSlider = document.getElementById('rate-slider');
       const pitchSlider = document.getElementById('pitch-slider');
-      const selectedValue = voiceSelect.value; // e.g. "local:Daniel (Enhanced)"
+      const elevenLabsInput = document.getElementById('elevenlabs-key-input');
+
+      const selectedValue = voiceSelect.value; // e.g. "local:Daniel (Enhanced)" or "elevenlabs:abc123"
 
       // Parse the selection into clean source + id
-      if (selectedValue.startsWith('local:')) {
+      if (selectedValue.startsWith('elevenlabs:')) {
+        voiceSettings.voiceSource = 'elevenlabs';
+        voiceSettings.voiceId = selectedValue.replace('elevenlabs:', '');
+        // Auto-enable premium when user picks an ElevenLabs voice (so it doesn't stay disabled and cause "revert")
+        if (!premiumVoicesEnabled) {
+          premiumVoicesEnabled = true;
+          localStorage.setItem('premium_voices_enabled', 'true');
+        }
+      } else if (selectedValue.startsWith('local:')) {
         voiceSettings.voiceSource = 'local';
         voiceSettings.voiceId = selectedValue.replace('local:', '');
-        // Resolve to actual voice object now (so speak uses it even if modal closes)
-        const match = findLocalVoiceById(voiceSettings.voiceId);
-        if (match) selectedVoice = match;
-        // Force premium hosted off when saving a local voice selection
-        localStorage.setItem('use_premium_voices', 'false');
       } else {
         // Fallback
         voiceSettings.voiceSource = 'local';
@@ -2088,15 +1534,47 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voiceSettings.rate = parseFloat(rateSlider.value);
       voiceSettings.pitch = parseFloat(pitchSlider.value);
 
-      // Save custom local TTS server URL (advanced/power-user path) if present
-      const customTtsInput = document.getElementById('custom-tts-url');
-      if (customTtsInput) {
-        const url = (customTtsInput.value || '').trim();
-        if (url) {
-          localStorage.setItem('custom_tts_url', url);
-        } else {
-          localStorage.removeItem('custom_tts_url');
+      // Premium toggle removed from UI. We keep premiumVoicesEnabled for any legacy saved state,
+      // but ElevenLabs now requires an explicit key (see key input + auto-enable on EL selection).
+
+      // Save ElevenLabs key if the user entered one (personal unlimited, billed to them)
+      if (elevenLabsInput && elevenLabsInput.value.trim()) {
+        const newKey = elevenLabsInput.value.trim();
+        // Reset quota state on any key save (user may have topped up)
+        elevenLabsFailedOnce = false;
+        elevenLabsQuotaExceeded = false;
+        elevenLabsNextAllowedTime = 0;
+        try { localStorage.removeItem('elevenlabs_quota_exceeded'); } catch (e) {}
+        // free cached audio blobs
+        for (const [k, v] of elevenLabsTTSCache) {
+          try { URL.revokeObjectURL(v.url); } catch (e) {}
         }
+        elevenLabsTTSCache.clear();
+        elevenLabsApiKey = newKey;
+        localStorage.setItem('elevenlabs_api_key', elevenLabsApiKey);
+      }
+
+      // Cost guard: if they chose an ElevenLabs voice but premium not enabled and no personal key this save, force local.
+      // This prevents accidental burn of owner's managed credits.
+      if (voiceSettings.voiceSource === 'elevenlabs' && !premiumVoicesEnabled && !elevenLabsApiKey) {
+        voiceSettings.voiceSource = 'local';
+        voiceSettings.voiceId = '';
+        // pick a reasonable local default if possible (prefer Google UK English Male)
+        const voices = synth.getVoices();
+        const pref = voices.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+                     voices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+                     voices.find(v => v.name.includes('Enhanced') || v.name.includes('Samantha')) ||
+                     voices.find(v => v.lang.includes('en') && v.localService);
+        if (pref) {
+          voiceSettings.voiceId = pref.name;
+          selectedVoice = pref;
+        }
+        // gentle note
+        const note = document.createElement('div');
+        note.style.cssText = 'font-size:11px;color:#c94e4e;margin-top:4px;';
+        note.textContent = 'Premium was off — switched to free local voice to avoid using app credits.';
+        // append temporarily? for now just console; user sees in dropdown after close
+        console.warn('Forced local voice on save because premium toggle off + no personal key.');
       }
 
       // Persist the clean voice choice
@@ -2120,11 +1598,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         localStorage.setItem('wake_word', wakeWord);
       }
 
-      const transSelect = document.getElementById('default-trans-select');
-      if (transSelect) {
-        localStorage.setItem('default_english_trans', transSelect.value || 'eng_lsv');
-      }
-
       if (typeof updateHandsFreeLabel === 'function') {
         updateHandsFreeLabel();
       }
@@ -2132,9 +1605,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Update selectedVoice for local Mac voices
       const voices = synth.getVoices();
       if (voiceSettings.voiceSource === 'local') {
-        selectedVoice = findLocalVoiceById(voiceSettings.voiceId) || null;
+        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
       } else {
-        selectedVoice = null;
+        selectedVoice = null; // ElevenLabs uses its own path in speak()
+      }
+
+      // If we have a key, make sure ElevenLabs voices are loaded for next open
+      if (elevenLabsApiKey) {
+        loadVoices();
       }
 
       // Visual feedback on the button
@@ -2147,22 +1625,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }, 900);
       }
 
-      // Quick status hint if local TTS server is configured (easiest free option)
-      const customUrlAfterSave = localStorage.getItem('custom_tts_url');
-      if (customUrlAfterSave) {
-        // Only log at info level if it's not the default localhost (to reduce noise in normal use)
-        if (!customUrlAfterSave.includes('localhost:5050')) {
-          console.log('[Voice] Custom local TTS server active:', customUrlAfterSave);
-        } else {
-          console.debug('[Voice] Custom local TTS server active (localhost test):', customUrlAfterSave);
-        }
-      }
-
       // Try to select the newly saved voice in the dropdown (for immediate feedback if modal re-opened quickly)
       setTimeout(() => {
         const sel = document.getElementById('voice-select');
         if (sel) {
-          const target = `local:${voiceSettings.voiceId}`;
+          const target = voiceSettings.voiceSource === 'elevenlabs'
+            ? `elevenlabs:${voiceSettings.voiceId}`
+            : `local:${voiceSettings.voiceId}`;
           const opt = Array.from(sel.options).find(o => o.value === target);
           if (opt) opt.selected = true;
         }
@@ -2180,12 +1649,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWordActiveUntil = 0;
       longPauseUntil = 0;
 
-      // Normalize typed input as well for Bible refs (e.g. "John two" -> "John 2")
-      // so extraction and grounding works for typed questions too.
-      if (userText) {
-        userText = normalizeBibleTranscript(userText);
-      }
-
       // If user typed/sent while voice was listening (hands-free), stop the recognizer cleanly.
       if (handsFreeEnabled && isListening && recognition) {
         try { recognition.stop(); } catch (e) {}
@@ -2201,7 +1664,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const loadingMsg = addMessage("Thinking...", false, true);
       userInput.value = "";
 
-      // Demo limit for unauthenticated "Try the App" (hard-capped server-side per IP per day + client UX)
+      // Demo limit for unauthenticated "Try the App" (just a few passages/responses)
       const token = getEffectiveAuthToken();
       if (!token) {
         if (demoResponsesUsed >= DEMO_RESPONSE_LIMIT) {
@@ -2225,36 +1688,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
-        // Strip 'sources' (which contain full Bible chapter text) from the history we send to the server.
-        // Server only needs the text content to re-extract refs + for model context.
-        // Full sources are kept locally for the UI "Sources" panel and persistence.
-        const payloadMessages = conversation.map(m => {
-          if (m.sources) {
-            const { sources, ...rest } = m;
-            return rest;
-          }
-          return m;
-        });
-
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ 
-            messages: payloadMessages,
-            defaultTranslation: localStorage.getItem('default_english_trans') || 'eng_lsv'
-          })
+          body: JSON.stringify({ messages: conversation })
         });
 
-        // Robust parse: protect against platform HTML error pages (e.g. Render cold-start 503/502 pages
-        // or misconfigured deploys) which start with <!DOCTYPE and cause the classic "Unexpected token '<'" JSON error.
-        let data;
-        const ct = response.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          data = await response.json();
-        } else {
-          const txt = await response.text().catch(() => '');
-          throw new Error(`Server returned non-JSON (status ${response.status}). ${txt.slice(0, 150)}`);
-        }
+        const data = await response.json();
         removeLoadingMessage();
 
         if (!response.ok) {
@@ -2264,60 +1704,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           autoSaveCurrentChat();
           updateHeaderForCurrentChat();
           renderSidebarChats(currentSearchTerm || '');
-          // Sync demo remaining from server on 429 so refresh doesn't bypass the limit
-          const tokenForSync = getEffectiveAuthToken();
-          if (response.status === 429 && !tokenForSync && data && typeof data.demoRemaining === 'number') {
-            demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
-            localStorage.setItem('demo_responses_used', demoResponsesUsed);
-            updateDemoStatus();
-            enforceDemoLimit();
-          }
           if ((response.status === 401 || response.status === 403) && token) {
             // Only auto-prompt login modal for real accounts; demo uses the banner + Account button
             const modal = document.getElementById('subscribe-modal');
-            if (modal) {
-              modal.style.display = 'flex';
-              // Populate like the button click does (for stale token case)
-              const accountInfo = document.getElementById('account-info');
-              const loginSection = document.getElementById('login-section');
-              const emailEl = document.getElementById('account-email');
-              const statusEl = document.getElementById('account-status');
-              const modalTitle = modal.querySelector('h3');
-              if (modalTitle) modalTitle.textContent = 'Account';
-              if (accountInfo) accountInfo.style.display = '';
-              if (loginSection) loginSection.style.display = 'none';
-              const setPwSection = document.getElementById('set-password-section');
-              if (setPwSection) setPwSection.style.display = 'none';
-
-              const lb = document.getElementById('logout-btn');
-              if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
-
-              fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
-                .then(r => r.json())
-                .then(data => {
-                  if (emailEl) emailEl.textContent = data.email || 'Logged in';
-                  if (statusEl) {
-                    let txt = data.status || 'active';
-                    if (data.trial_end) txt += ' (trial ends ' + new Date(data.trial_end).toLocaleDateString() + ')';
-                    if (!data.access_granted) txt = 'Access revoked';
-                    statusEl.textContent = txt;
-                  }
-                  const setPwSection = document.getElementById('set-password-section');
-                  if (setPwSection) {
-                    setPwSection.style.display = data.has_password ? 'none' : '';
-                  }
-                  const setPwBtn = document.getElementById('set-password-btn');
-                  if (setPwBtn) {
-                    setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
-                  }
-                })
-                .catch(() => {
-                  if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
-                  if (statusEl) statusEl.textContent = 'Active (token may be expired)';
-                  const setPwSection = document.getElementById('set-password-section');
-                  if (setPwSection) setPwSection.style.display = 'none';
-                });
-            }
+            if (modal) modal.style.display = 'flex';
           }
           return;
         }
@@ -2344,53 +1734,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       renderSidebarChats(currentSearchTerm || '');
         isAwaitingResponse = false;
 
-        // If this was a demo response, sync the authoritative remaining count from server
-        // (prevents refresh abuse and keeps UI accurate)
-        const tokenAfter = getEffectiveAuthToken();
-        if (!tokenAfter && data && typeof data.demoRemaining === 'number') {
-          demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
-          localStorage.setItem('demo_responses_used', demoResponsesUsed);
-          updateDemoStatus();
-          enforceDemoLimit();
-        }
-
         // Refresh demo banner count / disabled state (in case this was a demo response)
         enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
-          // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
-          // No xAI or server voices for output. Clean any old notes.
-          const lastMsgForClean = document.querySelector('.messages .message:last-child');
-          if (lastMsgForClean) {
-            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-          }
-          // Ensure local.
-          if (voiceSettings.voiceSource !== 'local') {
-            voiceSettings.voiceSource = 'local';
-            localStorage.setItem('voice_source', 'local');
-          }
-          if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-            voiceSettings.voiceId = 'Google UK English Male';
-            localStorage.setItem('voice_id', voiceSettings.voiceId);
-          }
+          // Always speak the full reply now, even for ElevenLabs voices.
+          // (Previously truncated for cost, but that caused "stops after 30s" with EL.
+          //  Since EL is bring-your-own-key, user pays; use local voices for free full auto-speak.
+          //  Manual 🔊 on messages also full.)
           speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
-          // Give a bit more time before listening to avoid picking up any residual audio/echo.
-          scheduleHandsFreeRestart(800);
+          scheduleHandsFreeRestart(650);
         }
       } catch (err) {
         removeLoadingMessage();
         isAwaitingResponse = false;
-        const isRate = /429|rate limit|too many requests/i.test(err.message || '');
-        const niceMsg = isRate 
-          ? "xAI is rate limiting right now (tier RPM/TPM cap). Using local fallback if speaking. Try again soon — limits grow with usage."
-          : "Connection error: " + err.message;
-        addMessage(niceMsg, false);
+        addMessage("Connection error: " + err.message, false);
         conversation.pop();
         if (handsFreeEnabled) {
-          scheduleHandsFreeRestart(800);
+          scheduleHandsFreeRestart(900);
         }
       }
     }
@@ -2413,30 +1777,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // With interimResults=true and continuous=true, we get progressive results.
         // Use the latest transcript (interim or final) to capture full sentences without cutting off.
         const result = event.results[event.results.length - 1];
-        let transcript = result[0].transcript.trim();
-        transcript = normalizeBibleTranscript(transcript);  // fix common STT errors for Bible refs like "1 John 4"
+        const transcript = result[0].transcript.trim();
         const confidence = result[0].confidence || 0;
         const isFinal = result.isFinal;
 
         currentTranscript = transcript;  // for non-handsfree stop handlers etc.
 
-        // Update live display with fast browser interim (will be corrected by server STT when chunks arrive)
         if (handsFreeEnabled) {
-          updateLiveTranscript(currentTranscript);
-        }
-
-        if (handsFreeEnabled) {
-          const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
+          const isCurrentlySpeaking = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
           const hasWake = containsWakeWord(transcript);
           const cmd = hasWake ? getCommandAfterWake(transcript) : '';
 
           if (hasWake) {
-            // Strong interrupt: if the wake word is heard while the AI is speaking,
-            // immediately stop the voice so the user can talk.
-            if (isCurrentlySpeaking) {
-              stopSpeaking();
-            }
-
             // If we are in a long-pause mode (user said wake+pause etc.) and this is a new wake,
             // it means the user is ready to submit the previous long thought (they may have taken a breath or thought).
             if (longPauseUntil > Date.now() && pendingTranscript) {
@@ -2469,9 +1821,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             }
 
             if (isCurrentlySpeaking) {
-              // Barge-in already handled above with stopSpeaking().
-              // If they gave a full command after the wake word, queue it.
+              // Barge-in: stop speaking immediately when name is heard.
+              stopSpeaking();
+
               if (cmd && cmd.length > 1) {
+                // User interrupted with a new command. Set pending and use a shorter
+                // commit timer so it feels responsive after interrupt, but still waits
+                // a moment for the user to finish the new sentence.
                 pendingTranscript = cmd;
                 lastTranscriptConfidence = confidence;
                 if (commitTimeout) clearTimeout(commitTimeout);
@@ -2486,7 +1842,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                 }, 650);
                 return;
               } else {
-                // Just the name — open a window for the user to speak their command.
+                // Just the name to interrupt. Open window for follow-up command.
                 wakeWordActiveUntil = Date.now() + 9000;
                 return;
               }
@@ -2593,7 +1949,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (isFinal) {
           stopListeningUI();
           if (transcript && transcript.length > 1) {
-            const t = normalizeBibleTranscript(transcript);
+            const t = transcript;
             currentTranscript = '';
             sendToGrok(t);
           }
@@ -2601,22 +1957,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       recognition.onerror = (event) => {
-        const errType = event.error;
-        // Suppress very common benign errors in hands-free to avoid console spam.
-        // 'aborted' is common when we stop/restart the recognizer.
-        // 'no-speech' is handled with restart.
-        if (errType !== 'no-speech' && errType !== 'aborted') {
-          const logKey = 'sr-log-' + errType;
-          window._srLogCount = window._srLogCount || {};
-          window._srLogCount[logKey] = (window._srLogCount[logKey] || 0) + 1;
-          if (window._srLogCount[logKey] <= 5) {
-            console.warn("Speech recognition error:", errType, event.message || '');
-          }
+        // Suppress the extremely common "no-speech" spam in hands-free mode.
+        // Only log actual problems.
+        if (event.error !== 'no-speech') {
+          console.warn("Speech recognition error:", event);
         }
 
         stopListeningUI();
 
-        if (errType === "no-speech" || errType === "aborted") {
+        if (event.error === "no-speech") {
           if (handsFreeEnabled && !startingRecognition) {
             // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
             scheduleHandsFreeRestart(1400);
@@ -2625,7 +1974,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
 
         // Handle real problems
-        if (errType === 'network' || errType === 'audio-capture' || errType === 'not-allowed' || errType === 'service-not-allowed') {
+        if (event.error === 'network' || event.error === 'audio-capture' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           const isNetwork = event.error === 'network';
           if (handsFreeEnabled) {
             // Tell the user once (avoid spam)
@@ -2658,16 +2007,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           return;
         }
 
-        // For other unexpected errors, let the onend handler decide restart (with the safeguards above).
+        // For other errors (aborted, etc.), just let the onend handler decide whether to restart.
       };
 
       recognition.onend = () => {
         stopListeningUI();
-        const isOutputting = synth.speaking || (hostedAudio && !hostedAudio.paused);
+        const isOutputting = synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
           // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
-          scheduleHandsFreeRestart(800);
+          scheduleHandsFreeRestart(600);
         }
       };
     }
@@ -2688,10 +2037,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
       if (synth.speaking) synth.cancel();
-
-      if (hostedAudio) {
-        try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
-        hostedAudio = null;
+      if (elevenLabsAudio) {
+        elevenLabsAudio.pause();
+        elevenLabsAudio.currentTime = 0;
+        elevenLabsAudio = null;
       }
 
       // Always attempt a clean stop first. The Web Speech API state machine is picky;
@@ -2723,25 +2072,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           micBtn.classList.add("listening");
           micBtn.textContent = "●";
           startingRecognition = false;
-
-          // Start capturing raw audio for this utterance (hands-free only).
-          // We keep using the fast browser recognizer for wake word, barge-in, and interim text.
-          // We also send accumulating audio chunks live to /api/stt (xAI with heavy Bible keyterm boosting)
-          // for streaming improved transcription shown to the user. This uses the best available
-          // model for accuracy on scripture references (far better than raw browser STT on names/numbers).
-          // The user sees the accurate text updating live and can correct by speaking clearly.
-          if (handsFreeEnabled && serverHasSTT) {
-            startAudioCaptureForCurrentUtterance().catch(() => {});
-            // Show the live (server-improved) transcript container
-            const liveContainer = document.getElementById('live-transcript-container');
-            if (liveContainer) liveContainer.style.display = 'block';
-            const liveEl = document.getElementById('live-transcript');
-            if (liveEl) liveEl.textContent = 'Listening...';
-          } else if (handsFreeEnabled) {
-            // pure browser mode: still show simple listening indicator if desired, but no server STT
-            const liveContainer = document.getElementById('live-transcript-container');
-            if (liveContainer) liveContainer.style.display = 'none';
-          }
         } catch (e) {
           startingRecognition = false;
           if (e.name === 'InvalidStateError') {
@@ -2761,137 +2091,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       currentTranscript = '';
       micBtn.classList.remove("listening");
       micBtn.textContent = "🎙️";
-
-      // Hide and clear the live transcript
-      const liveContainer = document.getElementById('live-transcript-container');
-      if (liveContainer) liveContainer.style.display = 'none';
-      const liveEl = document.getElementById('live-transcript');
-      if (liveEl) liveEl.textContent = '';
-
-      // Finalize any in-progress audio capture for the just-ended utterance.
-      // The blob (if any) will be available in lastUtteranceAudioBlob for the commit path.
-      stopAndFinalizeAudioCapture();
     }
-
-    // Start (or restart) a MediaRecorder on the mic for the current user turn.
-    // We request the stream once and reuse it. Only the audio from the active listening
-    // window is kept (we clear chunks on start of a new command turn).
-    async function startAudioCaptureForCurrentUtterance() {
-      try {
-        if (!mediaStream) {
-          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-        }
-        // Stop any previous recorder cleanly
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-          try { mediaRecorder.stop(); } catch (e) {}
-        }
-        audioChunks = [];
-        lastUtteranceAudioBlob = null;
-
-        // Prefer webm/opus (widely supported and good quality for STT). Fall back to default.
-        const options = { mimeType: 'audio/webm;codecs=opus' };
-        mediaRecorder = new MediaRecorder(mediaStream, MediaRecorder.isTypeSupported(options.mimeType) ? options : undefined);
-
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) audioChunks.push(e.data);
-          // Trigger live server STT for improved (boosted) transcription display.
-          // This gives the user accurate live text using the best domain-tuned model (xAI STT + keyterms),
-          // instead of raw browser STT which is often inaccurate on Bible names/numbers.
-          triggerLiveImprovedStt();
-        };
-        mediaRecorder.onstop = () => {
-          if (audioChunks.length > 0) {
-            lastUtteranceAudioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-            // Keep chunks for potential re-use until next turn; they are cleared on next start.
-          }
-        };
-
-        // Start with timeslice so ondataavailable fires periodically (for live STT updates during speaking).
-        // This enables streaming-like improved transcription using the server xAI STT (with Bible boosting).
-        mediaRecorder.start(900); // ~every 900ms chunk for responsive live updates without too much overhead
-        // console.log('[audio] recording started for utterance');
-      } catch (err) {
-        // Permission denied or no mic support — silently fall back to browser transcript only.
-        // This is fine; the browser STT still works.
-        console.warn('[audio] could not start raw capture for STT (will use browser transcript only):', err && err.name);
-        mediaStream = null;
-        mediaRecorder = null;
-        audioChunks = [];
-        lastUtteranceAudioBlob = null;
-      }
-    }
-
-    function stopAndFinalizeAudioCapture() {
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        try { mediaRecorder.stop(); } catch (e) {}
-      }
-      // lastUtteranceAudioBlob will be set in the onstop handler above (async).
-
-      // Clear any pending live STT update
-      if (liveSttTimer) {
-        clearTimeout(liveSttTimer);
-        liveSttTimer = null;
-      }
-    }
-
-    // Debounced live call to server STT for accurate (keyterm-boosted) transcription while the user is still speaking.
-    // This provides "streaming" improved text to the user using the best available model for this domain
-    // (xAI STT with extensive Bible book/chapter/verse keyterm boosting). Browser STT is used only for fast wake/barge-in.
-    function triggerLiveImprovedStt() {
-      if (window.__sttLiveDisabled || !serverHasSTT) {
-        const lc = document.getElementById('live-transcript-container');
-        if (lc) lc.style.display = 'none';
-        return;
-      }
-      if (liveSttTimer) clearTimeout(liveSttTimer);
-      liveSttTimer = setTimeout(async () => {
-        liveSttTimer = null;
-        if (audioChunks.length < 2 || !handsFreeEnabled || isAwaitingResponse) return;
-        try {
-          // Use current accumulated audio for a partial improved transcript
-          const tempBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-          // Short timeout so live updates don't delay the UI
-          const improved = await improveTranscriptWithSTT(currentTranscript || '', tempBlob, 2800);
-          if (improved && improved.trim().length > 2) {
-            currentTranscript = improved;
-            updateLiveTranscript(improved);
-          }
-        } catch (err) {
-          // Silent fail for live updates — we still have browser interim as fallback
-        }
-      }, 1100); // debounce ~1.1s after latest chunk
-    }
-
-    function updateLiveTranscript(text) {
-      const container = document.getElementById('live-transcript-container');
-      const el = document.getElementById('live-transcript');
-      if (!container || !el) return;
-      if (text && text.trim()) {
-        el.textContent = text;
-        container.style.display = 'block';
-      } else {
-        container.style.display = 'none';
-      }
-    }
-
-    // Remove markdown and symbols before TTS so the voice reads naturally
-    function cleanTextForSpeech(text) {
-      if (!text) return '';
-      return text
-        .replace(/\*\*(.+?)\*\*/g, '$1')   // bold **text**
-        .replace(/\*(.+?)\*/g, '$1')       // italic *text*
-        .replace(/`(.+?)`/g, '$1')         // inline code
-        .replace(/^#{1,6}\s*/gm, '')       // headers
-        .replace(/^\s*[-*+]\s+/gm, '')     // list bullets
-        .replace(/[*\-#`~_]/g, '')         // stray symbols
-        .replace(/\n{2,}/g, '. ')          // paragraph breaks as pauses
-        .replace(/\n/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    // Small helper so the async onstop has time to populate the blob before we try to send it.
-    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     // Helper to completely recreate the SpeechRecognition instance after bad errors (network etc).
     // The Web Speech API can get into a bad state after certain errors; fresh instance helps.
@@ -2912,7 +2112,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Centralized restart scheduler for hands-free to avoid overlapping timers that cause
     // "Recognition already started" + laggy / noisy behavior.
-    function scheduleHandsFreeRestart(delayMs = 800) {
+    function scheduleHandsFreeRestart(delayMs = 900) {
       if (restartTimer) {
         clearTimeout(restartTimer);
       }
@@ -2971,261 +2171,35 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       remainder = remainder.replace(/^[\s,.;:!?]+/, '').trim();
       remainder = remainder.replace(/^(hey|ok|okay|please|now|um|uh|so|well|lets|let us|can you|could you|would you|go ahead|talk about|tell me about)\s+/i, '').trim();
 
-      // Re-normalize the extracted command to catch Bible refs like "John one" that may have been after the wake word.
-      remainder = normalizeBibleTranscript(remainder).trim();
-
       return remainder;
-    }
-
-    // Normalize common speech-to-text errors, especially Bible references like "1 John 4" (often "one john four", "first john four", "i john 4").
-    // This helps both the sent command text and ref extraction.
-    function normalizeBibleTranscript(text) {
-      if (!text) return text;
-      let t = ' ' + text + ' ';
-
-      // Specific for common STT mishearing of 1 John 1 as "first john one" or "1 john one"
-      t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
-      t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
-
-      // Conversational follow-ups ("John too", "John as well", "now John", "the other one") so that
-      // even short follow-ups like "tell me about John too" get normalized before sending.
-      // The server also has extra context-aware logic to infer the next chapter from recent refs.
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s+(too|as well|also|next|the other)\b/gi, 'John 2');
-      t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
-      t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
-
-      // Direct rescue for the exact jumbled STT output the user is seeing on voice:
-      // "John tell me about John two" comes out as "two John two cell", "second John 2 cell", "john two cell"
-      t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
-      t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
-      t = t.replace(/\b2\s+john\s+2\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
-      t = t.replace(/\bcell\b/gi, ''); // strip common garbage that STT inserts after Bible refs
-      t = t.replace(/\btwo\s+john\s+two\s+cell\b/gi, 'John 2');
-      t = t.replace(/\bsecond\s+john\s+2\s+cell\b/gi, 'John 2');
-
-      // Gospel of John references first ( "john one", "john 1", "john chapter one", "the book of john 1" etc.)
-      // This must come before the epistle "one john" rules so "John one" becomes the Gospel, not 1 John.
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(two|2|second)\b/gi, 'John 2');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(three|3|third)\b/gi, 'John 3');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(four|4)\b/gi, 'John 4');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(five|5)\b/gi, 'John 5');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(\d+)\b/gi, 'John $3');
-
-      // Numbered books - very common STT mistakes for "1 John", "2 Peter" etc.
-      t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
-      t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
-      t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
-
-      t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
-      t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
-
-      t = t.replace(/\b(one|1st|first)\s+corinthians\b/gi, ' 1 Corinthians ');
-      t = t.replace(/\b(two|2nd|second)\s+corinthians\b/gi, ' 2 Corinthians ');
-
-      t = t.replace(/\b(one|1st|first)\s+thessalonians\b/gi, ' 1 Thessalonians ');
-      t = t.replace(/\b(two|2nd|second)\s+thessalonians\b/gi, ' 2 Thessalonians ');
-
-      t = t.replace(/\b(one|1st|first)\s+timothy\b/gi, ' 1 Timothy ');
-      t = t.replace(/\b(two|2nd|second)\s+timothy\b/gi, ' 2 Timothy ');
-
-      t = t.replace(/\b(one|1st|first)\s+kings\b/gi, ' 1 Kings ');
-      t = t.replace(/\b(two|2nd|second)\s+kings\b/gi, ' 2 Kings ');
-
-      t = t.replace(/\b(one|1st|first)\s+samuel\b/gi, ' 1 Samuel ');
-      t = t.replace(/\b(two|2nd|second)\s+samuel\b/gi, ' 2 Samuel ');
-
-      t = t.replace(/\b(one|1st|first)\s+chronicles\b/gi, ' 1 Chronicles ');
-      t = t.replace(/\b(two|2nd|second)\s+chronicles\b/gi, ' 2 Chronicles ');
-
-      // Fix word numbers for chapters/verses in refs (STT often says "four" instead of "4")
-      t = t.replace(/\bchapter\s+(one|first)\b/gi, 'chapter 1');
-      t = t.replace(/\bchapter\s+(two|second)\b/gi, 'chapter 2');
-      t = t.replace(/\bchapter\s+(three|third)\b/gi, 'chapter 3');
-      t = t.replace(/\bchapter\s+four\b/gi, 'chapter 4');
-      t = t.replace(/\bchapter\s+five\b/gi, 'chapter 5');
-      t = t.replace(/\bchapter\s+six\b/gi, 'chapter 6');
-      t = t.replace(/\bchapter\s+seven\b/gi, 'chapter 7');
-      t = t.replace(/\bchapter\s+eight\b/gi, 'chapter 8');
-      t = t.replace(/\bchapter\s+nine\b/gi, 'chapter 9');
-      t = t.replace(/\bchapter\s+ten\b/gi, 'chapter 10');
-
-      t = t.replace(/\bverse\s+four\b/gi, 'verse 4');
-      t = t.replace(/\bverse\s+five\b/gi, 'verse 5');
-
-      // Specific fixes for the reported garble "4 four 1 john 4" etc. and common "1 john four"
-      t = t.replace(/\b4\s+four\s+1\s+john\s+4\b/gi, '1 John 4');
-      t = t.replace(/\bfour\s+1\s+john\s+4\b/gi, '1 John 4');
-      t = t.replace(/\b1\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\bfirst\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\bone\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\bi\s+john\s+four\b/gi, '1 John 4');
-
-      // General "X four" -> "X 4" near john refs (helps extraction and model)
-      t = t.replace(/\b(1|2|3)\s+john\s+four\b/gi, '$1 John 4');
-
-      t = t.trim();
-
-      // Final safeguard pass: force gospel "John 1" (or other chapters) for any "john one/1/first" etc.
-      // This catches cases where STT or wake word stripping left "john one" and earlier rules didn't trigger perfectly.
-      // "john one" or "john 1" should be the Gospel of John, not 1 John.
-      t = t.replace(/\bjohn\s+(one|1|first)\b/gi, 'John 1');
-      t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+(three|3|third)\b/gi, 'John 3');
-      t = t.replace(/\bjohn\s+(four|4)\b/gi, 'John 4');
-      t = t.replace(/\bjohn\s+(five|5)\b/gi, 'John 5');
-      t = t.replace(/\bjohn\s+(six|6)\b/gi, 'John 6');
-      t = t.replace(/\bjohn\s+(seven|7)\b/gi, 'John 7');
-      t = t.replace(/\bjohn\s+(eight|8)\b/gi, 'John 8');
-      t = t.replace(/\bjohn\s+(nine|9)\b/gi, 'John 9');
-      t = t.replace(/\bjohn\s+(ten|10)\b/gi, 'John 10');
-
-      // Final stabilization pass: re-apply the most important gospel John fixes and clean any remaining junk.
-      // This rescues cases where STT produces very jumbled output like "two John two cell".
-      for (let pass = 0; pass < 2; pass++) {
-        t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
-        t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
-        t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
-        t = t.replace(/\bcell\b/gi, '');
-        t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
-      }
-
-      return t;
-    }
-
-    // Convert a recorded audio Blob to base64 for the /api/stt proxy (keeps things simple, no extra deps).
-    // We only do this for short committed utterances in hands-free mode.
-    async function blobToBase64(blob) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result;
-          // Strip the "data:...;base64," prefix
-          const base64 = (dataUrl || '').split(',')[1] || '';
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    }
-
-    // Optional: fetch a higher-quality transcript from xAI STT for a just-recorded utterance.
-    // Falls back to the browser transcript if STT is slow, not configured, or fails.
-    // Runs with a short timeout so voice input never feels slower than before.
-    async function improveTranscriptWithSTT(fallbackText, audioBlob, timeoutMs = 3800) {
-      if (!audioBlob || !fallbackText) return fallbackText;
-
-      // Quick client-side guard: if /api/config said no STT, skip the roundtrip.
-      // (We also check on the server.)
-      try {
-        const has = (typeof serverHasSTT !== 'undefined') ? serverHasSTT : true;
-        if (!has) return fallbackText;
-      } catch (e) {}
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        const b64 = await blobToBase64(audioBlob);
-        const mime = audioBlob.type || 'audio/webm';
-
-        const r = await fetch('/api/stt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio: b64, mime, language: 'en' }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timer);
-
-        if (!r.ok) {
-          // Any failure from the STT proxy → permanently disable proxy path + hide live UI.
-          window.__sttLiveDisabled = true;
-          const liveC = document.getElementById('live-transcript-container');
-          if (liveC) liveC.style.display = 'none';
-          if (!window.__sttFailedLogged) {
-            window.__sttFailedLogged = true;
-            console.warn('[STT] xAI STT proxy unavailable (status ' + r.status + '). Using browser SpeechRecognition only for hands-free input.');
-          }
-          return fallbackText;
-        }
-
-        const data = await r.json();
-        const improved = (data && data.text ? data.text : '').trim();
-        if (improved && improved.length > 1) {
-          // Keep the browser text as a very light fallback post-process if needed,
-          // but the xAI result is usually dramatically better for Bible content.
-          console.log('[STT] improved transcript (browser → xAI):', fallbackText.slice(0,80), '→', improved.slice(0,80));
-          return improved;
-        }
-        return fallbackText;
-      } catch (e) {
-        clearTimeout(timer);
-        if (e.name === 'AbortError') {
-          console.log('[STT] timed out, using browser transcript');
-        } else {
-          console.warn('[STT] client error, using browser transcript:', e.message || e);
-        }
-        return fallbackText;
-      }
     }
 
     // Extracted commit logic for hands-free wake-word gated turns.
     // Centralized so we can call it from the silence timer and from barge-in short timers.
-    async function commitHandsFreeTranscript(finalText, conf) {
+    function commitHandsFreeTranscript(finalText, conf) {
       stopListeningUI();
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
       }
 
-      // Give the MediaRecorder 'stop' event a moment to fire and populate lastUtteranceAudioBlob.
-      // This is only for the rare case where stop was just called; in normal flow the onstop has usually run.
-      if (lastUtteranceAudioBlob === null && audioChunks && audioChunks.length > 0) {
-        await sleep(60);
-      }
-
-      // If we captured raw audio for this utterance (started when listening began),
-      // ask the cheap xAI STT for a high-accuracy version. This is the main win:
-      // better base text for Bible refs means the existing normalize + server grounding
-      // succeed far more often ("John one" / "first John one" / "Romans 5" etc.).
-      // We use a short timeout so it never makes voice input feel slower.
-      // Prefer the live server-improved transcription (what the user sees in the accurate live box)
-      // over the raw browser finalText. This ensures the AI gets the boosted accurate text.
-      let textForCommit = currentTranscript || finalText;
-      if (lastUtteranceAudioBlob) {
-        try {
-          textForCommit = await improveTranscriptWithSTT(textForCommit, lastUtteranceAudioBlob);
-        } catch (e) {
-          textForCommit = currentTranscript || finalText;
-        }
-        // Clear so we don't accidentally re-use the same clip on a restart
-        lastUtteranceAudioBlob = null;
-        audioChunks = [];
-      }
-
       // === Wake-word gated commit ===
-      // Prefer the live server-improved transcription (from the visible box) over the raw browser finalText.
-      // This ensures the AI receives the accurate boosted transcript, not the often-inaccurate browser one.
-      textForCommit = currentTranscript || textForCommit;
-      textForCommit = normalizeBibleTranscript(textForCommit);
-      let cmd = getCommandAfterWake(textForCommit);
+      let cmd = getCommandAfterWake(finalText);
       const recentlyWoke = Date.now() < wakeWordActiveUntil;
 
       if ((!cmd || cmd.length < 2) && recentlyWoke) {
-        cmd = textForCommit.trim();
+        cmd = finalText.trim();
         wakeWordActiveUntil = 0;
       longPauseUntil = 0;
       }
 
       if (!cmd || cmd.length < 2) {
         if (recentlyWoke) wakeWordActiveUntil = 0;
-        scheduleHandsFreeRestart(800);
+        scheduleHandsFreeRestart(650);
         return;
       }
 
       if (cmd.length < 3 || conf < 0.48) {
-        scheduleHandsFreeRestart(800);
+        scheduleHandsFreeRestart(650);
         return;
       }
 
@@ -3237,7 +2211,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           spoken.includes(heard.slice(0, 20))
         );
         if (isEcho) {
-          scheduleHandsFreeRestart(800);
+          scheduleHandsFreeRestart(900);
           return;
         }
       }
@@ -3261,7 +2235,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         if (isListening) {
           recognition.stop();
-        } else if (synth.speaking || (hostedAudio && !hostedAudio.paused)) {
+        } else if (synth.speaking || (elevenLabsAudio && !elevenLabsAudio.paused)) {
           stopSpeaking();
         } else {
           startListening();
@@ -3299,37 +2273,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     });
 
     stopBtn.addEventListener("click", stopSpeaking);
-    voiceBtn.addEventListener('click', () => {
-      // Extra wake on iPhone before opening modal (user gesture helps unlock voices)
-      try {
-        const u = new SpeechSynthesisUtterance(' ');
-        u.volume = 0.001;
-        synth.speak(u);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 50);
-      } catch(e) {}
-      openVoiceSettings();
-    });
-
-    // Backdrop click to close voice modal
-    const voiceModalEl = document.getElementById('voice-modal');
-    if (voiceModalEl) {
-      voiceModalEl.addEventListener('click', (e) => {
-        if (e.target === voiceModalEl) voiceModalEl.style.display = 'none';
-      });
-    }
+    voiceBtn.addEventListener('click', openVoiceSettings);
 
     if (sourcesBtn) {
       sourcesBtn.addEventListener('click', () => {
         const modal = document.getElementById('sources-modal');
         if (modal) modal.style.display = 'flex';
-      });
-    }
-
-    // Backdrop click to close sources modal
-    const sourcesModalEl = document.getElementById('sources-modal');
-    if (sourcesModalEl) {
-      sourcesModalEl.addEventListener('click', (e) => {
-        if (e.target === sourcesModalEl) sourcesModalEl.style.display = 'none';
       });
     }
 
@@ -3340,21 +2289,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (modal) {
           modal.style.display = 'flex';
           const token = getEffectiveAuthToken();
-          const accountInfo = document.getElementById('account-info');
-          const loginSection = document.getElementById('login-section');
           const emailEl = document.getElementById('account-email');
           const statusEl = document.getElementById('account-status');
-          const modalTitle = modal.querySelector('h3');
-          if (modalTitle) {
-            modalTitle.textContent = token ? 'Account' : 'Log in';
-          }
-
           if (token) {
-            if (accountInfo) accountInfo.style.display = '';
-            if (loginSection) loginSection.style.display = 'none';
-            const setPwSection = document.getElementById('set-password-section');
-            if (setPwSection) setPwSection.style.display = 'none';
-
             // Try to fetch status
             const lb = document.getElementById('logout-btn');
             if (lb) { lb.textContent = 'Log out'; lb.style.background = '#555'; lb.style.color = 'white'; }
@@ -3368,213 +2305,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                   if (!data.access_granted) txt = 'Access revoked';
                   statusEl.textContent = txt;
                 }
-                const setPwSection = document.getElementById('set-password-section');
-                if (setPwSection) {
-                  setPwSection.style.display = data.has_password ? 'none' : '';
-                }
-                const setPwBtn = document.getElementById('set-password-btn');
-                if (setPwBtn) {
-                  setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
-                }
               })
               .catch(() => {
                 if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
                 if (statusEl) statusEl.textContent = 'Active';
-                const setPwSection = document.getElementById('set-password-section');
-                if (setPwSection) setPwSection.style.display = 'none';
               });
           } else {
-            if (accountInfo) accountInfo.style.display = 'none';
-            if (loginSection) loginSection.style.display = '';
-            const setPwSection = document.getElementById('set-password-section');
-            if (setPwSection) setPwSection.style.display = 'none';
-
-            // Reset success message
-            const loginSuccess = document.getElementById('modal-login-success');
-            if (loginSuccess) loginSuccess.style.display = 'none';
-
-            // Clear previous input if desired
-            const loginEmailInput = document.getElementById('modal-login-email');
-            if (loginEmailInput) loginEmailInput.value = '';
-          }
-        }
-      });
-    }
-
-    // Update header "Account" button label for unauthenticated users (makes it obvious there's a login path)
-    const upgradeBtnEl = document.getElementById('upgrade-btn');
-    if (upgradeBtnEl) {
-      if (!getEffectiveAuthToken()) {
-        upgradeBtnEl.textContent = 'Log in';
-      }
-      // Optional: after successful login in the modal, we could change it back, but since page usually reloads on login it's fine
-    }
-
-    // Close button for Account modal (the modal had no way to close except logout or refresh)
-    const closeAccountBtn = document.getElementById('close-account-btn');
-    if (closeAccountBtn) {
-      closeAccountBtn.addEventListener('click', () => {
-        document.getElementById('subscribe-modal').style.display = 'none';
-      });
-    }
-
-    // Handle password login from inside the Account modal
-    const sendLoginBtn = document.getElementById('modal-send-login-btn');
-    if (sendLoginBtn) {
-      sendLoginBtn.addEventListener('click', async function() {
-        const emailInput = document.getElementById('modal-login-email');
-        const passInput = document.getElementById('modal-login-password');
-        const successDiv = document.getElementById('modal-login-success');
-        const email = emailInput ? emailInput.value.trim() : '';
-        const password = passInput ? passInput.value : '';
-        if (!email || !email.includes('@') || !password) {
-          alert('Please enter email and password.');
-          return;
-        }
-        try {
-          sendLoginBtn.disabled = true;
-          sendLoginBtn.textContent = 'Logging in...';
-          const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
-          if (res.ok && data.token) {
-            localStorage.setItem('auth_token', data.token);
-            localStorage.setItem('user_email', data.email || email);
-            if (successDiv) {
-              successDiv.textContent = 'Logged in! Redirecting to app...';
-              successDiv.style.display = 'block';
-            }
-            setTimeout(() => { window.location.href = '/app'; }, 600);
-          } else {
-            const errText = (data && data.error) || 'Login failed.';
-            if (/no password set|no account with that email/i.test(errText)) {
-              if (successDiv) {
-                successDiv.textContent = 'No password on file — sending magic link instead...';
-                successDiv.style.display = 'block';
-              }
-              try {
-                const magicRes = await fetch('/api/request-login', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email })
-                });
-                const magicData = await magicRes.json();
-                if (successDiv) {
-                  successDiv.textContent = (magicRes.ok && (magicData.message || 'Check your email for magic link.')) || (magicData.error || 'Could not send magic link.');
-                }
-              } catch (_) {
-                if (successDiv) successDiv.textContent = 'Could not send magic link.';
-              }
-            } else {
-              alert(errText || 'Login failed. Use magic link if no password set.');
+            if (emailEl) emailEl.textContent = 'Demo mode (no account)';
+            if (statusEl) statusEl.textContent = `Limited to ${DEMO_RESPONSE_LIMIT} responses. Start your ${TRIAL_DAYS}-day free trial for full access.`;
+            // Listener on logoutBtn already handles !token by navigating to #signup (repurposes the button label below if desired)
+            const lb = document.getElementById('logout-btn');
+            if (lb) {
+              lb.textContent = `Start ${TRIAL_DAYS}-Day Free Trial`;
+              lb.style.background = '#c9a227';
+              lb.style.color = '#1a252f';
             }
           }
-        } catch (err) {
-          alert('Network error. Please try again.');
-        } finally {
-          sendLoginBtn.disabled = false;
-          sendLoginBtn.textContent = 'Log in with password';
         }
       });
     }
-
-    // Magic link fallback from modal
-    const modalMagicLink = document.getElementById('modal-use-magic-link');
-    if (modalMagicLink) {
-      modalMagicLink.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const emailInput = document.getElementById('modal-login-email');
-        const email = emailInput ? emailInput.value.trim() : '';
-        if (!email) { alert('Enter email first'); return; }
-        try {
-          const res = await fetch('/api/request-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-          const data = await res.json();
-          alert(data.message || 'Check your email for magic link.');
-        } catch (err) {
-          alert('Error sending link.');
-        }
-      });
-    }
-
-    // "Request login link" button inside the logged-in Account view (for convenience on other devices/browsers)
-    const reqLoginFromAccountBtn = document.getElementById('request-login-from-account-btn');
-    if (reqLoginFromAccountBtn) {
-      reqLoginFromAccountBtn.addEventListener('click', () => {
-        const accountInfo = document.getElementById('account-info');
-        const loginSection = document.getElementById('login-section');
-        if (accountInfo) accountInfo.style.display = 'none';
-        if (loginSection) loginSection.style.display = '';
-        const loginSuccess = document.getElementById('modal-login-success');
-        if (loginSuccess) loginSuccess.style.display = 'none';
-        const loginEmailInput = document.getElementById('modal-login-email');
-        if (loginEmailInput) loginEmailInput.value = '';
-      });
-    }
-
-    // Set / change password button (for magic-link logged in users to enable direct password login)
-    const setPwBtn = document.getElementById('set-password-btn');
-    if (setPwBtn) {
-      setPwBtn.addEventListener('click', async () => {
-        const input = document.getElementById('set-password-input');
-        const msg = document.getElementById('set-password-msg');
-        const password = input ? input.value : '';
-        if (!password || password.length < 8) {
-          if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
-          return;
-        }
-        const token = getEffectiveAuthToken();
-        if (!token) { alert('Not logged in'); return; }
-        try {
-          setPwBtn.disabled = true;
-          setPwBtn.textContent = 'Saving...';
-          const res = await fetch('/api/set-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ password })
-          });
-          const data = await res.json();
-          if (msg) {
-            msg.textContent = data.message || (data.success ? 'Password saved!' : 'Failed');
-            msg.style.color = data.success ? 'green' : '#c0392b';
-            msg.style.display = 'block';
-          }
-          if (data.success && input) input.value = '';
-          if (data.success) {
-            const setPwSection = document.getElementById('set-password-section');
-            if (setPwSection) setPwSection.style.display = 'none';
-          }
-        } catch (e) {
-          if (msg) { msg.textContent = 'Error setting password.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
-        } finally {
-          setPwBtn.disabled = false;
-          setPwBtn.textContent = 'Set / Update Password';
-        }
-      });
-    }
-
-    // Also allow clicking the backdrop (the .modal itself) to close the account modal
-    const accountModal = document.getElementById('subscribe-modal');
-    if (accountModal) {
-      accountModal.addEventListener('click', (e) => {
-        if (e.target === accountModal) {
-          accountModal.style.display = 'none';
-        }
-      });
-    }
-
-    // Global ESC key support for any open modal (good UX, consistent with modern apps)
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const openModals = document.querySelectorAll('.modal[style*="flex"], .modal[style*="block"]');
-        if (openModals.length > 0) {
-          // close the last/top one
-          openModals[openModals.length - 1].style.display = 'none';
-        }
-      }
-    });
 
     // Logout (or for demo visitors, acts as trial signup CTA when Account opened in demo)
     const logoutBtn = document.getElementById('logout-btn');
@@ -3634,11 +2383,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const label = document.querySelector('label[for="handsfree-toggle"]');
       if (label) {
         let extra = '';
-        const ww = (wakeWord || 'John').trim();
-        if (handsFreeEnabled && wakeWordEnabled && ww) {
-          extra = `(wakeword ${ww})`;
+        if (handsFreeEnabled && wakeWordEnabled && wakeWord) {
+          extra = ` (wake: ${wakeWord})`;
         } else if (handsFreeEnabled && !wakeWordEnabled) {
-          extra = '(always)';
+          extra = ' (always listening)';
         }
         let textSpan = label.querySelector('.hf-text');
         if (!textSpan) {
@@ -3646,39 +2394,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           textSpan.className = 'hf-text';
           label.appendChild(textSpan);
         }
-        // On mobile use compact "HF (John)" so the toggle is visible next to the send arrow.
-        // On desktop use fuller "handsfree (wakeword John)".
-        let base = (window.innerWidth <= 768) ? 'HF' : 'handsfree';
-        textSpan.textContent = base + (extra ? ' ' + extra : '');
+        textSpan.textContent = ' Hands-free' + extra;
       }
     }
     updateHandsFreeLabel();
-
-    // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
-    // (userInput is already declared earlier in the script — do not re-declare)
-    const chatCont = document.querySelector('.chat-container');
-    if (userInput && chatCont) {
-      const toggleMobileKeyboardClass = () => {
-        if (window.innerWidth <= 768) {
-          if (document.activeElement === userInput) {
-            chatCont.classList.add('mobile-keyboard');
-            chatCont.classList.add('input-focused');
-          } else {
-            chatCont.classList.remove('mobile-keyboard');
-            chatCont.classList.remove('input-focused');
-          }
-        }
-      };
-      userInput.addEventListener('focus', toggleMobileKeyboardClass);
-      userInput.addEventListener('blur', () => {
-        // small delay so iOS keyboard hide animation finishes
-        setTimeout(() => chatCont.classList.remove('mobile-keyboard'), 150);
-      });
-      // Also clear on resize/orientation
-      window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) chatCont.classList.remove('mobile-keyboard');
-      });
-    }
 
     handsFreeCheckbox.addEventListener('change', () => {
       handsFreeEnabled = handsFreeCheckbox.checked;
@@ -3732,7 +2451,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function saveChats() {
-      if (forceDemoMode) return; // demo has no persistent history or sidebar
       try { localStorage.setItem('winc_chats', JSON.stringify(chats)); } catch (e) {}
     }
 
@@ -3892,37 +2610,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       });
     }
 
-    // Add eye icon show/hide for password fields (set-password and any login passwords in modals)
-    function addPasswordToggles() {
-      const pwInputs = document.querySelectorAll('input[type="password"]');
-      pwInputs.forEach(input => {
-        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
-
-        const wrapper = document.createElement('span');
-        wrapper.className = 'password-wrapper';
-        input.parentNode.insertBefore(wrapper, input);
-        wrapper.appendChild(input);
-
-        const toggle = document.createElement('span');
-        toggle.className = 'password-toggle';
-        toggle.textContent = '🙈';
-        toggle.setAttribute('aria-label', 'Show password');
-        wrapper.appendChild(toggle);
-
-        toggle.addEventListener('click', () => {
-          if (input.type === 'password') {
-            input.type = 'text';
-            toggle.textContent = '👁';
-            toggle.setAttribute('aria-label', 'Hide password');
-          } else {
-            input.type = 'password';
-            toggle.textContent = '🙈';
-            toggle.setAttribute('aria-label', 'Show password');
-          }
-        });
-      });
-    }
-
     // Sidebar collapse (Grok-like)
     function initSidebarCollapse() {
       const sidebar = document.getElementById('sidebar');
@@ -3951,50 +2638,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           localStorage.setItem('winc_sidebar_collapsed', 'false');
         }
       });
-
-      // Mobile drawer support
-      const mobileToggle = document.getElementById('mobile-sidebar-toggle');
-      if (mobileToggle) {
-        mobileToggle.addEventListener('click', (e) => {
-          e.stopImmediatePropagation();
-          const isOpen = sidebar.classList.toggle('open');
-          document.body.classList.toggle('sidebar-open', isOpen);
-        });
-      }
-
-      // On mobile, always start (and stay) with the chat list drawer closed so the main "read window"
-      // (messages area + speak 🔊 buttons on replies and verses) gets the full iPhone width/height by default.
-      function forceCloseMobileDrawer() {
-        if (window.innerWidth <= 768 && sidebar) {
-          sidebar.classList.remove('open');
-          document.body.classList.remove('sidebar-open');
-        }
-      }
-      forceCloseMobileDrawer();
-      // In case of late layout or Safari quirks, double-check shortly after load
-      setTimeout(forceCloseMobileDrawer, 50);
-      setTimeout(forceCloseMobileDrawer, 300);
-
-      // Close drawer when clicking backdrop or selecting a chat on mobile
-      document.addEventListener('click', (e) => {
-        if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
-          if (!sidebar.contains(e.target) && !mobileToggle.contains(e.target)) {
-            sidebar.classList.remove('open');
-            document.body.classList.remove('sidebar-open');
-          }
-        }
-      });
-
-      // Close drawer after selecting a chat on mobile
-      const chatsList = document.getElementById('sidebar-chats-list');
-      if (chatsList) {
-        chatsList.addEventListener('click', () => {
-          if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
-            sidebar.classList.remove('open');
-            document.body.classList.remove('sidebar-open');
-          }
-        });
-      }
     }
 
     function createNewChat() {
@@ -4069,53 +2712,44 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function updateHeaderForCurrentChat() {
       const el = document.getElementById('current-chat-title');
-      const mobileEl = document.querySelector('.mobile-chat-title');
-      if (!el && !mobileEl) return;
-
+      if (!el) return;
       const chat = getCurrentChat();
-      const titleText = chat ? (chat.title || 'Conversation') : '';
-
-      if (el) {
-        el.textContent = titleText;
-        if (chat) {
-          el.title = 'Click to rename • ' + new Date(chat.updated || Date.now()).toLocaleString();
-          // make title clickable for rename (Grok-like) - desktop
-          el.onclick = () => {
-            const original = chat.title || '';
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = original;
-            input.style.cssText = 'font-size:11px; background:#1a252f; color:#ddd; border:1px solid #c9a227; border-radius:3px; padding:1px 4px; width:140px;';
-            el.replaceWith(input);
-            input.focus();
-            input.select();
-            const save = () => {
-              const newT = input.value.trim() || 'Untitled';
-              chat.title = newT;
-              saveChats();
-              updateHeaderForCurrentChat();
-              renderSidebarChats(currentSearchTerm || '');
-            };
-            input.onblur = save;
-            input.onkeydown = (ev) => {
-              if (ev.key === 'Enter') { ev.preventDefault(); save(); }
-              if (ev.key === 'Escape') { updateHeaderForCurrentChat(); renderSidebarChats(currentSearchTerm || ''); }
-            };
+      if (chat) {
+        el.textContent = chat.title || 'Conversation';
+        el.title = 'Click to rename • ' + new Date(chat.updated || Date.now()).toLocaleString();
+        // make title clickable for rename (Grok-like)
+        el.onclick = () => {
+          const original = chat.title || '';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = original;
+          input.style.cssText = 'font-size:11px; background:#1a252f; color:#ddd; border:1px solid #c9a227; border-radius:3px; padding:1px 4px; width:140px;';
+          el.replaceWith(input);
+          input.focus();
+          input.select();
+          const save = () => {
+            const newT = input.value.trim() || 'Untitled';
+            chat.title = newT;
+            saveChats();
+            updateHeaderForCurrentChat();
+            renderSidebarChats(currentSearchTerm || '');
           };
-        } else {
-          el.onclick = null;
-        }
-      }
-
-      if (mobileEl) {
-        mobileEl.textContent = titleText;
+          input.onblur = save;
+          input.onkeydown = (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+            if (ev.key === 'Escape') { updateHeaderForCurrentChat(); renderSidebarChats(currentSearchTerm || ''); }
+          };
+        };
+      } else {
+        el.textContent = '';
+        el.onclick = null;
       }
     }
 
     function showWelcomeMessage() {
-      const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (NASB default, plus ESV, NKJV, LSB, BSB, etc.).
+      const welcome = `Hello. I study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (NASB)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
+Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
@@ -4143,25 +2777,16 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
     // ====================== INITIALIZATION ======================
     function init() {
-      if (!forceDemoMode) {
-        loadChats();
+      loadChats();
 
-        // ensure we have a current chat
-        if (!currentChatId || !getCurrentChat()) {
-          if (chats.length > 0) {
-            // load most recent
-            currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
-          } else {
-            createNewChat();
-          }
+      // ensure we have a current chat
+      if (!currentChatId || !getCurrentChat()) {
+        if (chats.length > 0) {
+          // load most recent
+          currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
+        } else {
+          createNewChat();
         }
-      } else {
-        // Demo: no history, start fresh empty
-        chats = [];
-        currentChatId = null;
-        conversation = [];
-        const msgs = document.getElementById('messages');
-        if (msgs) msgs.innerHTML = '';
       }
 
       // load messages for current chat into memory
@@ -4175,10 +2800,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       updateHeaderForCurrentChat();
       renderSidebarChats(''); // render Grok-like sidebar on init
       initSidebarCollapse();
-      addPasswordToggles();
-      // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
-      setTimeout(addPasswordToggles, 100);
-      setTimeout(addPasswordToggles, 400);
 
       if (handsFreeEnabled) {
         micBtn.style.background = '#c9a227';
@@ -4187,36 +2808,17 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         scheduleHandsFreeRestart(800);
       }
 
-      // Learn server config (STT + optional legacy hosted TTS only).
-      // Voice output is always browser window.speechSynthesis (no server voices, no xAI TTS).
+      // Learn if server has ELEVENLABS_API_KEY so we can safely gate premium voices (prevents offering options or errors when owner hasn't enabled managed TTS for the sub model)
       fetch('/api/health').then(r => r.json()).then(data => {
-        serverHasManagedTTS = false; // voices are client-only now
-        window.hasHostedTTS = !!data.hasHostedTTS;
-        serverHasSTT = !!data.hasSTT;
-        // Defensive: if any old premium toggle UI is still in DOM from prior builds, hide it.
-        const premiumToggle = document.getElementById('premium-voices-toggle');
-        if (premiumToggle && premiumToggle.parentElement) {
-          premiumToggle.parentElement.style.display = 'none';
+        serverHasManagedTTS = !!data.hasTTSKey;
+        // Re-load voices list now that we know if managed TTS is available (so premium toggle users see EL options promptly if server is configured)
+        if (serverHasManagedTTS && premiumVoicesEnabled) {
+          setTimeout(loadVoices, 50);
         }
-        const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
-        if (hostedDiv && !window.hasHostedTTS) {
-          hostedDiv.style.display = 'none';
-        }
-      }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
+      }).catch(() => { serverHasManagedTTS = false; });
 
       synth.onvoiceschanged = loadVoices;
       setTimeout(loadVoices, 300);
-      setTimeout(loadVoices, 900);
-      setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
-
-      // On startup ensure we are on local browser voices (the only supported path).
-      if (localStorage.getItem('use_premium_voices') !== 'false') {
-        localStorage.setItem('use_premium_voices', 'false');
-      }
-      if (voiceSettings.voiceSource !== 'local') {
-        voiceSettings.voiceSource = 'local';
-        localStorage.setItem('voice_source', 'local');
-      }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
       const saveVoiceBtn = document.getElementById('save-voice-btn');
@@ -4235,9 +2837,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       const currentChat = getCurrentChat();
       const isEmptyNew = !currentChat || (currentChat.messages || []).length === 0;
       if (isEmptyNew) {
-        const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (NASB default, plus ESV, NKJV, LSB, BSB, etc.).
+        const welcome = `Hello. I study the Hebrew, Aramaic, and Greek Scriptures using only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.).
 
-Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (NASB)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in 🔊 Voice Settings.
+Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded.
 
 Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
 
@@ -4276,7 +2878,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         if (!d.hasKey) {
           addMessage("Server warning: No XAI_API_KEY configured in .env", false);
         }
-        if (typeof d.hasSTT === 'boolean') serverHasSTT = d.hasSTT;
       }).catch(() => {});
 
       // Load dynamic config (demo limit + trial days) from server so we can tune via env without rebuild
@@ -4286,9 +2887,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         }
         if (cfg && typeof cfg.trialDays === 'number' && cfg.trialDays > 0) {
           TRIAL_DAYS = cfg.trialDays;
-        }
-        if (typeof cfg.hasSTT === 'boolean') {
-          serverHasSTT = cfg.hasSTT;
         }
         updateDemoStatus();
         enforceDemoLimit();

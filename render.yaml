@@ -5,13 +5,6 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    # Persistent disk for the SQLite DB (users.db) so admin users, tester accounts, trial status etc. survive deploys.
-    # Mount path must be a subdirectory (cannot be /). Only files under this path persist.
-    # After adding this, go to the service in Render dashboard > Disks and add/attach the disk if it doesn't show up.
-    disks:
-      - name: data
-        mountPath: /data
-        sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -24,11 +17,9 @@ services:
         value: "14"
       - key: DEMO_LIMIT
         value: "5"
-      # RENDER_EXTERNAL_URL should be set to your actual URL (for magic links, Stripe redirects, etc.)
-      # Use your custom domain once DNS is switched, or the onrender URL while testing.
+      # RENDER_EXTERNAL_URL should be set to your actual URL (for magic links etc.)
       # - key: RENDER_EXTERNAL_URL
-      #   value: https://thewordincontext.org
-      # or https://your-service.onrender.com while on render domain
+      #   value: https://your-app.onrender.com
 
       # --- Sensitive secrets (NEVER put real values in this file or git) ---
       # Add these ONLY in the Render dashboard (Environment tab) and mark as Secret:
@@ -37,11 +28,9 @@ services:
       #   STRIPE_WEBHOOK_SECRET
       #   STRIPE_PRICE_ID   (can be non-secret if you want)
       #   RESEND_API_KEY
-      #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
       #   JWT_SECRET
       #   ADMIN_PASSWORD
-      #   TTS_SERVER_URL   (URL of your hosted TTS service, e.g. https://openai-edge-tts-wtcd.onrender.com — enables the "Use Premium Hosted Voices" toggle with zero setup for users)
-      #   (ELEVENLABS_API_KEY if using managed TTS for an alternate path)
+      #   (ELEVENLABS_API_KEY if using managed TTS)
       #
       # This file defines the service + safe defaults.
       # Real secrets are injected by the platform at runtime as process.env.

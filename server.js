@@ -6,7 +6,6 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
-const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -20,7 +19,6 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
     status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
@@ -30,15 +28,6 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 `);
-
-// Migration for existing DBs (safe if column already exists)
-try {
-  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
-} catch (e) {
-  if (!e.message.includes('duplicate column')) {
-    console.error('Migration warning for password_hash:', e.message);
-  }
-}
 
 // Magic tokens table (short lived)
 db.exec(`
@@ -60,10 +49,6 @@ const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 
-function normalizeEmail(e) {
-  return (e || '').trim().toLowerCase();
-}
-
 // Production note: When deploying (Render, Railway, etc.), set NODE_ENV=production
 // and provide XAI_API_KEY + any future keys via the platform's environment variables.
 // Free tiers may sleep the service — that's fine for early beta.
@@ -72,18 +57,6 @@ function normalizeEmail(e) {
 const xai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
-});
-
-// Log the models your xAI key/account has access to.
-// This is the easiest way to see "what model my api key is for".
-// The key itself doesn't lock you to one model — you specify the model in each request
-// (e.g. "grok-4.3" for chat, or specific audio models for TTS/STT/Voice Agent).
-// Check your console.x.ai dashboard or these logs after deploy.
-xai.models.list().then((list) => {
-  const ids = list.data?.map(m => m.id) || [];
-  console.log('xAI models available to this key:', ids.length ? ids : list);
-}).catch((e) => {
-  console.log('Could not list xAI models (check key permissions):', e.message);
 });
 
 // Very lightweight in-memory demo throttle (protects the xAI key from scrapers/bots hitting /app?demo=1)
@@ -107,88 +80,68 @@ function checkDemoThrottle(ip) {
 // === Strong System Prompt for "The Word in Context" ===
 const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages and literary contexts.
 
-You are speaking with someone who wants to get as close as possible to what the original authors wrote and meant. All scripture discussed must be traceable to a specific, cited literal source.
-
 CORE COMMITMENTS (never violate these):
 
 1. TRANSLATION POLICY (strict)
-   - NASB is the default English translation for explanations and teaching.
-   - When the server supplies live grounding data for the current passage (e.g. [ACCURATE BIBLE TEXT — NASB], [ACCURATE BIBLE TEXT — BSB], etc.), use the exact English text from those blocks for all quotes and close analysis of that passage.
-   - When explaining a word or phrase, start with the rendering from the supplied English block (or NASB when no fresh block is provided), then show the underlying Hebrew, Aramaic, or Greek only when it genuinely affects meaning.
-   - Never quote or recommend dynamic or paraphrase translations (NIV, NLT, The Message, Passion, CEV, etc.).
+   - Only quote from formal-equivalence / literal translations: ESV, NASB 2020, NKJV, LSB (Legacy Standard Bible), Berean Standard Bible (BSB), Young's Literal Translation, or similar.
+   - Never recommend or rely on dynamic / paraphrase translations (NIV, NLT, The Message, Passion, CEV, etc.).
+   - When explaining a word or phrase, always start with the literal rendering, then show the underlying Hebrew/Greek.
 
-2. ORIGINAL LANGUAGES APPROACH
-   - Base every explanation on the original Hebrew, Aramaic, or Greek text.
-   - When a key word or construction is significant, give the transliterated term, its core meaning in context, and how it is used here versus elsewhere in Scripture.
-   - Only go deeper into grammar, full range of meaning, or the original script if the user specifically asks about that word or construction.
+2. ORIGINAL LANGUAGES FIRST
+   - When a Hebrew, Aramaic, or Greek word or construction is significant, give:
+     • the actual word(s) in the original script when helpful
+     • a clear transliteration
+     • the range of meaning and grammatical notes
+     • how it is used in this specific context vs. elsewhere in Scripture
+   - Distinguish "what the text says" from later theological or denominational interpretations.
 
 3. CONTEXT IS EVERYTHING ("The Word in Context")
    - Always locate the passage in its immediate literary context (what comes before and after).
-   - Connect it to the book’s themes, genre, and historical setting when helpful.
+   - Note the book-level themes, genre, and historical setting when they illuminate meaning.
    - For key terms, show how the same word or root is used elsewhere in Scripture (concordance-style insight).
+   - Cross-references are welcome when genuinely illuminating.
 
-4. HANDLING TRADITIONS & HISTORY
-   - When users ask about church traditions, denominational teachings, or practices (head coverings, divorce and remarriage, church government, etc.), clearly distinguish what the original text actually says from later human traditions.
-   - Explain the historical origin of those views when relevant, including the approximate time period and key figures or movements.
-   - Be direct: many traditions developed later and were taught by men, not by God or the original apostles. The goal is to help the user return to what the text itself teaches.
+4. TONE & ACCURACY
+   - Humble and evidence-based. Use phrases like "the text indicates...", "a more literal rendering is...", "this construction often carries the sense of...".
+   - Say "we do not know for certain" when the data is genuinely ambiguous.
+   - Cite references precisely (e.g., "Genesis 1:1", "John 1:1-3 (BSB)").
 
-5. WHY CONTEXT MATTERS
-   - When appropriate, explain why reading Scripture in its original literary, linguistic, and historical context is essential.
-   - The Bible calls us to remain devoted to the teachings of the apostles (what was delivered in the first century), not to later human traditions or teachings that developed afterward.
+5. VOICE & READABILITY
+   - Responses will often be spoken aloud. Use natural, complete sentences. Structure with short paragraphs. Use bullets or numbered lists only when they genuinely help clarity.
+   - Be concise yet thorough.
 
-6. TONE & ACCURACY
-   - Stay humble and evidence-based. Use phrases such as “The NASB reads…”, “In the original Greek this word carries the sense of…”, or “The historical record shows…”
-   - Say “we do not know for certain” when the data is genuinely ambiguous.
-   - Clearly separate what the text says from later theological or denominational interpretations.
+6. CITATIONS & SOURCING (MANDATORY — every response)
+   - Whenever you quote, reference, or discuss any specific verse or passage, you MUST cite the source explicitly and naturally.
+   - Format examples (use these or very close natural variations):
+     "John 3:16 (Berean Standard Bible) says: 'For God so loved the world...'"
+     "According to the Berean Standard Bible, Galatians 6:7 states..."
+     "In the Greek, John 1:1 (SBL Greek New Testament) reads: 'Ἐν ἀρχῇ ἦν ὁ λόγος...'"
+     "The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) begins: 'בְּרֵאשִׁית בָּרָא אֱלֹהִים...'"
+   - If [ACCURATE BIBLE TEXT — ...], [ORIGINAL GREEK TEXT — ...], or [ORIGINAL HEBREW TEXT — ...] grounding data is provided, quote or stay extremely faithful to that exact text and use the listed source in the citation.
+   - For the New Testament, when discussing wording, grammar, or key terms, quote the Greek from the SBL Greek New Testament (or Byzantine/Majority Text when relevant), citing "SBL Greek New Testament".
+   - For the Old Testament / Hebrew Bible, quote the Hebrew from the Westminster Leningrad Codex (WLC), citing "Westminster Leningrad Codex".
+   - Prefer literal English translations: BSB (Berean Standard Bible), ESV, NASB, NKJV, LSB, etc.
+   - Because answers are frequently spoken, make the citations flow naturally in the spoken sentence so the listener hears the source (English or original language) clearly.
+   - Never leave a scripture reference or quote without an immediate source citation.
 
-7. VOICE & READABILITY
-   - Responses will often be spoken aloud. Use natural, complete sentences and short paragraphs. Keep explanations clear, reverent, and conversational.
-
-8. CITATIONS & SOURCING (MANDATORY)
-   - Always cite your source naturally and immediately.
-   - Use the English translation supplied in the live grounding blocks when available. Otherwise default to NASB.
-   - For original languages, reference the SBL Greek New Testament (for the New Testament) or the Westminster Leningrad Codex (for the Hebrew Bible) as appropriate.
-   - When the server provides [ACCURATE BIBLE TEXT], [ORIGINAL GREEK TEXT], or [ORIGINAL HEBREW TEXT] blocks, stay extremely faithful to those exact texts for any quotes or detailed analysis.
-
-9. CONVERSATIONAL USE & TOPIC JUMPING
-   - Keep the conversation natural and flowing, just like talking with a knowledgeable friend.
-   - The user is free to jump between books, passages, or verses at any time (“Let’s talk about John 1”, then “Now what about 1 Corinthians 13”, then “Go back to that word in Romans”). Handle these shifts smoothly without friction.
-   - When fresh live grounding blocks are supplied for a passage, use those blocks exclusively for accurate quotes and close textual work on that specific passage.
-   - When the user moves to a new passage that does not yet have fresh grounding, still give a helpful, natural answer. Use general knowledge for overview and connections, but note when you are moving beyond the currently supplied live sources for detailed verse-by-verse or word-level work.
-   - Never refuse or become artificially limited when the user changes topics. The grounding data exists to keep the conversation accurate, not to restrict what the user is allowed to ask about.
-
-You are speaking with someone who wants to get as close as possible to what the original authors wrote and meant, while also understanding how later traditions sometimes moved away from that. All scripture discussed should be traceable to a specific, cited literal source.`;
+You are speaking with someone who wants to get as close as possible to what the original authors wrote and meant. All scripture discussed must be traceable to a specific, cited literal source.`;
 
 // === Bible verse fetcher using the Free Use Bible API ===
-// Supports English literals (NASB default via eng_lsv/LSV NASB 2020-style, plus BSB, ASV, YLT, WEB etc. via user picker) + original languages:
+// Supports English literals (BSB etc.) + original languages:
 //   Greek NT: grc_sbl (SBL Greek New Testament), grc_byz, grc_mtk, grc_gtr (TR), etc.
 //   Hebrew OT: hbo_wlc / heb_wlc (Westminster Leningrad Codex - standard Masoretic Text)
 // Correct endpoints: https://bible.helloao.org/api/{TRANSLATION}/{BOOK}/{CHAPTER}.json
-// Pass the exact id from /api/available_translations.json (e.g. 'eng_lsv' for NASB-style LSV, 'BSB', 'grc_sbl', 'hbo_wlc')
-//
-// The default English translation for live grounding is NASB (via LSV as the technical default for a modern literal NASB 2020-style text).
-// Users can change it in 🔊 Voice Settings (the picker is preserved).
-// Improvement: references to a chapter (e.g. "John 1", "the first chapter of John") or any verse
-// in a chapter now return the *full chapter* text for the chosen English + original language. This ensures
-// the model (and user via Sources UI) always has complete literal sources + context for
-// the literary unit being discussed, instead of only the exact verses mentioned.
-async function fetchBiblePassage(reference, translation = 'eng_lsv') {
+// Pass the exact id from /api/available_translations.json (e.g. 'BSB', 'grc_sbl', 'hbo_wlc')
+async function fetchBiblePassage(reference, translation = 'BSB') {
   try {
-    const cleaned = reference.trim().replace(/\s+/g, ' ');
-    // Support bare chapters ("John 1", "John chapter 1", "Jn 1") as well as verses/ranges.
-    // Book prefixes like "1 John", "2 Peter" etc. are handled.
-    const match = cleaned.match(/^((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
+    const cleaned = reference.trim();
+    const match = cleaned.match(/^(\d?\s*[A-Za-z]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
     if (!match) return null;
 
     let book = match[1].trim();
     const chapter = match[2];
-
-    // Always fetch the full chapter for complete literary context and "all the sources".
-    // This fixes cases where only a few verses (e.g. John 1:1-3) were previously grounded
-    // even when the user or model was discussing the whole chapter ("the book of John").
-    const fetchStart = 1;
-    const fetchEnd = 999;
-
+    const verseStart = parseInt(match[3] || '1', 10);
+    const verseEnd = parseInt(match[4] || match[3] || '1', 10);
 
     const bookMap = {
       'genesis': 'GEN', 'gen': 'GEN',
@@ -284,12 +237,11 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
     const content = data?.chapter?.content;
     if (!Array.isArray(content)) return null;
 
-    // Always extract *all* verses in the chapter for full literary context / complete sources.
-    // Any reference to the chapter or a verse in it now supplies the entire chapter (BSB + Greek/Hebrew).
+    // Extract verses in the requested range
     const verses = [];
     for (const item of content) {
       if (item.type === 'verse' && typeof item.number === 'number') {
-        if (item.number >= fetchStart && item.number <= fetchEnd) {
+        if (item.number >= verseStart && item.number <= verseEnd) {
           // Join the text pieces inside the verse content
           const verseText = (item.content || [])
             .map(part => (typeof part === 'string' ? part : part?.text || ''))
@@ -304,12 +256,8 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
 
     if (verses.length === 0) return null;
 
-    // Label as the full chapter (since we always supply the complete chapter text for context).
-    // Specific verse ranges are still respected in conversation, but grounding gives the whole literary unit.
-    const refLabel = `${book} ${chapter}`;
-
     return {
-      reference: refLabel,
+      reference: `${book} ${chapter}:${verseStart}${verseEnd !== verseStart ? '-' + verseEnd : ''}`,
       translation: trans,
       text: verses.join(' ')
     };
@@ -324,29 +272,7 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
   }
 }
 
-app.use(express.json({ limit: '50mb' }));
-
-// === STT: permanently disabled (pure browser SpeechRecognition fallback) ===
-// Mobile HF live recorder + x.ai STT caused the 404s and PayloadTooLarge spam the user saw.
-// We keep the endpoint so client code doesn't break, but it always returns fallback immediately.
-// HF (wake "John"), barge-in, live interim, and final transcript all use webkitSpeechRecognition.
-// No XAI_API_KEY, no keyterms, no fetch.
-app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
-  return res.json({ text: '', fallback: true, disabled: true });
-});
-
-// 413 catcher so even if a huge blob slips through (or old deploys), we don't get the repeated error spam in logs.
-// Returns clean fallback JSON for /api/stt so the hands-free path continues with browser SR.
-app.use((err, req, res, next) => {
-  if (err && (err.status === 413 || err.type === 'entity.too.large' || (err.message || '').toLowerCase().includes('too large'))) {
-    if (req.path === '/api/stt') {
-      return res.status(413).json({ text: '', fallback: true, error: 'payload too large' });
-    }
-    return res.status(413).json({ error: 'payload too large' });
-  }
-  next(err);
-});
-
+app.use(express.json({ limit: '1mb' }));
 
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
@@ -374,10 +300,9 @@ function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
     const now = new Date();
-    const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
-    if (!effectivelyTrialing && !hasPaidOrFree) {
+    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
+    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
+    if (!isTrialing && !isActive && user.status !== 'trialing') {
       return res.status(403).json({ error: 'Subscription required or trial expired.' });
     }
     req.userRecord = user;
@@ -401,7 +326,7 @@ function requireAuth(req, res, next) {
 // Also set a permissive CSP during dev so that:
 // - Our inline <style> and (previously) event handlers work without 'unsafe-inline' complaints
 // - Blob URLs for TTS audio playback are allowed
-// - Fetches to xAI, bible.helloao.org etc. are allowed (11Labs support removed)
+// - Fetches to xAI, ElevenLabs, bible.helloao.org etc. are allowed
 // - Any 'eval' usage from browser APIs or (more commonly) injected extension scripts doesn't
 //   produce the "Content Security Policy of your site blocks the use of 'eval'" noise.
 // In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
@@ -433,14 +358,6 @@ app.get('/', (req, res) => {
 
 // Serve the full chat app at /app (so landing can promote signups)
 app.get('/app', (req, res) => {
-  // Strong no-cache for the SPA entry point so deploys are picked up reliably
-  // (browsers can still be stubborn — users should hard-refresh after deploys).
-  res.set({
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
-    'Surrogate-Control': 'no-store'
-  });
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -501,81 +418,48 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 async function sendMagicLink(email, token, options = {}) {
   const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
   const isTester = !!options.isTester;
-  const days = isTester ? TESTER_TRIAL_DAYS : TRIAL_DAYS;
-  const subject = options.subject || (isTester ? `Your tester access to The Word in Context (${days} days)` : 'Log in to The Word in Context');
-  // Build prefix cleanly (strip any source-code indentation from the literal)
-  let prefix = options.htmlPrefix || (isTester
+  const subject = options.subject || (isTester ? 'Your tester access to The Word in Context (14 days)' : 'Log in to The Word in Context');
+  const prefix = options.htmlPrefix || (isTester 
     ? `<p>Welcome to <strong>The Word in Context</strong> as a tester!</p>
-<p>Your <strong>${days}-day tester access</strong> (no credit card required) has been activated. It ends automatically after ${days} days unless extended.</p>`
+       <p>Your <strong>14-day tester access</strong> (no credit card required) has been activated. It ends automatically after 14 days unless extended.</p>`
     : `<p>Click to log in to <strong>The Word in Context</strong>:</p>`);
-  prefix = prefix.replace(/^\s+/gm, '').trim();
-
-  // Build final HTML with join (never depends on template literal indentation in source)
-  const html = [
-    prefix,
-    `<p><a href="${loginUrl}">Log in to your account</a></p>`,
-    `<p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>`,
-    `<p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? `This is tester access and will expire after ${days} days.` : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>`
-  ].join('\n');
-
-  let fromEmail = process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>';
-  fromEmail = fromEmail.trim();
-  // Force proper title-case for the display name part (handles "the Word...", "the word...", etc.)
-  fromEmail = fromEmail.replace(/^the\s+/i, 'The ');
-
-  console.log(`[sendMagicLink] to=${email} from=${fromEmail} resendConfigured=${!!resend} url=${loginUrl} (check Resend Emails dashboard too)`);
-  console.log(`[sendMagicLink] actual from value being used: "${fromEmail}"`);
-
+  const html = `
+    ${prefix}
+    <p><a href="${loginUrl}">Log in to your account</a></p>
+    <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? 'This is tester access and will expire after the trial period.' : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
+  `;
   if (resend) {
-    const { data, error } = await resend.emails.send({
-      from: fromEmail,
+    await resend.emails.send({
+      from: 'The Word in Context <no-reply@thewordincontext.org>',
       to: email,
       subject,
       html
     });
-    if (error) {
-      console.error('[sendMagicLink] Resend returned error:', error);
-      throw new Error('Failed to send email via Resend: ' + (error.message || JSON.stringify(error)));
-    }
-    console.log(`[sendMagicLink] Resend accepted send. id=${data && data.id ? data.id : 'n/a'}`);
   } else {
     console.log(`[MAGIC LINK for ${email}] ${loginUrl}`);
-    throw new Error('RESEND_API_KEY not configured on server - cannot send magic links');
   }
 }
 
 // Create or get user + start configurable trial via Stripe Checkout
 app.post('/api/create-checkout', async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
-    const { trialDays: requestedTrialDays, password } = req.body;
+    const { email, trialDays: requestedTrialDays } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-    if (!password || password.length < 8) return res.status(400).json({ error: 'Password required (min 8 characters) to save login on this device' });
 
-    const password_hash = await bcrypt.hash(password, 10);
     const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
       ? requestedTrialDays
       : TRIAL_DAYS;
-
-    const trialEnd = new Date(Date.now() + effectiveTrialDays * 24 * 60 * 60 * 1000).toISOString();
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
       // Create Stripe customer
       const customer = await stripe.customers.create({ email });
       db.prepare(`
-        INSERT INTO users (email, password_hash, stripe_customer_id, status, trial_end, access_granted)
-        VALUES (?, ?, ?, 'trialing', ?, 1)
-      `).run(email, password_hash, customer.id, trialEnd);
+        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
+        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1)
+      `).run(email, customer.id);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    } else if (!user.stripe_customer_id) {
-      // Upgrade existing user (e.g. previous tester signup with no card) to have a Stripe customer
-      const customer = await stripe.customers.create({ email });
-      db.prepare(`UPDATE users SET password_hash = ?, stripe_customer_id = ? WHERE email = ?`).run(password_hash, customer.id, email);
-      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    } else {
-      // Update password for existing
-      db.prepare(`UPDATE users SET password_hash = ? WHERE email = ?`).run(password_hash, email);
     }
 
     // Create Checkout for subscription with trial
@@ -597,7 +481,7 @@ app.post('/api/create-checkout', async (req, res) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error('create-checkout error:', err);
-    res.status(500).json({ error: 'Could not start checkout. ' + (err.message || 'Please try again.') });
+    res.status(500).json({ error: 'Could not start checkout' });
   }
 });
 
@@ -605,57 +489,48 @@ app.post('/api/create-checkout', async (req, res) => {
 // No Stripe involved. Sends magic login link immediately.
 app.post('/api/tester-signup', async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
-    const password = req.body.password;
+    const { email } = req.body;
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-    if (!password || password.length < 8) return res.status(400).json({ error: 'Password required (min 8 characters) for device-saved login' });
-
-    const password_hash = await bcrypt.hash(password, 10);
-    const trialEnd = new Date(Date.now() + TESTER_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const trialEndExpr = `datetime('now', '+${TESTER_TRIAL_DAYS} days')`;
 
     if (!user) {
       db.prepare(`
-        INSERT INTO users (email, password_hash, status, trial_end, access_granted)
-        VALUES (?, ?, 'trialing', ?, 1)
-      `).run(email, password_hash, trialEnd);
+        INSERT INTO users (email, status, trial_end, access_granted)
+        VALUES (?, 'trialing', ${trialEndExpr}, 1)
+      `).run(email);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
-      // Re-activate / extend as tester trial if they already exist (update password if provided)
+      // Re-activate / extend as tester trial if they already exist
       db.prepare(`
-        UPDATE users SET password_hash = ?, status = 'trialing', trial_end = ?, access_granted = 1
+        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1
         WHERE email = ?
-      `).run(password_hash, trialEnd, email);
+      `).run(email);
     }
 
-    // Create short-lived magic token (same as normal login) — still send initial link for convenience
+    // Create short-lived magic token (same as normal login)
     const token = require('crypto').randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
 
-    // Send custom tester magic link email (optional first login)
+    // Send custom tester magic link email
     await sendMagicLink(email, token, { isTester: true });
-
-    // Since password was provided on signup, issue JWT immediately so they can log in right away (browser can save credentials)
-    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       success: true, 
-      token: jwtToken,
-      email,
-      message: `Account created with password. You can log in immediately below (or check email for magic link). Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
+      message: `Check your email for the secure login link. Your ${TESTER_TRIAL_DAYS}-day tester access (full features, no card) is now active and will end automatically.` 
     });
   } catch (err) {
     console.error('tester-signup error:', err);
-    res.status(500).json({ error: 'Could not create tester access. ' + (err.message || 'Please try again.') });
+    res.status(500).json({ error: 'Could not create tester access. Please try again.' });
   }
 });
 
 // Magic link login request
 app.post('/api/request-login', async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
+    const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
@@ -670,62 +545,7 @@ app.post('/api/request-login', async (req, res) => {
     res.json({ success: true, message: 'Check your email for a login link.' });
   } catch (err) {
     console.error('request-login error:', err);
-    res.status(500).json({ error: 'Could not send login link. ' + (err.message || 'Please try again.') });
-  }
-});
-
-// New real password login (for device-saved credentials / password managers)
-app.post('/api/login', async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body.email);
-    const password = req.body.password;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user || !user.password_hash) {
-      return res.status(401).json({ error: 'No password set for this account. Use the magic link login or sign up again with a password.' });
-    }
-
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-    if (!user.access_granted) {
-      return res.status(403).json({ error: 'Account access revoked' });
-    }
-
-    // Issue JWT (same as magic link)
-    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
-
-    // Clean any old magic tokens
-    db.prepare('DELETE FROM magic_tokens WHERE email = ?').run(email);
-
-    res.json({ 
-      success: true, 
-      token: jwtToken, 
-      email: user.email,
-      message: 'Logged in successfully. Credentials can now be saved by your browser.' 
-    });
-  } catch (err) {
-    console.error('login error:', err);
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
-
-// Allow logged-in users (e.g. via magic link) to set a password for future direct logins
-app.post('/api/set-password', requireAuth, async (req, res) => {
-  try {
-    const { password } = req.body;
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-    const password_hash = await bcrypt.hash(password, 10);
-    const email = req.user.email;  // populated by requireAuth
-    db.prepare(`UPDATE users SET password_hash = ? WHERE email = ?`).run(password_hash, email);
-    res.json({ success: true, message: 'Password set successfully. You can now use email + password to log in directly from the landing page (browser can save it).' });
-  } catch (err) {
-    console.error('set-password error:', err);
-    res.status(500).json({ error: 'Failed to set password' });
+    res.status(500).json({ error: 'Could not send login link' });
   }
 });
 
@@ -767,8 +587,7 @@ app.get('/api/me', requireAuth, (req, res) => {
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free,
-    has_password: !!u.password_hash
+    manual_free: !!u.manual_free
   });
 });
 
@@ -777,31 +596,8 @@ app.get('/api/config', (req, res) => {
   res.json({
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
-    testerTrialDays: TESTER_TRIAL_DAYS,
-    hasSTT: false   // browser SpeechRecognition only (wake word "John", live, barge-in all client-side)
+    testerTrialDays: TESTER_TRIAL_DAYS
   });
-});
-
-// === TTS: STRICTLY browser built-in system voices only (window.speechSynthesis) ===
-// The app is designed exclusively for low-latency device system voices.
-// xAI (or any cloud) voices lag too much for natural spoken study.
-// /api/tts is a hard no-op. Client speak() never calls it.
-app.get('/api/debug/tts', (req, res) => {
-  res.json({ disabled: true, note: 'All speech output uses your browser/device system voices via window.speechSynthesis only. No server or xAI TTS.' });
-});
-
-app.post('/api/tts', (req, res) => {
-  return res.status(400).json({ 
-    error: 'Server TTS disabled. This app uses only your device\'s built-in system voices (window.speechSynthesis) for zero lag. xAI/cloud voices are not supported.' 
-  });
-});
-
-// === STT: permanently disabled ===
-// Hands-free (wake word "John"), barge-in, live interim, and final transcripts use the browser's
-// built-in SpeechRecognition (webkitSpeechRecognition). This avoids lag, 404s, and the cost/spam
-// of cloud STT. The /api/stt endpoint exists only as a safe fallback stub.
-app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
-  return res.json({ text: '', fallback: true, disabled: true });
 });
 
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
@@ -829,8 +625,7 @@ app.post('/api/admin/set-access', (req, res) => {
     if (payload.role !== 'admin') throw new Error();
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
-  const email = normalizeEmail(req.body.email);
-  const { access_granted, manual_free } = req.body;
+  const { email, access_granted, manual_free } = req.body;
   db.prepare(`
     UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
   `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
@@ -850,7 +645,7 @@ app.post('/api/stripe-webhook', (req, res) => {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const email = normalizeEmail(session.metadata?.email || session.customer_email);
+    const email = session.metadata?.email || session.customer_email;
     if (email) {
       db.prepare(`
         UPDATE users SET status = 'trialing', access_granted = 1 WHERE email = ?
@@ -944,9 +739,6 @@ app.post('/api/chat', (req, res, next) => {
       console.log('[demo] limited demo chat request (client should enforce small response cap)');
     }
     const { messages } = req.body;
-    // NASB is the default (technical fallback is eng_lsv = Literal Standard Version, a modern NASB 2020-style literal).
-    // The client sends the user's chosen value from the Voice Settings picker (default_english_trans).
-    const defaultTrans = (req.body && typeof req.body.defaultTranslation === 'string' && req.body.defaultTranslation.trim()) || 'eng_lsv';
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array required' });
@@ -959,147 +751,12 @@ app.post('/api/chat', (req, res, next) => {
     // === Improved scripture grounding: scan recent conversation for references ===
     // We pull live from the public Bible API (https://bible.helloao.org) so the model
     // is always grounded in actual literal text rather than relying solely on training data.
-    function normalizeBibleTranscriptForRefs(text) {
-      if (!text) return text;
-      let t = ' ' + text + ' ';
-      // Same common corrections as client for robustness
-      // Specific for common STT mishearing of 1 John 1 as "first john one" or "1 john one"
-      t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
-      t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
-
-      // Conversational follow-ups in the same thread ("John too", "John as well", "now John", "the other John")
-      // after the user has been discussing John 1 (or Romans 5 etc.). This helps extractRefs produce
-      // a usable ref so we fetch the literal + Greek for the new passage instead of the model saying
-      // "I do not have the materials".
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s+(too|as well|also|next|the other)\b/gi, 'John 2');
-      t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
-      t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
-
-      // Direct rescue for the exact jumbled STT output the user is seeing:
-      // "John tell me about John two" → "two John two cell", "second John 2 cell", "2 John 2 cell", "john two cell"
-      t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
-      t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
-      t = t.replace(/\b2\s+john\s+2\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
-      t = t.replace(/\bcell\b/gi, ''); // remove common STT garbage word that appears after refs
-      t = t.replace(/\btwo\s+john\s+two\s+cell\b/gi, 'John 2');
-      t = t.replace(/\bsecond\s+john\s+2\s+cell\b/gi, 'John 2');
-
-      // Gospel of John first (strong patterns for "john one", "john 1", "the book of john one" etc.)
-      // to ensure "John one" is the Gospel, not turned into 1 John.
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(one|1|first)\b/gi, 'John 1');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(two|2|second)\b/gi, 'John 2');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(three|3|third)\b/gi, 'John 3');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(four|4)\b/gi, 'John 4');
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s*(chapter|ch\.?)?\s*(\d+)\b/gi, 'John $3');
-
-      t = t.replace(/\b(one|1st|first| i |^i )\s+john\b/gi, ' 1 John ');
-      t = t.replace(/\b(two|2nd|second| ii |^ii )\s+john\b/gi, ' 2 John ');
-      t = t.replace(/\b(three|3rd|third| iii |^iii )\s+john\b/gi, ' 3 John ');
-
-      t = t.replace(/\b(one|1st|first)\s+peter\b/gi, ' 1 Peter ');
-      t = t.replace(/\b(two|2nd|second)\s+peter\b/gi, ' 2 Peter ');
-      t = t.replace(/\b(one|1st|first)\s+corinthians\b/gi, ' 1 Corinthians ');
-      t = t.replace(/\b(two|2nd|second)\s+corinthians\b/gi, ' 2 Corinthians ');
-      t = t.replace(/\b(one|1st|first)\s+thessalonians\b/gi, ' 1 Thessalonians ');
-      t = t.replace(/\b(two|2nd|second)\s+thessalonians\b/gi, ' 2 Thessalonians ');
-      t = t.replace(/\b(one|1st|first)\s+timothy\b/gi, ' 1 Timothy ');
-      t = t.replace(/\b(two|2nd|second)\s+timothy\b/gi, ' 2 Timothy ');
-      t = t.replace(/\b(one|1st|first)\s+kings\b/gi, ' 1 Kings ');
-      t = t.replace(/\b(two|2nd|second)\s+kings\b/gi, ' 2 Kings ');
-      t = t.replace(/\b(one|1st|first)\s+samuel\b/gi, ' 1 Samuel ');
-      t = t.replace(/\b(two|2nd|second)\s+samuel\b/gi, ' 2 Samuel ');
-      t = t.replace(/\b(one|1st|first)\s+chronicles\b/gi, ' 1 Chronicles ');
-      t = t.replace(/\b(two|2nd|second)\s+chronicles\b/gi, ' 2 Chronicles ');
-      t = t.replace(/\bchapter\s+(one|first)\b/gi, 'chapter 1');
-      t = t.replace(/\bchapter\s+(two|second)\b/gi, 'chapter 2');
-      t = t.replace(/\bchapter\s+(three|third)\b/gi, 'chapter 3');
-      t = t.replace(/\bchapter\s+four\b/gi, 'chapter 4');
-      t = t.replace(/\b1\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\bfirst\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\bone\s+john\s+four\b/gi, '1 John 4');
-      t = t.replace(/\b(1|2|3)\s+john\s+four\b/gi, '$1 John 4');
-      t = t.trim();
-
-      // Final safeguard pass: force gospel "John 1" (or other chapters) for any "john one/1/first" etc.
-      // This catches cases where STT or wake word stripping left "john one" and earlier rules didn't trigger perfectly.
-      // "john one" or "john 1" should be the Gospel of John, not 1 John.
-      t = t.replace(/\bjohn\s+(one|1|first)\b/gi, 'John 1');
-      t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
-      t = t.replace(/\bjohn\s+(three|3|third)\b/gi, 'John 3');
-      t = t.replace(/\bjohn\s+(four|4)\b/gi, 'John 4');
-      t = t.replace(/\bjohn\s+(five|5)\b/gi, 'John 5');
-      t = t.replace(/\bjohn\s+(six|6)\b/gi, 'John 6');
-      t = t.replace(/\bjohn\s+(seven|7)\b/gi, 'John 7');
-      t = t.replace(/\bjohn\s+(eight|8)\b/gi, 'John 8');
-      t = t.replace(/\bjohn\s+(nine|9)\b/gi, 'John 9');
-      t = t.replace(/\bjohn\s+(ten|10)\b/gi, 'John 10');
-
-      // Final stabilization pass: re-apply the most important gospel John fixes and clean any remaining junk.
-      // This rescues cases where STT produces very jumbled output like "two John two cell".
-      for (let pass = 0; pass < 2; pass++) {
-        t = t.replace(/\btwo\s+john\s+two\b/gi, 'John 2');
-        t = t.replace(/\bsecond\s+john\s+two\b/gi, 'John 2');
-        t = t.replace(/\bjohn\s+two\s+cell\b/gi, 'John 2');
-        t = t.replace(/\bcell\b/gi, '');
-        t = t.replace(/\bjohn\s+(two|2|second)\b/gi, 'John 2');
-      }
-
-      return t;
-    }
-
     function extractRefs(text) {
       if (!text) return [];
-      // Normalize common STT / voice errors for Bible refs before extraction (helps grounding when mic input is noisy)
-      text = normalizeBibleTranscriptForRefs(text);
-
-      // Extra safety: convert any remaining word numbers for chapters in case normalize missed (e.g. "John two")
-      text = text.replace(/\b(two|second)\b/gi, '2');
-      text = text.replace(/\b(three|third)\b/gi, '3');
-      text = text.replace(/\b(four)\b/gi, '4');
-      text = text.replace(/\b(five)\b/gi, '5');
-      text = text.replace(/\b(six)\b/gi, '6');
-      text = text.replace(/\b(seven)\b/gi, '7');
-      text = text.replace(/\b(eight)\b/gi, '8');
-      text = text.replace(/\b(nine)\b/gi, '9');
-      text = text.replace(/\b(ten)\b/gi, '10');
-
-      // Matches common Bible refs, including bare chapters for full context:
-      // "John 3:16", "John 1:1-10", "1 John 1:1", "John 1", "John chapter 1", "Jn 1", "Ps 23", etc.
-      const regex = /\b((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?\b/gi;
-      let matches = text.match(regex) || [];
-      // Normalize
-      matches = matches.map(m => m.trim().replace(/\s+/g, ' '));
-
-      // Explicitly catch "1 John ...", "2 Peter ..." patterns (global match can be derailed by preceding numbers)
-      const numbered = text.match(/\b[1-3]\s+[A-Za-z]+\s+\d+(?::\d+(?:-\d+)?)?\b/gi) || [];
-      matches = [...matches, ...numbered.map(m => m.trim().replace(/\s+/g, ' '))];
-
-      // Known Bible book prefixes (to filter junk matches like "See 1", "also 1", "verse 1")
-      const knownBooks = new Set([
-        'gen','genesis','ex','exo','exodus','lev','leviticus','num','numbers','deut','deuteronomy',
-        'josh','joshua','judg','judges','ruth',
-        '1sam','1 samuel','2sam','2 samuel','1ki','1 kings','2ki','2 kings',
-        '1chr','1 chronicles','2chr','2 chronicles','ezr','ezra','neh','nehemiah','est','esther',
-        'job','ps','psalm','psalms','pro','prov','proverbs','ecc','eccl','ecclesiastes','sng','song',
-        'isa','isaiah','jer','jeremiah','lam','lamentations','eze','ezekiel','dan','daniel',
-        'hos','hosea','jol','joel','amo','amos','oba','obadiah','jon','jonah','mic','micah',
-        'nam','nahum','hab','habakkuk','zep','zephaniah','hag','haggai','zec','zechariah','mal','malachi',
-        'mat','matthew','mt','mrk','mark','mk','luk','luke','lk','jhn','john','jn',
-        'act','acts','rom','romans','1co','1 corinthians','2co','2 corinthians',
-        'gal','galatians','eph','ephesians','php','philippians','col','colossians',
-        '1th','1 thessalonians','2th','2 thessalonians','1ti','1 timothy','2ti','2 timothy','tit','titus',
-        'phm','philemon','heb','hebrews','jas','james',
-        '1pe','1 peter','2pe','2 peter','1jn','1 john','2jn','2 john','3jn','3 john','jud','jude','rev','revelation'
-      ]);
-
-      matches = matches.filter(m => {
-        const first = m.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-        // must start with a known book or a number+book like "1john"
-        return knownBooks.has(first) || knownBooks.has(m.toLowerCase().split(/\s+/).slice(0,2).join('').replace(/[^a-z0-9]/g,'')) || /^\d/.test(m);
-      });
-
-      return [...new Set(matches)];
+      // Matches common Bible refs: "John 3:16", "Galatians 6:1-10", "1 John 1:1", "Ps 23:1" etc.
+      const regex = /\b(1\s?[A-Za-z]+|2\s?[A-Za-z]+|3\s?[A-Za-z]+|[A-Za-z]+)\s+\d+:\d+(?:-\d+)?\b/g;
+      const matches = text.match(regex) || [];
+      return [...new Set(matches.map(m => m.trim()))];
     }
 
     // Collect refs from the last several messages (user questions + previous AI answers)
@@ -1111,75 +768,9 @@ app.post('/api/chat', (req, res, next) => {
     }
     allRefs = [...new Set(allRefs)];
 
-    // === Conversational follow-up / anaphora support ===
-    // Users say things like "John too", "John as well", "now John", "the other one", "next chapter"
-    // after previously discussing "John 1" or "Romans 5". We want seamless jumping without
-    // the model saying "I don't have the materials for John 2".
-    // Detect this in the latest user message and infer the logical next / related chapter
-    // from what was already referenced in this conversation.
-    try {
-      const lastUser = [...recent].reverse().find(m => m.role === 'user' && m.content);
-      if (lastUser && lastUser.content) {
-        const lastNorm = normalizeBibleTranscriptForRefs(lastUser.content).toLowerCase();
-        const isFollowUp = /\b(too|as well|also|next|other|following|as well|now|the other)\b/.test(lastNorm);
-
-        if (isFollowUp) {
-          // Build map of most recent chapter seen per book in this thread
-          const lastChapterByBook = {};
-          for (const r of allRefs) {
-            const m = r.match(/^((?:1|2|3)?\s*[A-Za-z]+)\s+(\d+)/i);
-            if (m) {
-              const bookKey = m[1].toLowerCase().replace(/\s+/g, '');
-              const ch = parseInt(m[2], 10);
-              lastChapterByBook[bookKey] = Math.max(lastChapterByBook[bookKey] || 0, ch);
-            }
-          }
-
-          // If user is saying "John too" / "John as well" etc. and we saw John 1 (or any John chapter), add John 2
-          if ((lastNorm.includes('john') || lastNorm.includes('jhn')) && !lastNorm.match(/john\s*\d/)) {
-            const prev = lastChapterByBook['john'] || lastChapterByBook['1john'] || lastChapterByBook['jhn'] || 1;
-            const nextCh = prev + 1;
-            allRefs.push(`John ${nextCh}`);
-          }
-
-          // Similar for other common books the user jumps between
-          if ((lastNorm.includes('romans') || lastNorm.includes('rom')) && !lastNorm.match(/romans?\s*\d/)) {
-            const prev = lastChapterByBook['romans'] || lastChapterByBook['rom'] || 5;
-            allRefs.push(`Romans ${prev + 1}`);
-          }
-
-          // Add a couple more common ones for robustness (1 John, etc.)
-          if (lastNorm.includes('1 john') || lastNorm.includes('first john') || lastNorm.includes('i john')) {
-            // if they say "1 John too" after 1 John 1, go to 1 John 2, etc.
-            const prev = lastChapterByBook['1john'] || lastChapterByBook['1 john'] || 1;
-            allRefs.push(`1 John ${prev + 1}`);
-          }
-        }
-
-        // Also catch bare "John 2", "chapter 2" etc. that might have been missed in a short follow-up
-        // (the main extractRefs should catch most, but this is a safety net for very conversational phrasing)
-        const extra = extractRefs(lastUser.content);
-        for (const e of extra) {
-          if (!allRefs.includes(e)) allRefs.push(e);
-        }
-      }
-    } catch (e) {
-      // non-fatal
-    }
-
-    allRefs = [...new Set(allRefs)];
-
     // Translation display names for citations and UI
     const transDisplayNames = {
       'BSB': 'Berean Standard Bible',
-      'eng_lsv': 'Literal Standard Version (NASB 2020 style)',
-      'LSV': 'Literal Standard Version (NASB 2020 style)',
-      'eng_asv': 'American Standard Version (1901)',
-      'ASV': 'American Standard Version (1901)',
-      'eng_ylt': 'Young\'s Literal Translation',
-      'YLT': 'Young\'s Literal Translation',
-      'ENGWEBP': 'World English Bible',
-      'WEB': 'World English Bible',
       'grc_sbl': 'SBL Greek New Testament',
       'hbo_wlc': 'Westminster Leningrad Codex (Hebrew OT)',
       'heb_wlc': 'Westminster Leningrad Codex (Hebrew)',
@@ -1197,10 +788,9 @@ app.post('/api/chat', (req, res, next) => {
     }
 
     const fetchedPassages = [];
-    for (const ref of allRefs.slice(0, 8)) { // cap refs (raised to support more chapter context), will fetch originals too
-
-      // Always fetch the English literal (NASB default via the user's chosen defaultTranslation from the picker; falls back to eng_lsv = LSV NASB 2020 style)
-      const bsb = await fetchBiblePassage(ref, defaultTrans);
+    for (const ref of allRefs.slice(0, 4)) { // cap refs, will fetch originals too
+      // Always fetch the English literal (BSB)
+      const bsb = await fetchBiblePassage(ref, 'BSB');
       if (bsb) fetchedPassages.push(bsb);
 
       // Also fetch main original language text for Greek NT or Hebrew OT
@@ -1223,27 +813,27 @@ app.post('/api/chat', (req, res, next) => {
       }).join('') + '\n\nUse the above literal text(s) — including original Greek (SBLGNT etc.) and Hebrew (WLC) when provided — as your primary source(s). For any verse or phrase discussed, explicitly cite the translation/source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").';
     }
 
-    // Build the messages for xAI (using the recommended Responses API per xAI quickstart)
+    // Build the messages for xAI
     const apiMessages = [
       { role: 'system', content: SYSTEM_PROMPT + bibleContext },
       ...messages.filter(m => m.role !== 'system')
     ];
 
-    const completion = await xai.responses.create({
+    const completion = await xai.chat.completions.create({
       model: 'grok-4.3',
-      input: apiMessages,
+      messages: apiMessages,
       temperature: 0.55,
-      max_output_tokens: 1600,
+      max_tokens: 1600,
     });
 
-    const reply = completion.output_text || 'No response generated.';
+    const reply = completion.choices?.[0]?.message?.content || 'No response generated.';
 
     // Post-hoc: the model may have referenced additional verses in its reply.
     // Fetch accurate live text for those too (including originals) so the client can show trustworthy sources.
     const replyRefs = extractRefs(reply);
     for (const ref of replyRefs) {
       if (!allRefs.includes(ref)) {
-        const bsb = await fetchBiblePassage(ref, defaultTrans);
+        const bsb = await fetchBiblePassage(ref, 'BSB');
         if (bsb) fetchedPassages.push(bsb);
         const grc = await fetchBiblePassage(ref, 'grc_sbl');
         if (grc) fetchedPassages.push(grc);
@@ -1267,45 +857,91 @@ app.post('/api/chat', (req, res, next) => {
     res.json({ reply, sources });
   } catch (err) {
     console.error('xAI proxy error:', err);
-    let status = err.status || 500;
-    let message = err.message || 'Unknown error calling xAI';
-    // Handle xAI tier rate limits (RPM/TPM) gracefully
-    if (status === 429 || /429|rate limit|too many requests/i.test(message)) {
-      status = 429;
-      message = 'xAI rate limited (your API tier caps RPM/TPM for the model). Please wait a moment and try again. Limits increase with cumulative spend on xAI.';
-    }
+    const status = err.status || 500;
+    const message = err.message || 'Unknown error calling xAI';
     res.status(status).json({ error: message });
   }
 });
 
-// Health check (reports capabilities for the client)
+// === Voices list via managed key (so users without personal key can still pick nice voices)
+app.get('/api/voices', async (req, res) => {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'managed voices not configured' });
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey }
+    });
+    if (!r.ok) return res.status(r.status).send(await r.text());
+    const data = await r.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: 'failed to list voices' });
+  }
+});
+
+// === TTS proxy using server-side ElevenLabs key (for low-cost subscription "managed voices") ===
+// Users without a personal key (or who want included quota) use this.
+// Cost is borne by the app/subscription fee. Add auth/rate-limiting per user later.
+// IMPORTANT for low monthly fee viability: hard cap + cheapest model + log usage so owner can monitor burn.
+app.post('/api/tts', express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    const { text, voiceId = 'XrExE9yKIg1WjnnlVkGX' } = req.body || {};
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Server not configured with ELEVENLABS_API_KEY for managed voices' });
+    }
+    // Hard safety cap for (any) TTS via proxy. For user-provided keys, this is less critical but still protects.
+    // Increased to allow longer complete responses with EL voices (~1-2 min speech possible).
+    // Manual full speak from UI uses direct if key, but proxy path caps here.
+    const safeText = text.slice(0, 2000);
+    const model = 'eleven_turbo_v2_5'; // cheapest low-latency good quality model (Flash equiv)
+    console.log(`[TTS managed] ${safeText.length} chars (capped), voice:${voiceId}, model:${model} — owner cost`);
+
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: safeText,
+        model_id: model,
+        voice_settings: { stability: 0.55, similarity_boost: 0.8 }
+      })
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      console.error('[TTS managed] upstream error:', r.status, errText.slice(0, 200));
+      return res.status(r.status).send(errText || 'TTS generation failed');
+    }
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/mpeg');
+    res.setHeader('X-TTS-Chars-Used', String(safeText.length)); // for future client metering UI
+    // Stream the audio back (no buffering whole file in memory)
+    r.body.pipe(res);
+  } catch (e) {
+    console.error('TTS proxy error:', e);
+    res.status(500).json({ error: 'TTS proxy failed' });
+  }
+});
+
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    hasKey: !!process.env.XAI_API_KEY,   // only for chat/LLM (the study answers)
-    hasHostedTTS: false,                 // no server TTS at all
-    hasSTT: false,                       // STT disabled — client uses browser SpeechRecognition for HF ("John")
-    hasTTSKey: false,
+    hasKey: !!process.env.XAI_API_KEY,
+    hasTTSKey: !!process.env.ELEVENLABS_API_KEY,
     model: 'grok-4.3'
   });
-});
-
-// Quick way to see what models your xAI key has access to (chat models mainly).
-// For audio/voice (TTS/STT/Voice Agent) the models are on separate endpoints or specified differently — see x.ai docs or console.x.ai.
-app.get('/api/models', async (req, res) => {
-  try {
-    const list = await xai.models.list();
-    res.json({ models: list.data?.map(m => m.id) || list });
-  } catch (e) {
-    res.status(500).json({ error: 'Could not list models', detail: e.message });
-  }
 });
 
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used only for chat/LLM answers)`);
-  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
-  console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
+  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
+  console.log(`   ElevenLabs (managed TTS for subs): ${process.env.ELEVENLABS_API_KEY ? 'yes (owner pays for included quota)' : 'NO — add ELEVENLABS_API_KEY to .env for premium voices in low-fee plans'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
