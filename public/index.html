@@ -1285,11 +1285,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function wakeSpeechEngine() {
       if (__ttsWoken) return;
       __ttsWoken = true;
+      console.log('[TTS] wakeSpeechEngine: priming browser speechSynthesis (first gesture)');
       try {
+        // Some Chrome/Mac setups need getVoices() + a speak in the same gesture to fully activate.
+        try { synth.getVoices(); } catch (e) {}
         const u = new SpeechSynthesisUtterance(' ');
         u.volume = 0.001;
         synth.speak(u);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 40);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
       } catch (e) {}
     }
 
@@ -1574,9 +1577,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       if (synth.speaking) synth.cancel();
+
+      // Slightly longer delay after cancel + fresh getVoices right before speak is more reliable on Mac Chrome.
       setTimeout(() => {
-        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
-      }, 0);
+        try {
+          // Re-prime and re-resolve the voice object at the absolute last moment.
+          try { synth.getVoices(); } catch (e) {}
+          if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId && !currentUtterance.voice) {
+            const lastFresh = synth.getVoices();
+            const norm = normalizeVoiceName(voiceSettings.voiceId);
+            const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm) ||
+                            lastFresh.find(v => v.name.toLowerCase() === voiceSettings.voiceId.toLowerCase());
+            if (reMatch) {
+              currentUtterance.voice = reMatch;
+            }
+          }
+          console.log('[TTS] attempting synth.speak for real utterance, voice:', (currentUtterance.voice && currentUtterance.voice.name) || 'default');
+          synth.speak(currentUtterance);
+        } catch (e) { console.error(e); }
+      }, 60);
     }
 
     function stopSpeaking() {
@@ -1779,7 +1798,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       setTimeout(() => {
         try { synth.speak(utterance); } catch (e) { console.error(e); }
-      }, 0);
+      }, 60);
 
       // After speaking, re-load voices (helps iOS show more after first use)
       setTimeout(() => {
@@ -1888,7 +1907,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if (synth.speaking) synth.cancel();
           setTimeout(() => {
             try { synth.speak(utterance); } catch (e) { console.error(e); }
-          }, 0);
+          }, 60);
 
           // After speaking, re-load voices (helps iOS show more after first use)
           setTimeout(() => {
@@ -3330,6 +3349,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // ====================== UI EVENTS ======================
     sendBtn.addEventListener("click", () => {
+      wakeSpeechEngine();  // ensure TTS is primed on the send gesture (the actual speak() happens async later)
       const text = userInput.value.trim();
       if (text) sendToGrok(text);
     });
