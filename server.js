@@ -332,7 +332,7 @@ app.use(express.json({ limit: '50mb' }));
 // HF (wake "John"), barge-in, live interim, and final transcript all use webkitSpeechRecognition.
 // No XAI_API_KEY, no keyterms, no fetch.
 app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
-  return res.json({ text: , fallback: true, disabled: true });
+  return res.json({ text: '', fallback: true, disabled: true });
 });
 
 // 413 catcher so even if a huge blob slips through (or old deploys), we don't get the repeated error spam in logs.
@@ -340,7 +340,7 @@ app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
 app.use((err, req, res, next) => {
   if (err && (err.status === 413 || err.type === 'entity.too.large' || (err.message || ).toLowerCase().includes('too large'))) {
     if (req.path === '/api/stt') {
-      return res.status(413).json({ text: , fallback: true, error: 'payload too large' });
+      return res.status(413).json({ text: '', fallback: true, error: 'payload too large' });
     }
     return res.status(413).json({ error: 'payload too large' });
   }
