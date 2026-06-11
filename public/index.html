@@ -1528,10 +1528,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       currentUtterance.onerror = (ev) => {
+        if (ev.error === 'canceled' || ev.error === 'interrupted') {
+          return; // expected when canceling for new speak or barge-in; ignore silently to stop spam
+        }
         console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (currentUtterance && currentUtterance.voice && currentUtterance.voice.name) || 'default');
         // Last-ditch: try once more with no forced voice (lets browser pick its system default)
         try {
-          if (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed' || ev.error === 'canceled') {
+          if (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed') {
             const u2 = new SpeechSynthesisUtterance(text);
             u2.rate = currentUtterance.rate || 0.95;
             u2.pitch = currentUtterance.pitch || 1.0;

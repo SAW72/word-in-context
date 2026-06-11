@@ -10,6 +10,10 @@ const { Resend } = require('resend');
 const app = express();
 const PORT = process.env.PORT || 8787;
 
+// Raw body for Stripe webhook MUST be the very first middleware (before any express.json or body parsers)
+// so that req.body is the raw Buffer/string for signature verification.
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+
 // === Simple SQLite DB for users (persistent on Render disk for beta; migrate to Postgres later) ===
 const db = new Database(path.join(__dirname, 'users.db'));
 db.pragma('journal_mode = WAL');
