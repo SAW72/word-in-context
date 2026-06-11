@@ -370,6 +370,21 @@
         min-width: 44px;
         min-height: 44px;
       }
+      /* Clean circular ➤ send button on iPhone (the polish the user wanted in the good mobile era).
+         Big touch target, arrow centered, label hidden on small screens. */
+      #send-btn {
+        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        line-height: 1;
+      }
+      #send-btn .send-label { display: none; }
+      #send-btn .send-arrow { font-size: 22px; }
       .modal-content {
         width: 95vw;
         max-width: 95vw;
@@ -492,13 +507,56 @@
         gap: 6px;
       }
       /* Hands-free toggle on its own line or clearly visible next to controls on mobile.
-         Short clear label so people understand what the checkbox does. */
+         Short clear label so people understand what the checkbox does. Compact bg so it stands out next to the circular send arrow. */
       .handsfree-toggle {
         width: 100%;
         margin-top: 2px;
         font-size: 11px;
         order: 10; /* push to end of wrapped row */
         justify-content: flex-start;
+        background: #f5f0e6;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+
+      /* When the input is focused (iPhone keyboard showing), keep the input bar (with circular ➤ send + HF toggle) fixed at the very bottom just above the keyboard.
+         This is the key "no jumping" fix the user wanted for mobile. Messages get bottom padding so nothing is hidden. */
+      .chat-container.input-focused .input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        background: #fff;
+        box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
+        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+      }
+      .chat-container.input-focused .messages {
+        padding-bottom: 78px; /* keep the last messages readable above the fixed bar */
+      }
+
+      /* Compact header layout on iPhone: ☰ pinned top-left, title (with book) centered, subtitle hidden, Voice/Sources/Account centered underneath.
+         Combined with the fixed-low input this gives the bigger, cleaner read window the user liked. */
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px 8px;
+        position: relative;
+      }
+      .header .left {
+        position: absolute;
+        left: 6px;
+        top: 6px;
+      }
+      .header .center {
+        text-align: center;
+        padding: 0 30px 2px;
+      }
+      .header .subtitle {
+        display: none;
+      }
+      .pro-signup-link {
+        display: none;
       }
 
       /* Secure footer text: tiny, at the very bottom of the screen on mobile.
@@ -622,7 +680,6 @@
         <div class="center">
           <h1>📖 The Word in Context</h1>
           <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
-          <div id="current-chat-title" style="font-size:11px; opacity:0.85; margin-top:1px; color:#ddd;"></div>
         </div>
         <div class="left">
           <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" aria-label="Open chat list" style="display:none; background:#2c3e50; color:#eee; border:none; padding:4px 8px; border-radius:4px; font-size:16px; margin-right:6px; cursor:pointer;">☰</button>
@@ -636,8 +693,16 @@
       <div class="policy-note">
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
+        <span style="margin-left:8px; opacity:0.7;">• <a href="instructions.html" target="_blank" style="color:inherit; text-decoration:underline;">Help</a></span>
         <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
+      </div>
+
+      <!-- Current chat title moved under policy on mobile for balanced compact header (title centered above buttons in header).
+           This was part of the "mobile was working really well" aesthetics. -->
+      <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
+        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">Chat: </span>
+        <span id="current-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
       </div>
 
       <!-- Demo mode banner (shown only when no valid login token). -->
@@ -3418,8 +3483,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           textSpan.className = 'hf-text';
           label.appendChild(textSpan);
         }
-        // Clean short label the user requested style: "handsfree (wakeword John)"
-        textSpan.textContent = 'handsfree' + (extra ? ' ' + extra : '');
+        // On mobile use the compact "HF (John)" the user loved (visible next to the circular send arrow).
+        // On desktop use the fuller "handsfree (wakeword John)".
+        const isMobile = (typeof window !== 'undefined') && window.innerWidth <= 768;
+        const base = isMobile ? 'HF' : 'handsfree';
+        textSpan.textContent = base + (extra ? ' ' + extra : '');
       }
     }
     updateHandsFreeLabel();
@@ -3431,19 +3499,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (window.innerWidth <= 768) {
           if (document.activeElement === userInput) {
             chatCont.classList.add('mobile-keyboard');
+            chatCont.classList.add('input-focused');  /* enables the fixed-low input bar CSS */
           } else {
             chatCont.classList.remove('mobile-keyboard');
+            chatCont.classList.remove('input-focused');
           }
         }
       };
       userInput.addEventListener('focus', toggleMobileKeyboardClass);
       userInput.addEventListener('blur', () => {
         // small delay so iOS keyboard hide animation finishes
-        setTimeout(() => chatCont.classList.remove('mobile-keyboard'), 150);
+        setTimeout(() => {
+          chatCont.classList.remove('mobile-keyboard');
+          chatCont.classList.remove('input-focused');
+        }, 150);
       });
       // Also clear on resize/orientation
       window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) chatCont.classList.remove('mobile-keyboard');
+        if (window.innerWidth > 768) {
+          chatCont.classList.remove('mobile-keyboard');
+          chatCont.classList.remove('input-focused');
+        }
       });
     }
 
