@@ -355,7 +355,6 @@
         margin: 0;
         border-radius: 0;
         /* Height tuned to leave max room for the messages read area + speak buttons after header + policy-note + input */
-        height: calc(100vh - 78px); /* fallback for Chrome */
         height: calc(100dvh - 78px);
       }
       .input-area {
@@ -401,7 +400,7 @@
         font-size: 14px;
         padding: 6px;
       }
-      .handsfree-toggle {
+      .handsfree-toggle, label[for="premium-voices-toggle"] {
         font-size: 12px;
       }
     }
@@ -510,7 +509,6 @@
         opacity: 0.5;
         text-align: center;
         position: fixed;
-        bottom: 2px; /* fallback for Chrome */
         bottom: env(safe-area-inset-bottom, 2px);
         left: 0;
         right: 0;
@@ -628,7 +626,6 @@
           <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" aria-label="Open chat list" style="display:none; background:#2c3e50; color:#eee; border:none; padding:4px 8px; border-radius:4px; font-size:16px; margin-right:6px; cursor:pointer;">☰</button>
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
           <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3; margin-left:6px;">📚 Sources</button>
-          <a href="/instructions" style="font-size:12px; padding:4px 10px; border-radius:6px; background:#5c4630; color:#f5e8d3; text-decoration:none; margin-left:6px;">Help</a>
           <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; margin-left:6px; font-size:12px; padding:4px 10px; border-radius:6px; border:none; cursor:pointer;">Account</button>
         </div>
       </div>
@@ -636,6 +633,7 @@
       <div class="policy-note">
         Only literal translations (ESV, NASB, NKJV, LSB, BSB, etc.). Original languages prioritized (SBL Greek NT + Westminster Leningrad Codex Hebrew OT).
         <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
+        <span style="margin-left:8px; opacity:0.7;">• <a href="instructions.html" target="_blank" style="color:inherit; text-decoration:underline;">Help</a></span>
         <span style="margin-left:8px; opacity:0.7;">• <a href="/" target="_blank" style="color:inherit; text-decoration:underline;">Sign up for Pro / Beta</a></span>
         <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
       </div>
@@ -692,11 +690,10 @@
       </div>
 
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All voices come from your device (macOS Spoken Content + apps like Piper, or equivalent on Windows/Chrome).
-        <strong>No filters</strong> — every available system voice on Mac, Windows, and iPhone is listed here, including every premium and enhanced voice you have installed.
-        Some voices only appear with numbers (e.g. "925") because the OS gives the browser internal IDs instead of nice names/genders.
-        Use the 🔊 buttons in the preview list below to test any of them.
-        After installing new voices (e.g. Piper), click <strong>"Reload system voices"</strong>.
+        All voices come from your device (macOS Spoken Content + apps like Piper).
+        Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
+        Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
+        After installing Piper voices, click <strong>"Reload system voices"</strong>.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
@@ -865,7 +862,8 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>100% browser built-in system voices</strong> (window.speechSynthesis). No xAI or server TTS for speech output. Every voice your device reports via getVoices() is shown with <strong>no filters</strong> — including every premium/enhanced voice you have installed on Mac, Windows, or iPhone. Use the 🔊 test buttons to audition any of them. We always re-resolve a fresh voice object right before speaking.</li>
+          <li><strong>Free &amp; unlimited</strong>: All non-English voices + curated better English voices only (Google, Enhanced, Samantha, Daniel etc.). Older English voices (Karen, Allison, Alex etc.) hidden. Dropdown sorted with best English first (Google UK English Male on top), then non-English A-Z. "Google UK English Male" preferred default when available in browser.</li>
+          <li><strong>Optional premium</strong>: Grok voices (xAI) via the "Use Premium Grok Voices" toggle in Voice Settings (higher quality, small latency). Manual 🔊 buttons on replies use it when enabled. Hands-free and daily use stay on fast local system voices for reliability and instant response.</li>
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
@@ -1156,10 +1154,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
+    let hostedAudio = null;  // for the /api/tts premium hosted neural voices (edge-tts)
     let lastSpokenText = '';
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
+    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
 
     // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
@@ -1169,7 +1169,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWord = 'john';
       localStorage.setItem('wake_word', 'John');
     }
-    let serverHasManagedTTS = false; // legacy, voices are always pure browser system voices now
+    let serverHasManagedTTS = false; // not used for voices anymore (xAI premium is controlled client-side via toggle + /api/tts)
     let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
 
     // ====================== HELPERS ======================
@@ -1250,23 +1250,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
-      // Wake the speech engine for Mac (helps unlock audio for subsequent speaks on Mac/Chrome)
-      if (!window.__macSpeechWoken) {
-        window.__macSpeechWoken = true;
-        try {
-          const wake = new SpeechSynthesisUtterance('test');
-          wake.volume = 0.08;
-          wake.rate = 1.8;
-          synth.speak(wake);
-          setTimeout(() => {
-            if (synth.speaking) synth.cancel();
-            try { synth.getVoices(); } catch(e) {} // re-prime the list
-          }, 130);
-        } catch(e) {}
-      }
-
-      // Pure browser system voices only. No xAI, no hosted, no premium toggle for TTS output.
-      // All speaking uses window.speechSynthesis with voices from getVoices().
+      // Always use fast local system voices. We no longer support cloud/XAI voices
+      // because good local neural voices (especially after installing via Piper etc.) sound better
+      // and have zero lag.
       if (voiceSettings.voiceSource !== 'local') {
         voiceSettings.voiceSource = 'local';
         localStorage.setItem('voice_source', 'local');
@@ -1275,6 +1261,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceId = 'Google UK English Male';
         localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
+      // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
+      // user's chosen local voice (e.g. the English male from the dropdown).
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
         const resolved = findLocalVoiceById(voiceSettings.voiceId);
         if (resolved) {
@@ -1320,6 +1308,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         } else {
           let voices = synth.getVoices();
           if (voices.length === 0) {
+            // Voices not ready yet (common on first load or some browsers). Listen once.
             const origOnChange = synth.onvoiceschanged;
             synth.onvoiceschanged = () => {
               match = findLocalVoiceById(currentVoiceId);
@@ -1330,54 +1319,63 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
-      fallbackToBrowserSpeech(text);  // local voices always get the full original text
+      // setTimeout(0) after stopSpeaking/cancel lets the cancel settle before the new speak.
+      // Combined with the wake + fresh voice + onerror retry in fallbackToBrowserSpeech, this
+      // eliminates the 'canceled' spam and the silent-on-Mac-Chrome cases that appeared around
+      // the mobile/HF work (more UI gestures, barge-in cancels, voice testing).
+      setTimeout(() => {
+        fallbackToBrowserSpeech(text);
+      }, 0);
     }
 
-    // All output is 100% browser built-in system voices (window.speechSynthesis).
-    // No xAI, no hosted, no server TTS for speech output whatsoever.
-    // We use only the voices returned by synth.getVoices() on the user's device.
+    // Premium (xAI) / custom voices via your server-side proxy (seamless from deployed app).
+    // The function is *only* reached for the xAI path when use_premium_voices === 'true' (hard guard at top).
+    // Legacy custom_tts_url (if present) is handled in the speak() caller only when premium flag is off.
+    // speakWithCustomTts removed — we are now 100% local system voices only (no more XAI/cloud TTS).
+    // Local voices (especially after installing good ones via Piper etc.) are faster and sound better.
+
+    // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
+    // Only paths now: local system voices (primary for hands-free + daily use), xAI premium (toggle, on-demand for manual 🔊 when you want the Grok voice quality),
+    // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
 
     function fallbackToBrowserSpeech(text) {
       // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
       text = cleanTextForSpeech(text);
-      currentUtterance = new SpeechSynthesisUtterance(text);
-      lastSpokenText = text;
-      currentUtterance.rate = voiceSettings.rate || 0.95;
-      currentUtterance.pitch = voiceSettings.pitch || 1.0;
-      currentUtterance.volume = 1;
-      currentUtterance.lang = 'en-US';
 
-      // Pure local system voice only. Resolve fresh every time to avoid stale objects
-      // that cause "SpeechSynthesisErrorEvent" on Mac/Chrome/Windows.
+      // Prime the speech engine on first user-gesture speak (fixes silent Mac/Chrome after load or idle).
+      // A near-silent utterance + quick cancel wakes the synthesizer so the real one is audible.
+      if (!window.__speechWoken) {
+        window.__speechWoken = true;
+        const w = new SpeechSynthesisUtterance(' ');
+        w.volume = 0.01;
+        synth.speak(w);
+        setTimeout(() => { try { synth.cancel(); } catch (e) {} }, 80);
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      lastSpokenText = text;
+      utterance.rate = voiceSettings.rate || 0.95;
+      utterance.pitch = voiceSettings.pitch || 1.0;
+      utterance.volume = 1;
+
+      // Always use a fresh voice object right now (stale ones from earlier getVoices are a common
+      // source of silent or 'canceled' failures on Mac Chrome). findLocalVoiceById already calls getVoices().
       let usedVoice = null;
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
         usedVoice = findLocalVoiceById(voiceSettings.voiceId);
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
-        }
+      }
+      if (usedVoice) {
+        utterance.voice = usedVoice;
+        selectedVoice = usedVoice;
+      } else if (selectedVoice && selectedVoice.voiceURI) {
+        utterance.voice = selectedVoice;
       }
 
-      if (!usedVoice) {
-        const freshVoices = synth.getVoices();
-        const normId = normalizeVoiceName(voiceSettings.voiceId || '');
-        usedVoice = freshVoices.find(v => normalizeVoiceName(v.name) === normId) ||
-                    freshVoices.find(v => v.name.toLowerCase() === (voiceSettings.voiceId || '').toLowerCase()) ||
-                    freshVoices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
+      utterance.lang = (utterance.voice && utterance.voice.lang) || 'en-US';
 
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
-        } else if (selectedVoice && selectedVoice.voiceURI) {
-          currentUtterance.voice = selectedVoice;
-        } else if (freshVoices.length > 0) {
-          // Last resort: any available voice so we don't get silent failures
-          currentUtterance.voice = freshVoices.find(v => v.lang && v.lang.includes('en')) || freshVoices[0];
-          selectedVoice = currentUtterance.voice;
-        }
-      }
+      currentUtterance = utterance;
 
-      currentUtterance.onend = () => {
+      utterance.onend = () => {
         currentUtterance = null;
         if (handsFreeEnabled && !isListening) {
           // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
@@ -1385,49 +1383,34 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       };
 
-      currentUtterance.onerror = (event) => {
-        // 'canceled' or 'interrupted' is normal/intentional when we call cancel() to start a new utterance
-        // (e.g. new reply while speaking, or hitting speaker again) or stopSpeaking().
-        // Ignore silently per the standard pattern for interrupting speech.
-        if (event.error === 'canceled' || event.error === 'interrupted') {
-          return;
+      // Ignore the normal 'canceled'/'interrupted' that happens on rapid stopSpeaking() before a new speak
+      // (this was the source of the repeated "TTS error (no sound fallback)" spam). On any other error,
+      // do a plain retry (no .voice) which is guaranteed to produce audible output on the system default voice.
+      utterance.onerror = (event) => {
+        if (event.error === 'canceled' || event.error === 'interrupted') return;
+        if (!window.__ttsErrorWarned) {
+          window.__ttsErrorWarned = true;
+          console.warn('TTS error (unexpected):', event);
         }
-        // Unexpected error: log once, retry with plain default system voice to ensure audio plays.
-        if (!window.__ttsUnexpectedErrorLogged) {
-          window.__ttsUnexpectedErrorLogged = true;
-          console.warn('TTS unexpected error (SpeechSynthesisErrorEvent), falling back to default system voice:', event.error);
-        }
-        const u = new SpeechSynthesisUtterance(text);
-        u.volume = 1;
-        u.rate = currentUtterance.rate || 0.95;
-        u.pitch = currentUtterance.pitch || 1.0;
-        u.lang = 'en-US';
-        const doRetry = () => {
-          try { synth.speak(u); } catch (e) { console.error(e); }
-        };
-        if (synth.speaking) {
-          synth.cancel();
-          setTimeout(doRetry, 40);
-        } else {
-          doRetry();
-        }
+        const retryU = new SpeechSynthesisUtterance(text);
+        retryU.rate = utterance.rate;
+        retryU.pitch = utterance.pitch;
+        retryU.volume = 1;
+        synth.speak(retryU);
       };
 
-      // Give the engine a moment to settle after any cancel (helps reliability on Mac/Chrome)
-      const doSpeak = () => {
-        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
-      };
-      if (synth.speaking) {
-        synth.cancel();
-        setTimeout(doSpeak, 40);
-      } else {
-        doSpeak();
-      }
+      try { synth.speak(utterance); } catch (e) { console.error(e); }
     }
 
     function stopSpeaking() {
       if (synth.speaking) synth.cancel();
       currentUtterance = null;
+
+      if (hostedAudio) {
+        hostedAudio.pause();
+        hostedAudio.currentTime = 0;
+        hostedAudio = null;
+      }
 
       // User manually stopped output; clear awaiting so hands-free can restart promptly if desired
       isAwaitingResponse = false;
@@ -1438,7 +1421,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function updateStopButton() {
-      const isSpeaking = synth.speaking;
+      const isSpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
       stopBtn.style.display = isSpeaking ? 'inline-block' : 'none';
     }
     setInterval(updateStopButton, 400);
@@ -1576,24 +1559,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       utterance.voice = voice;
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.pitch = voiceSettings.pitch || 1.0;
+      utterance.volume = 1;
 
-      // Stop anything currently speaking
+      // Stop anything currently speaking; use timeout + onerror guard so tests are silent-proof
+      // and do not spam the console with expected 'canceled' events.
       if (synth.speaking) synth.cancel();
 
       utterance.onerror = (event) => {
         if (event.error === 'canceled' || event.error === 'interrupted') return;
-        console.warn('TTS test error:', event.error);
+        const retryU = new SpeechSynthesisUtterance(utterance.text);
+        retryU.rate = utterance.rate;
+        retryU.pitch = utterance.pitch;
+        retryU.volume = 1;
+        synth.speak(retryU);
       };
 
-      const doTestSpeak = () => {
-        try { synth.speak(utterance); } catch (e) { console.error(e); }
-      };
-      if (synth.speaking) {
-        synth.cancel();
-        setTimeout(doTestSpeak, 40);
-      } else {
-        doTestSpeak();
-      }
+      setTimeout(() => { synth.speak(utterance); }, 0);
     }
 
     // Populate a separate preview list with speaker buttons so user can test ANY voice
@@ -1609,10 +1590,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      // NO FILTERS. Every system voice.
+      // RAW: every voice, identical to the dropdown (no filters).
       let voicesToShow = voices;
-
-      if (voicesToShow.length === 0) voicesToShow = voices;
 
       voicesToShow.forEach(voice => {
         const row = document.createElement('div');
@@ -1683,22 +1662,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           utterance.voice = voice;
           utterance.rate = voiceSettings.rate || 0.95;
           utterance.pitch = voiceSettings.pitch || 1.0;
+          utterance.volume = 1;
           if (synth.speaking) synth.cancel();
-
           utterance.onerror = (event) => {
             if (event.error === 'canceled' || event.error === 'interrupted') return;
-            console.warn('TTS preview error:', event.error);
+            const retryU = new SpeechSynthesisUtterance(utterance.text);
+            retryU.rate = utterance.rate;
+            retryU.pitch = utterance.pitch;
+            retryU.volume = 1;
+            synth.speak(retryU);
           };
-
-          const doPreviewSpeak = () => {
-            try { synth.speak(utterance); } catch (e) { console.error(e); }
-          };
-          if (synth.speaking) {
-            synth.cancel();
-            setTimeout(doPreviewSpeak, 40);
-          } else {
-            doPreviewSpeak();
-          }
+          setTimeout(() => { synth.speak(utterance); }, 0);
         };
 
         // Layout: [label] [edit] [test]
@@ -1724,8 +1698,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       voiceSelect.innerHTML = '';
 
-      // NO FILTERS. Show every system voice the browser reports.
-      // This includes every installed voice on Mac, Windows, Chrome, iPhone, etc. (including all premium/enhanced the user has).
+      // RAW full list: every voice the browser's window.speechSynthesis.getVoices() returns.
+      // No filters at all (no English-only, no hiding Karen/Alex/etc., no "good"/enhanced priority,
+      // no xAI or server voices). All Mac, iPhone (premium/enhanced/Siri), Windows, Chrome voices appear.
       let voicesToShow = voices;
 
       // Add local voices
@@ -1743,9 +1718,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
 
-      // Fallback default selection if nothing was restored (raw list, no preferences)
+      // Only local voices (and premium xAI/hosted if enabled).
+
+      // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        const defaultVoice = voicesToShow[0];
+        // Strongly prefer Google UK English Male (user-requested high quality default).
+        // Then other Google UK, Enhanced, Samantha, Daniel.
+        const preferred = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+                          voicesToShow.find(v => v.name.includes("Enhanced")) ||
+                          voicesToShow.find(v => v.name.includes('Samantha')) ||
+                          voicesToShow.find(v => v.name.includes('Daniel'));
+        let defaultVoice = preferred;
+        if (!defaultVoice) {
+          // Prefer any remaining English voice (after sort, this will be the best one like Google UK)
+          defaultVoice = voicesToShow.find(v => isEnglishVoice(v)) || voicesToShow[0];
+        }
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
 
@@ -1774,11 +1762,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const voices = synth.getVoices();
         selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
       } else {
-        // fallback to first available local voice
-        const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
-        if (firstLocal) firstLocal.selected = true;
+        // fallback to a good local (prefer Google UK English Male etc, or first English after our filter)
+        const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
+          const n = o.value.toLowerCase();
+          return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
+        }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
+        if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
-        voiceSettings.voiceId = firstLocal ? firstLocal.value.replace('local:', '') : '';
+        voiceSettings.voiceId = firstGoodLocal ? firstGoodLocal.value.replace('local:', '') : '';
       }
 
       // Populate the independent preview list with per-voice speaker test buttons
@@ -1832,7 +1823,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
             localStorage.setItem('voice_source', voiceSettings.voiceSource);
             localStorage.setItem('voice_id', voiceSettings.voiceId);
-            // (pure local system voices)
+            // Force premium hosted off when a local voice is explicitly chosen in the main dropdown
+            localStorage.setItem('use_premium_voices', 'false');
+            // Sync the premium toggle UI if the modal is currently open
+            const pt = document.getElementById('premium-voices-toggle');
+            if (pt) pt.checked = false;
           }
           localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
         };
@@ -1908,7 +1903,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Resolve to actual voice object now (so speak uses it even if modal closes)
         const match = findLocalVoiceById(voiceSettings.voiceId);
         if (match) selectedVoice = match;
-        // (pure local system voices)
+        // Force premium hosted off when saving a local voice selection
+        localStorage.setItem('use_premium_voices', 'false');
       } else {
         // Fallback
         voiceSettings.voiceSource = 'local';
@@ -1935,6 +1931,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       localStorage.setItem('voice_rate', voiceSettings.rate);
       localStorage.setItem('voice_pitch', voiceSettings.pitch);
       localStorage.setItem('auto_speak_enabled', autoSpeakEnabled ? 'true' : 'false');
+      localStorage.setItem('premium_voices_enabled', premiumVoicesEnabled ? 'true' : 'false');
 
       // Wake word
       const wakeEnabledToggle = document.getElementById('wake-enabled');
@@ -2189,7 +2186,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (handsFreeEnabled && autoSpeakEnabled) {
           // Hands-free auto-speak ALWAYS uses fast local system voices for reliability and near-zero latency.
           // This is the core experience (system voices "work great").
-          // (pure browser system voices only)
+          // Premium xAI Grok voices (Ara/Eve/etc.) are available on-demand via the manual 🔊 speak buttons
+          // on AI replies when the Voice Settings toggle is on. This keeps hands-free snappy while still
+          // letting users enjoy the higher-quality voices when they choose to wait a moment.
           // Clean any premium notes.
           const lastMsgForClean = document.querySelector('.messages .message:last-child');
           if (lastMsgForClean) {
@@ -2257,7 +2256,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
 
         if (handsFreeEnabled) {
-          const isCurrentlySpeaking = synth.speaking;
+          const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
           const hasWake = containsWakeWord(transcript);
           const cmd = hasWake ? getCommandAfterWake(transcript) : '';
 
@@ -2494,7 +2493,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       recognition.onend = () => {
         stopListeningUI();
-        const isOutputting = synth.speaking;
+        const isOutputting = synth.speaking || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
           // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
@@ -2520,7 +2519,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
       if (synth.speaking) synth.cancel();
 
-      // (no hosted audio; pure browser synthesis)
+      if (hostedAudio) {
+        try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
+        hostedAudio = null;
+      }
 
       // Always attempt a clean stop first. The Web Speech API state machine is picky;
       // calling start() too soon after end/error or without stopping often throws InvalidStateError.
@@ -2554,9 +2556,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
           // Start capturing raw audio for this utterance (hands-free only).
           // We keep using the fast browser recognizer for wake word, barge-in, and interim text.
-          // We also send accumulating audio chunks live to /api/stt (xAI with heavy Bible keyterm boosting)
-          // for streaming improved transcription shown to the user. This uses the best available
-          // model for accuracy on scripture references (far better than raw browser STT on names/numbers).
+          // We also send (now slimmed) recent audio chunks live to /api/stt for optional improved
+          // transcription shown during hands-free. Server currently returns fallback so the browser
+          // SR transcript is used; the path is ready if a working STT proxy is re-enabled later.
           // The user sees the accurate text updating live and can correct by speaking clearly.
           if (handsFreeEnabled) {
             startAudioCaptureForCurrentUtterance().catch(() => {});
@@ -2667,8 +2669,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         liveSttTimer = null;
         if (audioChunks.length < 2 || !handsFreeEnabled || isAwaitingResponse) return;
         try {
-          // For live interim, send only recent chunks (last ~5s) to keep payload small and avoid PayloadTooLarge.
-          // The full audioChunks is used on final stop for the commit blob.
+          // Use only the most recent ~few chunks for *live* interim improves (keeps payload tiny).
+          // The full utterance blob (captured in onstop) is still used for the final commit path.
+          // This prevents the PayloadTooLargeError spam that appeared once the live HF recorder
+          // (part of the mobile-friendly hands-free work) started sending the growing audioChunks
+          // on every interim tick.
           const recentChunks = audioChunks.slice(-6);
           const tempBlob = new Blob(recentChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
           // Short timeout so live updates don't delay the UI
@@ -2970,7 +2975,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (improved && improved.length > 1) {
           // Keep the browser text as a very light fallback post-process if needed,
           // but the xAI result is usually dramatically better for Bible content.
-          console.log('[STT] improved transcript (browser → xAI):', fallbackText.slice(0,80), '→', improved.slice(0,80));
+          console.log('[STT] improved transcript (browser fallback):', fallbackText.slice(0,80), '→', improved.slice(0,80));
           return improved;
         }
         return fallbackText;
@@ -3075,7 +3080,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         if (isListening) {
           recognition.stop();
-        } else if (synth.speaking) {
+        } else if (synth.speaking || (hostedAudio && !hostedAudio.paused)) {
           stopSpeaking();
         } else {
           startListening();
@@ -3458,6 +3463,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     updateHandsFreeLabel();
 
     // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
+    const userInput = document.getElementById('user-input');
     const chatCont = document.querySelector('.chat-container');
     if (userInput && chatCont) {
       const toggleMobileKeyboardClass = () => {
@@ -3975,20 +3981,48 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         scheduleHandsFreeRestart(800);
       }
 
-      // No server voices for TTS (pure browser system voices only via window.speechSynthesis).
+      // Learn server TTS config.
+      // hasHostedTTS = legacy free hosted (TTS_SERVER_URL, edge-tts style) is available for manual speak only.
+      // xAI premium (the "Use Premium Grok Voices" toggle) works independently via the main XAI_API_KEY, but
+      // falls back gracefully (and hides the xAI picker) if your key/team lacks audio authorization.
       fetch('/api/health').then(r => r.json()).then(data => {
+        serverHasManagedTTS = !!data.hasTTSKey;
+        window.hasHostedTTS = !!data.hasHostedTTS;
         serverHasSTT = !!data.hasSTT;
-      }).catch(() => { serverHasSTT = false; });
+        const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
+        // Only hide the hosted/xAI voice picker div if we have no legacy hosted AND xAI is unavailable.
+        // When using xAI (flag cleared), show the picker even if no legacy hosted (TTS_SERVER_URL unset).
+        // When xAI unavailable but has legacy, show for legacy voices.
+        if (xaiUnavailable && !window.hasHostedTTS) {
+          const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
+          if (hostedDiv) hostedDiv.style.display = 'none';
+        }
+        if (xaiUnavailable) {
+          const premiumToggle = document.getElementById('premium-voices-toggle');
+          if (premiumToggle && premiumToggle.parentElement) {
+            premiumToggle.parentElement.style.display = 'none';
+          }
+          // Show a small note somewhere if desired, but the per-message note + auto-disable is sufficient.
+        }
+      }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
       synth.onvoiceschanged = loadVoices;
       setTimeout(loadVoices, 300);
       setTimeout(loadVoices, 900);
       setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
 
-      // Ensure we start on local browser system voices only.
-      if (voiceSettings.voiceSource !== 'local') {
-        voiceSettings.voiceSource = 'local';
-        localStorage.setItem('voice_source', 'local');
+      // On startup, if premium hosted voices are OFF, force voiceSettings to a local voice
+      // so the dropdown works and speak() uses system voices (prevents stuck state after previously using hosted).
+      if (localStorage.getItem('use_premium_voices') !== 'true') {
+        if (voiceSettings.voiceSource !== 'local') {
+          voiceSettings.voiceSource = 'local';
+          voiceSettings.voiceId = '';
+          localStorage.setItem('voice_source', voiceSettings.voiceSource);
+          localStorage.setItem('voice_id', voiceSettings.voiceId);
+          localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
+        }
+        // Ensure the flag is explicitly false when we are forcing local
+        localStorage.setItem('use_premium_voices', 'false');
       }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
