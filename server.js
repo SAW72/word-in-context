@@ -778,7 +778,7 @@ app.get('/api/config', (req, res) => {
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
-    hasSTT: !!process.env.XAI_API_KEY
+    hasSTT: false   // browser SpeechRecognition only (wake word "John", live, barge-in all client-side)
   });
 });
 
@@ -1365,19 +1365,14 @@ app.post('/api/chat', (req, res, next) => {
   }
 });
 
-// === Voices list via managed key (so users without personal key can still pick nice voices)
-// /api/voices kept minimal (no managed premium voice list needed; xAI voices are known: Ara, Eve, Leo, Rex, Sal etc.).
-// Premium is xAI TTS via the same XAI_API_KEY when the client sends provider or when no TTS_SERVER_URL is configured.
-// Legacy TTS_SERVER_URL (edge-tts compatible) remains supported for optional free hosted neural (manual speak only).
-
-// Health check
+// Health check (reports capabilities for the client)
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    hasKey: !!process.env.XAI_API_KEY,
-    hasHostedTTS: !!process.env.TTS_SERVER_URL, // legacy/old hosted; premium now uses xAI TTS by default (same key)
-    hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
-    hasTTSKey: false, // 11Labs fully removed; premium voices now use xAI (XAI_API_KEY) or optional TTS_SERVER_URL legacy hosted
+    hasKey: !!process.env.XAI_API_KEY,   // only for chat/LLM (the study answers)
+    hasHostedTTS: false,                 // no server TTS at all
+    hasSTT: false,                       // STT disabled — client uses browser SpeechRecognition for HF ("John")
+    hasTTSKey: false,
     model: 'grok-4.3'
   });
 });
@@ -1396,8 +1391,8 @@ app.get('/api/models', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
-  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
-  console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
+  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used only for chat/LLM answers)`);
+  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
+  console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
