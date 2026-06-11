@@ -933,88 +933,27 @@ app.get('/api/debug/db', (req, res) => {
   }
 });
 
-// === TTS proxy for seamless premium/custom voices ===
-// Call this from the frontend instead of direct localhost.
-// /api/tts supports:
-// - provider: 'xai' when client's "Use Premium Grok Voices" toggle is on (xAI Grok voices Ara/Eve/etc).
-// - no provider: legacy hosted (only if TTS_SERVER_URL set; manual non-hands-free use only).
-// Client *never* sends provider=xai when the premium toggle is off — it uses local browser voices directly.
-// Unset TTS_SERVER_URL to remove legacy hosted entirely. Uses same XAI_API_KEY as chat.
-// Debug: GET /api/debug/tts to verify your key can do TTS.
+// === TTS: voices are 100% browser built-in system voices (window.speechSynthesis) ===
+// Server /api/tts is kept only for optional legacy self-hosted neural (TTS_SERVER_URL) for manual speak.
+// We do NOT use xAI TTS / Grok voices for speech output at all. All speaking (replies, tests, hands-free)
+// uses the device's own SpeechSynthesis voices — every one that appears in synth.getVoices(),
+// including all user-installed premium/enhanced voices on Mac and iPhone. No filters.
 app.get('/api/debug/tts', async (req, res) => {
-  if (!process.env.XAI_API_KEY) return res.status(500).json({ error: 'No XAI_API_KEY in env' });
-  try {
-    const testRes = await fetch('https://api.x.ai/v1/tts', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: "Test from the app.",
-        voice_id: "Eve",
-        output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
-        language: "en"
-      })
-    });
-    const status = testRes.status;
-    const text = await testRes.text();
-    console.log('[DEBUG TTS] status:', status, 'body:', text.substring(0, 200));
-    res.json({ status, success: testRes.ok, sample: text.substring(0, 200) });
-  } catch (e) {
-    console.error('[DEBUG TTS] error:', e);
-    res.status(500).json({ error: e.message });
-  }
+  res.json({ disabled: true, note: 'TTS for voices is client-only via window.speechSynthesis. No server TTS voices.' });
 });
 
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
-    const { text, voice, provider } = req.body || {};
+    const { text, voice } = req.body || {};
     if (!text) return res.status(400).json({ error: 'text is required' });
 
-    // Support both:
-    // - provider: 'xai' for premium (xAI Grok voices Ara/Eve/Leo/Rex/Sal, highest paid tier) — used when the client's
-    //   "Use Premium Grok Voices" toggle is on (affects both manual speak and hands-free auto-speak).
-    // - default/no provider: legacy hosted (free neural, manual non-hands-free only) via TTS_SERVER_URL if set.
-    // Same XAI_API_KEY as chat. xAI TTS: $15/1M chars.
-    // To completely remove legacy hosted: unset TTS_SERVER_URL (client isolates to local + xAI premium only).
-    // When the premium toggle is off, client always requests local browser voices (fast/reliable).
-    const useXai = provider === 'xai';
-    if (useXai && process.env.XAI_API_KEY) {
-      console.log('[TTS] Attempting xAI TTS with voice_id:', voice || 'Eve', 'provider sent:', provider);
-      const xaiRes = await fetch('https://api.x.ai/v1/tts', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: text,
-          voice_id: voice || 'Eve',
-          output_format: {
-            codec: "mp3",
-            sample_rate: 24000,
-            bit_rate: 128000
-          },
-          language: "en"
-        })
-      });
-      if (!xaiRes.ok) {
-        const errText = await xaiRes.text();
-        console.error('[TTS] xAI upstream error:', xaiRes.status, errText);
-        // Forward real status for client handling (429 rate limit from xAI tiers, 403 auth, etc.)
-        const status = xaiRes.status === 429 ? 429 : 502;
-        return res.status(status).json({ error: 'xAI TTS generation failed', detail: errText, status: xaiRes.status });
-      }
-      // Success: clear any previous unavailable flag so the UI shows xAI voices next time
-      // (client will also see success and can clear its local flag)
-      const audioBuffer = await xaiRes.arrayBuffer();
-      res.setHeader('Content-Type', 'audio/mpeg');
-      return res.send(Buffer.from(audioBuffer));
+    // Legacy hosted only (if you set TTS_SERVER_URL for a self-hosted edge-tts style server).
+    // This path is manual/non-hands-free only and is not used for the main app voices.
+    const ttsBase = process.env.TTS_SERVER_URL;
+    if (!ttsBase) {
+      return res.status(400).json({ error: 'Server TTS disabled. All voices use your browser built-in system voices (window.speechSynthesis) only. No xAI or hosted voices for speech.' });
     }
 
-    // Old hosted (if TTS_SERVER_URL still set for legacy/manual use)
-    const ttsBase = process.env.TTS_SERVER_URL || 'http://localhost:5050';
     const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1774,10 +1713,10 @@ app.post('/api/chat', (req, res, next) => {
   }
 });
 
-// === Voices list via managed key (so users without personal key can still pick nice voices)
-// /api/voices kept minimal (no managed premium voice list needed; xAI voices are known: Ara, Eve, Leo, Rex, Sal etc.).
-// Premium is xAI TTS via the same XAI_API_KEY when the client sends provider or when no TTS_SERVER_URL is configured.
-// Legacy TTS_SERVER_URL (edge-tts compatible) remains supported for optional free hosted neural (manual speak only).
+// === Voices are purely client-side browser system voices (window.speechSynthesis) ===
+// No server-managed voice list. loadVoices() + synth.getVoices() in the browser shows every installed
+// system voice on Mac and iPhone (including every premium/enhanced the user has downloaded).
+// No xAI TTS / Grok voices are used for speech output.
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -1794,13 +1733,13 @@ app.get('/api/health', (req, res) => {
     hasHostedTTS: !!process.env.TTS_SERVER_URL,
     hasSTT: !!process.env.XAI_API_KEY,
     hasTTSKey: false,
+    ttsVoices: 'browser-only (window.speechSynthesis)',
     model: 'grok-4.3',
     db: dbInfo
   });
 });
 
 // Quick way to see what models your xAI key has access to (chat models mainly).
-// For audio/voice (TTS/STT/Voice Agent) the models are on separate endpoints or specified differently — see x.ai docs or console.x.ai.
 app.get('/api/models', async (req, res) => {
   try {
     const list = await xai.models.list();
@@ -1821,8 +1760,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
-  console.log(`   Legacy hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (premium now uses xAI TTS via your XAI_API_KEY)'}`);
+  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used for chat + STT proxy only)`);
+  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
   console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });

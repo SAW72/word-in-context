@@ -420,7 +420,7 @@
         font-size: 14px;
         padding: 6px;
       }
-      .handsfree-toggle, label[for="premium-voices-toggle"] {
+      .handsfree-toggle {
         font-size: 12px;
       }
     }
@@ -810,10 +810,11 @@
 
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
         All voices come from your device (macOS Spoken Content + apps like Piper).
+        <strong>No filters</strong> — every available system voice on Mac and iPhone is listed here, including every premium and enhanced voice you have installed.
         Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
-        Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
-        After installing Piper voices, click <strong>"Reload system voices"</strong>.
-        <br><strong>For iPhone premium/enhanced voices:</strong> Tap Voice (auto short audible). Tap <strong>"🔊 Speak test (unlock iPhone voices)"</strong> (audible "Hello, testing voice." x2 + auto-reloads + tries to auto-select first enhanced). Tap Reload. Check dropdown AND the preview list below (raw voices). Tap a preview name/🔊 to select/test. Audible speak from the button is what iOS needs to expose your downloaded voices.
+        Use the 🔊 buttons in the preview list below to hear what they sound like.
+        After installing Piper (or any new) voices, click <strong>"Reload system voices"</strong>.
+        <br><strong>For iPhone premium/enhanced voices:</strong> Tap Voice (auto short audible wake on open). Tap <strong>"🔊 Speak test (unlock iPhone voices)"</strong> (audible + reloads). Tap Reload. Check the preview list — downloaded voices appear once iOS exposes them after an audible user-gesture speak. Tap name or 🔊 to test/select.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
@@ -984,8 +985,8 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>Free &amp; unlimited</strong>: All non-English voices + curated better English voices only (Google, Enhanced, Samantha, Daniel etc.). Older English voices (Karen, Allison, Alex etc.) hidden. Dropdown sorted with best English first (Google UK English Male on top), then non-English A-Z. "Google UK English Male" preferred default when available in browser.</li>
-          <li><strong>Optional premium</strong>: Grok voices (xAI) via the "Use Premium Grok Voices" toggle in Voice Settings (higher quality, small latency). Manual 🔊 buttons on replies use it when enabled. Hands-free and daily use stay on fast local system voices for reliability and instant response.</li>
+          <li><strong>100% browser built-in system voices</strong> (window.speechSynthesis). Every voice your Mac or iPhone reports via getVoices() is shown with <strong>no filters</strong> — including every premium/enhanced/Siri/Piper voice you have installed. Numbered internal voices, non-English, everything appears in the dropdown and the test list. Use the 🔊 buttons to audition any of them. Fresh voice objects are resolved immediately before speaking to avoid stale Mac/iOS references.</li>
+          <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
         </ul>
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
@@ -1276,12 +1277,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
-    let hostedAudio = null;  // for the /api/tts premium hosted neural voices (edge-tts)
+    let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
     let lastSpokenText = '';
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
-    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // default OFF for lowest cost / low monthly fee viability
+    let premiumVoicesEnabled = localStorage.getItem('premium_voices_enabled') === 'true'; // legacy flag (voices are now always local browser only)
 
     // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
@@ -1291,7 +1292,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWord = 'john';
       localStorage.setItem('wake_word', 'John');
     }
-    let serverHasManagedTTS = false; // not used for voices anymore (xAI premium is controlled client-side via toggle + /api/tts)
+    let serverHasManagedTTS = false; // legacy flag only (voices are purely client window.speechSynthesis; server TTS path is disabled for voices)
     let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
 
     // ====================== HELPERS ======================
@@ -1452,15 +1453,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       fallbackToBrowserSpeech(text);  // local voices always get the full original text
     }
 
-    // Premium (xAI) / custom voices via your server-side proxy (seamless from deployed app).
-    // The function is *only* reached for the xAI path when use_premium_voices === 'true' (hard guard at top).
-    // Legacy custom_tts_url (if present) is handled in the speak() caller only when premium flag is off.
-    // speakWithCustomTts removed — we are now 100% local system voices only (no more XAI/cloud TTS).
-    // Local voices (especially after installing good ones via Piper etc.) are faster and sound better.
-
-    // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
-    // Only paths now: local system voices (primary for hands-free + daily use), xAI premium (toggle, on-demand for manual 🔊 when you want the Grok voice quality),
-    // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
+    // All speech is 100% local browser system voices via window.speechSynthesis.
+    // No xAI / cloud / hosted TTS voices are used. speak() always resolves to fallbackToBrowserSpeech.
 
     function fallbackToBrowserSpeech(text) {
       // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
@@ -1804,10 +1798,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      // No filters at all (all platform-specific filtering removed).
-      // Show every voice the browser reports. Use the preview list (🔊 buttons) to discover/test — especially important on iPhone after download.
-      let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
-      if (voicesToShow.length === 0) voicesToShow = voices;
+      // Show EVERY system voice with zero filters. This includes all Mac voices,
+      // all iPhone voices (basic + every premium/enhanced the user has installed),
+      // non-English, numbered internal voices, Piper, etc. User asked for the complete raw list.
+      let voicesToShow = voices;
 
       voicesToShow.forEach(voice => {
         const row = document.createElement('div');
@@ -1914,14 +1908,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       voiceSelect.innerHTML = '';
 
-      // No filters at all (filters removed per user request to show all iPhone premium/enhanced voices).
-      // Show every voice the browser reports.
-      // The preview list below lets you test internal voices (tap 🔊 to discover them after download/reboot).
-      let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
-      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
-
-      // Simple alphabetical sort only — no English/Mac bias or any filtering (all voices from the browser are shown).
-      voicesToShow.sort((a, b) => a.name.localeCompare(b.name));
+      // NO FILTERS whatsoever. Raw list from the browser.
+      // All available system voices on Mac and iPhone are shown here, including every
+      // premium and enhanced voice the user has installed. This is the complete unfiltered
+      // result of synth.getVoices().
+      let voicesToShow = voices;
 
       // Add local voices
       voicesToShow.forEach(voice => {
@@ -1938,17 +1929,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
 
-      // Only local voices (and premium xAI/hosted if enabled).
-
-      // Fallback default selection if nothing was restored
+      // Fallback default selection if nothing was restored (picks something reasonable if no saved voice).
+      // Because the list is now the complete raw set, any installed voice (including premium) can be the first.
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        // Prefer reliable voices first (Google UK English Male is usually the best on Mac).
-        // Then other good ones. Enhanced/Premium only as last resort (for iPhone users who downloaded them).
-        // This prevents picking a "bad" enhanced voice that doesn't speak on some setups.
         let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
                           voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
                           voicesToShow.find(v => v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('enhanced') || v.name.toLowerCase().includes('premium')) ||
                           voicesToShow[0];
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
@@ -1966,7 +1952,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // If the previously saved voiceId is no longer in the current list (stale from previous bad default or name changes on Mac/iOS),
-      // reset to a safe reliable default and save it. This prevents "voices show but don't work".
+      // reset to a safe default and save it. This prevents "voices show but don't work".
+      // Any of the (now unfiltered) voices is valid.
       const savedId = voiceSettings.voiceId;
       const stillExists = Array.from(voiceSelect.options).some(o => o.value === `local:${savedId}`);
       if (savedId && !stillExists && voicesToShow.length > 0) {
@@ -1998,10 +1985,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const voices = synth.getVoices();
         selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
       } else {
-        // fallback to a good local (prefer Google UK English Male etc, or first with enhanced)
+        // fallback to any local (list is now complete raw; pick a recognizable one if present)
         const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
           const n = o.value.toLowerCase();
-          return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('enhanced') || n.includes('daniel');
+          return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('daniel') || n.includes('enhanced') || n.includes('premium');
         }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
@@ -2464,17 +2451,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         enforceDemoLimit();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
-          // Hands-free auto-speak ALWAYS uses fast local system voices for reliability and near-zero latency.
-          // This is the core experience (system voices "work great").
-          // Premium xAI Grok voices (Ara/Eve/etc.) are available on-demand via the manual 🔊 speak buttons
-          // on AI replies when the Voice Settings toggle is on. This keeps hands-free snappy while still
-          // letting users enjoy the higher-quality voices when they choose to wait a moment.
-          // Clean any premium notes.
+          // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
+          // No xAI or server voices for output. Clean any old notes.
           const lastMsgForClean = document.querySelector('.messages .message:last-child');
           if (lastMsgForClean) {
             lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
           }
-          // Force local settings so the user's chosen voice from the main dropdown is used.
+          // Ensure local.
           if (voiceSettings.voiceSource !== 'local') {
             voiceSettings.voiceSource = 'local';
             localStorage.setItem('voice_source', 'local');
@@ -4291,28 +4274,20 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         scheduleHandsFreeRestart(800);
       }
 
-      // Learn server TTS config.
-      // hasHostedTTS = legacy free hosted (TTS_SERVER_URL, edge-tts style) is available for manual speak only.
-      // xAI premium (the "Use Premium Grok Voices" toggle) works independently via the main XAI_API_KEY, but
-      // falls back gracefully (and hides the xAI picker) if your key/team lacks audio authorization.
+      // Learn server config (STT + optional legacy hosted TTS only).
+      // Voice output is always browser window.speechSynthesis (no server voices, no xAI TTS).
       fetch('/api/health').then(r => r.json()).then(data => {
-        serverHasManagedTTS = !!data.hasTTSKey;
+        serverHasManagedTTS = false; // voices are client-only now
         window.hasHostedTTS = !!data.hasHostedTTS;
         serverHasSTT = !!data.hasSTT;
-        const xaiUnavailable = localStorage.getItem('xai_audio_unavailable') === 'true';
-        // Only hide the hosted/xAI voice picker div if we have no legacy hosted AND xAI is unavailable.
-        // When using xAI (flag cleared), show the picker even if no legacy hosted (TTS_SERVER_URL unset).
-        // When xAI unavailable but has legacy, show for legacy voices.
-        if (xaiUnavailable && !window.hasHostedTTS) {
-          const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
-          if (hostedDiv) hostedDiv.style.display = 'none';
+        // Defensive: if any old premium toggle UI is still in DOM from prior builds, hide it.
+        const premiumToggle = document.getElementById('premium-voices-toggle');
+        if (premiumToggle && premiumToggle.parentElement) {
+          premiumToggle.parentElement.style.display = 'none';
         }
-        if (xaiUnavailable) {
-          const premiumToggle = document.getElementById('premium-voices-toggle');
-          if (premiumToggle && premiumToggle.parentElement) {
-            premiumToggle.parentElement.style.display = 'none';
-          }
-          // Show a small note somewhere if desired, but the per-message note + auto-disable is sufficient.
+        const hostedDiv = document.getElementById('hosted-voice-select')?.closest('div');
+        if (hostedDiv && !window.hasHostedTTS) {
+          hostedDiv.style.display = 'none';
         }
       }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
@@ -4321,18 +4296,13 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       setTimeout(loadVoices, 900);
       setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
 
-      // On startup, if premium hosted voices are OFF, force voiceSettings to a local voice
-      // so the dropdown works and speak() uses system voices (prevents stuck state after previously using hosted).
-      if (localStorage.getItem('use_premium_voices') !== 'true') {
-        if (voiceSettings.voiceSource !== 'local') {
-          voiceSettings.voiceSource = 'local';
-          voiceSettings.voiceId = '';
-          localStorage.setItem('voice_source', voiceSettings.voiceSource);
-          localStorage.setItem('voice_id', voiceSettings.voiceId);
-          localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
-        }
-        // Ensure the flag is explicitly false when we are forcing local
+      // On startup ensure we are on local browser voices (the only supported path).
+      if (localStorage.getItem('use_premium_voices') !== 'false') {
         localStorage.setItem('use_premium_voices', 'false');
+      }
+      if (voiceSettings.voiceSource !== 'local') {
+        voiceSettings.voiceSource = 'local';
+        localStorage.setItem('voice_source', 'local');
       }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
