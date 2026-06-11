@@ -1040,6 +1040,11 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
 
     const audioBuffer = Buffer.from(audio, 'base64');
 
+    // Skip very short live chunks (common in hands-free streaming) to avoid unnecessary upstream calls and potential 502s
+    if (audioBuffer.length < 3000) { // ~0.3-0.5s of audio at typical rates — skip tiny live chunks to reduce upstream errors
+      return res.json({ text: '' });
+    }
+
     // Native FormData + Blob works on Node 18+ (Render uses 22.x)
     const form = new FormData();
     const blob = new Blob([audioBuffer], { type: mime });
@@ -1055,7 +1060,7 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
     // Some STT endpoints (OpenAI compatible or xAI) expect a model.
     form.append('model', 'whisper-1');
 
-    const upstream = await fetch('https://api.x.ai/v1/stt', {
+    const upstream = await fetch('https://api.x.ai/v1/audio/transcriptions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}` },
       body: form

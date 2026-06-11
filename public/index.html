@@ -813,7 +813,7 @@
         Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
         Use the 🔊 buttons in the list below to hear what they sound like — we can't auto-detect male/female for these internal ones.
         After installing Piper voices, click <strong>"Reload system voices"</strong>.
-        <br><strong>For iPhone premium/enhanced voices:</strong> Tap Voice (auto short audible "test voice"). Then tap <strong>"🔊 Speak test (unlock iPhone voices)"</strong> (louder repeated "Hello, testing voice."). Then Reload. Check the main dropdown AND the big preview list below (raw voices with 🔊). Tap a preview 🔊 to help unlock. The dropdown updates after speaks.
+        <br><strong>For iPhone premium/enhanced voices:</strong> Tap Voice (auto short audible). Tap <strong>"🔊 Speak test (unlock iPhone voices)"</strong> (audible "Hello, testing voice." x2 + auto-reloads + tries to auto-select first enhanced). Tap Reload. Check dropdown AND the preview list below (raw voices). Tap a preview name/🔊 to select/test. Audible speak from the button is what iOS needs to expose your downloaded voices.
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
@@ -1428,12 +1428,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (match) {
           selectedVoice = match;
         } else {
+          // Fresh get + normalize to handle Mac/iOS name suffixes
           let voices = synth.getVoices();
-          if (voices.length === 0) {
+          const normId = normalizeVoiceName(currentVoiceId);
+          match = voices.find(v => normalizeVoiceName(v.name) === normId) ||
+                  voices.find(v => v.name.toLowerCase() === currentVoiceId.toLowerCase()) ||
+                  voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
+          if (match) {
+            selectedVoice = match;
+          } else if (voices.length === 0) {
             // Voices not ready yet (common on first load or some browsers). Listen once.
             const origOnChange = synth.onvoiceschanged;
             synth.onvoiceschanged = () => {
-              match = findLocalVoiceById(currentVoiceId);
+              const fresh = synth.getVoices();
+              match = fresh.find(v => normalizeVoiceName(v.name) === normId) || findLocalVoiceById(currentVoiceId);
               if (match) selectedVoice = match;
               if (origOnChange) synth.onvoiceschanged = origOnChange;
             };
@@ -1475,17 +1483,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       if (!usedVoice) {
-        if (selectedVoice && selectedVoice.voiceURI) {
+        // Always re-fetch fresh voices and use robust normalized match (fixes stale objects on Mac/iOS)
+        const freshVoices = synth.getVoices();
+        const normId = normalizeVoiceName(voiceSettings.voiceId || '');
+        usedVoice = freshVoices.find(v => normalizeVoiceName(v.name) === normId) ||
+                    freshVoices.find(v => v.name.toLowerCase() === (voiceSettings.voiceId || '').toLowerCase()) ||
+                    freshVoices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
+
+        if (usedVoice) {
+          currentUtterance.voice = usedVoice;
+          selectedVoice = usedVoice;
+        } else if (selectedVoice && selectedVoice.voiceURI) {
+          // Fallback to previously resolved object (still better than nothing)
           currentUtterance.voice = selectedVoice;
         } else {
-          const voices = synth.getVoices();
-          const fallback = voices.find(v =>
+          // Last resort: pick a reasonable English voice
+          const fallback = freshVoices.find(v =>
             v.name.toLowerCase().includes('google uk english male') ||
             (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && v.name.toLowerCase().includes('english') && v.name.toLowerCase().includes('male')) ||
             v.name.includes('Samantha') ||
             v.name.includes('Daniel') || v.name.includes('Serena') ||
-            (v.lang.includes('en') && v.localService)
-          ) || voices.find(v => v.lang.includes('en'));
+            (v.lang && v.lang.includes('en') && v.localService)
+          ) || freshVoices.find(v => v.lang && v.lang.includes('en'));
 
           if (fallback) {
             currentUtterance.voice = fallback;
@@ -1585,18 +1604,44 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return fullName + ' (System)';
     }
 
+    function normalizeVoiceName(name) {
+      if (!name) return '';
+      return name
+        .replace(/\s*\(Enhanced\)/gi, '')
+        .replace(/\s*\(System Voice\)/gi, '')
+        .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
+        .replace(/\s*\(System\)/gi, '')
+        .trim();
+    }
+
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
-    // Uses exact, case-insensitive, includes, and special case for UK male to avoid falling back to Karen etc.
+    // Uses exact, case-insensitive, includes, normalized names (strip Enhanced/System suffixes common on Mac/iOS),
+    // and special case for UK male.
     function findLocalVoiceById(id) {
       if (!id) return null;
       const voices = synth.getVoices();
       if (!voices || voices.length === 0) return null;
+
+      const normId = normalizeVoiceName(id);
+
       let v = voices.find(v => v.name === id);
       if (v) return v;
+
+      v = voices.find(v => normalizeVoiceName(v.name) === normId);
+      if (v) return v;
+
       v = voices.find(v => v.name.toLowerCase() === id.toLowerCase());
       if (v) return v;
+
+      v = voices.find(v => normalizeVoiceName(v.name).toLowerCase() === normId.toLowerCase());
+      if (v) return v;
+
       v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
       if (v) return v;
+
+      v = voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
+      if (v) return v;
+
       // Special handling for UK male preference
       if (id.toLowerCase().includes('uk') && id.toLowerCase().includes('male')) {
         v = voices.find(v => 
@@ -1655,6 +1700,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             try { synth.getVoices(); } catch(e) {}
             loadVoices();
             populateVoicePreviews();
+            setTimeout(() => { try { synth.getVoices(); } catch(e) {} loadVoices(); populateVoicePreviews(); }, 200);
+            setTimeout(() => { try { synth.getVoices(); } catch(e) {} loadVoices(); populateVoicePreviews(); }, 600);
           };
           if (synth.speaking) synth.cancel();
           synth.speak(u);
@@ -1665,6 +1712,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Extra reloads after all speaks
         setTimeout(() => { try { synth.getVoices(); } catch(e){} loadVoices(); populateVoicePreviews(); }, 2500);
         setTimeout(() => { try { synth.getVoices(); } catch(e){} loadVoices(); populateVoicePreviews(); }, 4000);
+        setTimeout(() => { try { synth.getVoices(); } catch(e){} loadVoices(); populateVoicePreviews(); }, 5500);
+
+        // On iPhone, after the audible unlocks, if enhanced voices appeared, auto-select the first one for convenience
+        setTimeout(() => {
+          const sel = document.getElementById('voice-select');
+          if (sel && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+            const enhancedOpt = Array.from(sel.options).find(o => o.textContent.toLowerCase().includes('enhanced') || o.textContent.toLowerCase().includes('premium'));
+            if (enhancedOpt) {
+              sel.value = enhancedOpt.value;
+              sel.dispatchEvent(new Event('change'));
+              // Also update settings immediately
+              voiceSettings.voiceSource = 'local';
+              voiceSettings.voiceId = enhancedOpt.value.replace('local:', '');
+              localStorage.setItem('voice_source', voiceSettings.voiceSource);
+              localStorage.setItem('voice_id', voiceSettings.voiceId);
+              selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
+            }
+          }
+        }, 6000);
       } catch(e) {
         alert('Could not speak. Try tapping one of the 🔊 buttons in the list below instead.');
       }
@@ -1898,6 +1964,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Force the select to the preferred value (helps with timing/order issues in some browsers)
         voiceSelect.value = `local:${defaultVoice.name}`;
       }
+
+      // If the previously saved voiceId is no longer in the current list (stale from previous bad default or name changes on Mac/iOS),
+      // reset to a safe reliable default and save it. This prevents "voices show but don't work".
+      const savedId = voiceSettings.voiceId;
+      const stillExists = Array.from(voiceSelect.options).some(o => o.value === `local:${savedId}`);
+      if (savedId && !stillExists && voicesToShow.length > 0) {
+        const safe = voicesToShow.find(v =>
+          v.name.toLowerCase().includes('google uk english male') ||
+          (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+          v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')
+        ) || voicesToShow.find(v => v.localService) || voicesToShow[0];
+        if (safe) {
+          voiceSettings.voiceId = safe.name;
+          localStorage.setItem('voice_id', safe.name);
+          const opt = Array.from(voiceSelect.options).find(o => o.value === `local:${safe.name}`);
+          if (opt) opt.selected = true;
+          selectedVoice = safe;
+          voiceSelect.value = `local:${safe.name}`;
+        }
+      }
     }
 
     // Helper to apply the saved voice selection after voices have loaded
@@ -1976,6 +2062,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             try { synth.getVoices(); } catch(e) {}
             loadVoices();
             populateVoicePreviews();
+            setTimeout(() => { try { synth.getVoices(); } catch(e) {} loadVoices(); populateVoicePreviews(); }, 200);
+            setTimeout(() => { try { synth.getVoices(); } catch(e) {} loadVoices(); populateVoicePreviews(); }, 600);
           };
           if (synth.speaking) synth.cancel();
           synth.speak(u);
@@ -2856,6 +2944,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // This provides "streaming" improved text to the user using the best available model for this domain
     // (xAI STT with extensive Bible book/chapter/verse keyterm boosting). Browser STT is used only for fast wake/barge-in.
     function triggerLiveImprovedStt() {
+      if (window.__sttLiveDisabled || !serverHasSTT) return;
       if (liveSttTimer) clearTimeout(liveSttTimer);
       liveSttTimer = setTimeout(async () => {
         liveSttTimer = null;
@@ -3153,8 +3242,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         clearTimeout(timer);
 
         if (!r.ok) {
-          // 502/503/429 are expected when xAI STT is unavailable, rate-limited, or not configured — we gracefully fall back to browser STT.
-          if (r.status !== 502 && r.status !== 503 && r.status !== 429) {
+          // Expected failures for xAI STT (unavailable, rate limit, etc.) — fall back silently to browser STT to avoid console spam.
+          if (r.status >= 500 || r.status === 429) {
+            window.__sttLiveDisabled = true;
+            if (!window.__sttFailedLogged) {
+              window.__sttFailedLogged = true;
+              console.warn('[STT] xAI STT temporarily unavailable (using browser transcription for live + final)');
+            }
+          } else {
             console.warn('[STT] proxy returned', r.status);
           }
           return fallbackText;
