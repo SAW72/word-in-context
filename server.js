@@ -6,6 +6,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -569,6 +570,39 @@ app.post('/api/request-login', async (req, res) => {
   } catch (err) {
     console.error('request-login error:', err);
     res.status(500).json({ error: 'Could not send login link' });
+  }
+});
+
+// Password login (for accounts that have a password set via admin or future flows)
+app.post('/api/login', express.json({ limit: '10kb' }), async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+    if (!user) return res.status(401).json({ error: 'No account with that email' });
+
+    if (!user.password_hash) {
+      return res.status(400).json({ error: 'No password set on this account. Use the magic login link instead (or "Already have an account? Send me a login link").' });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Invalid password' });
+
+    // Access check (same as magic)
+    const now = new Date();
+    const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
+    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+    if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
+      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
+    }
+
+    const token = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, email: user.email });
+  } catch (err) {
+    console.error('login error:', err);
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
