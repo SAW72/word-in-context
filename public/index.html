@@ -1279,7 +1279,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // One-time engine wake helper. Some browsers (esp. Chrome on macOS) require at least one
     // synthesis call that originates from a direct user gesture before non-default voices
     // or later async calls will produce audio. We do an inaudible prime utterance + cancel.
-    // This is called from speak(), voice testers, HF enable, and the Voice button.
+    // This is called explicitly from speak() etc., and also automatically on the very first
+    // user click/touch anywhere in the app for maximum reliability.
     let __ttsWoken = false;
     function wakeSpeechEngine() {
       if (__ttsWoken) return;
@@ -1290,6 +1291,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         synth.speak(u);
         setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 40);
       } catch (e) {}
+    }
+
+    // Automatic first-gesture wake. This removes the need to specifically click the Voice button
+    // before any speaker will work. The first time the user clicks or taps anywhere on the page
+    // (send button, input, mic, a message, header, etc.), we prime the speech engine.
+    // Subsequent speaker clicks (even async HF auto-speak) will then produce sound.
+    function setupGlobalTTSWake() {
+      const handler = () => wakeSpeechEngine();
+      document.addEventListener('click', handler, { once: true });
+      document.addEventListener('touchstart', handler, { once: true });
     }
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
@@ -4207,6 +4218,10 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
       setTimeout(addPasswordToggles, 100);
       setTimeout(addPasswordToggles, 400);
+
+      // Make TTS work on the first user click anywhere (send, mic, messages, etc.)
+      // so you don't have to specifically open Voice Settings first.
+      setupGlobalTTSWake();
 
       if (handsFreeEnabled) {
         micBtn.style.background = '#c9a227';
