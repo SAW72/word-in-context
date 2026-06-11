@@ -2,48 +2,707 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>The Word in Context • Voice-First Bible Study with Grok</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f5e8d3; color: #2c3e50; line-height: 1.6; }
-    .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
-    header { background: #1a252f; color: white; padding: 20px 0; }
-    nav { display: flex; justify-content: space-between; align-items: center; }
-    .logo { font-size: 24px; font-weight: 700; color: #c9a227; text-decoration: none; }
-    .hero { text-align: center; padding: 80px 20px; background: linear-gradient(135deg, #1a252f 0%, #2c3e50 100%); color: white; }
-    .hero h1 { font-size: 48px; margin: 0 0 16px; }
-    .hero p { font-size: 22px; max-width: 600px; margin: 0 auto 32px; opacity: 0.9; }
-    .btn { display: inline-block; background: #c9a227; color: #1a252f; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 18px; margin: 8px; transition: transform 0.2s; }
-    .btn:hover { transform: translateY(-2px); }
-    .btn-outline { background: transparent; border: 2px solid #c9a227; color: #c9a227; }
-    section { padding: 60px 0; }
-    h2 { font-size: 36px; text-align: center; margin-bottom: 40px; }
-    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
-    .feature { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .feature h3 { color: #c9a227; }
-    .pricing { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
-    .plan { background: white; border-radius: 16px; padding: 32px; width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); text-align: center; }
-    .plan.popular { border: 3px solid #c9a227; position: relative; }
-    .plan.popular::before { content: "BEST VALUE"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #c9a227; color: #1a252f; padding: 4px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-    .price { font-size: 48px; font-weight: 700; margin: 16px 0; }
-    .price span { font-size: 18px; opacity: 0.7; }
-    .signup-form { max-width: 480px; margin: 40px auto; background: white; padding: 32px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
-    .signup-form input { width: 100%; padding: 14px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
-    .signup-form button { width: 100%; }
-    .social-proof { text-align: center; margin: 40px 0; font-size: 14px; opacity: 0.8; }
-    footer { background: #1a252f; color: #eee; text-align: center; padding: 40px 20px; font-size: 14px; }
-    .sources-note { background: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; max-width: 700px; margin: 20px auto; }
+    :root {
+      --gold: #c9a227;
+      --dark: #1a252f;
+      --cream: #f5e8d3;
+      --text: #2c3e50;
+      --light-gold: #e8d9b0;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      background: #f5e8d3;
+      color: #2c3e50;
+      line-height: 1.65;
+      font-size: 16px;
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header {
+      background: #1a252f;
+      color: white;
+      padding: 18px 0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      color: #c9a227;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav-link {
+      color: white;
+      text-decoration: none;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .header-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 88px 20px 80px;
+      background: linear-gradient(135deg, #1a252f 0%, #2c3e50 100%);
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: '✝';
+      position: absolute;
+      font-size: 180px;
+      opacity: 0.035;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      color: #c9a227;
+    }
+
+    .hero h1 {
+      font-family: 'Montserrat', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 72px;
+      margin: 0 0 24px;
+      line-height: 1.05;
+      font-weight: 800;
+      letter-spacing: -2px;
+    }
+
+    .hero p {
+      font-size: 18px;
+      max-width: 700px;
+      margin: 0 auto 14px;
+      opacity: 0.92;
+      line-height: 1.5;
+    }
+
+    .hero-sub {
+      font-size: 21px;
+      font-weight: 500;
+      max-width: 720px;
+      margin: 0 auto 12px;
+      opacity: 0.9;
+      line-height: 1.45;
+    }
+
+    .btn {
+      display: inline-block;
+      background: #c9a227;
+      color: #1a252f;
+      padding: 14px 36px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 17px;
+      margin: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 3px 8px rgba(201, 162, 39, 0.3);
+      border: none;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(201, 162, 39, 0.4);
+      background: #d4b14a;
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary {
+      padding: 18px 48px;
+      font-size: 19px;
+      font-weight: 800;
+      box-shadow: 0 4px 12px rgba(201, 162, 39, 0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 18px rgba(201, 162, 39, 0.45);
+      background: #d8b44f;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 2px solid #c9a227;
+      color: #c9a227;
+      box-shadow: none;
+      padding: 12px 28px;
+      font-size: 15px;
+    }
+
+    .btn-outline:hover {
+      background: rgba(201, 162, 39, 0.1);
+      color: #c9a227;
+    }
+
+    .btn.small {
+      padding: 8px 18px;
+      font-size: 13px;
+    }
+
+    .hero-cta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0 4px;
+    }
+    .hero-cta .btn {
+      margin: 0;
+    }
+
+    section {
+      padding: 64px 0;
+    }
+
+    h2 {
+      font-size: 32px;
+      text-align: center;
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: #1a252f;
+    }
+
+    .section-subtitle {
+      text-align: center;
+      max-width: 620px;
+      margin: -4px auto 32px;
+      font-size: 15px;
+      opacity: 0.85;
+      color: #4a3f2e;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 24px;
+    }
+
+    .feature {
+      background: white;
+      padding: 22px 20px;
+      border-radius: 12px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+      border: 1px solid #f0e6d2;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .feature:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+
+    .feature h3 {
+      color: #c9a227;
+      margin: 0 0 8px;
+      font-size: 16.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pricing {
+      display: flex;
+      gap: 22px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .plan {
+      background: white;
+      border-radius: 14px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 290px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+      text-align: center;
+      border: 1px solid #f0e6d2;
+    }
+
+    .plan.popular {
+      border: 2px solid #c9a227;
+      position: relative;
+      box-shadow: 0 8px 24px rgba(201, 162, 39, 0.15);
+    }
+
+    .plan.popular::before {
+      content: "BEST VALUE";
+      position: absolute;
+      top: -11px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #c9a227;
+      color: #1a252f;
+      padding: 3px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .price {
+      font-size: 44px;
+      font-weight: 700;
+      margin: 12px 0 4px;
+      color: #1a252f;
+    }
+
+    .price span {
+      font-size: 16px;
+      opacity: 0.65;
+      font-weight: 500;
+    }
+
+    .signup-form {
+      max-width: 480px;
+      margin: 40px auto;
+      background: white;
+      padding: 32px 28px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      border: 1px solid #f0e6d2;
+    }
+
+    .signup-form,
+    .auth-form {
+      text-align: left;
+    }
+
+    .signup-form input,
+    .auth-input {
+      width: 100%;
+      padding: 13px 15px;
+      margin-bottom: 9px;
+      border: 1px solid #d8c8a8;
+      border-radius: 8px;
+      font-size: 16px;
+      background: #fff;
+      box-sizing: border-box;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      display: block;
+    }
+
+    .signup-form input:focus,
+    .auth-input:focus {
+      outline: none;
+      border-color: #c9a227;
+      box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.12);
+    }
+
+    .signup-form button,
+    .auth-form button {
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .social-proof {
+      text-align: center;
+      margin: 20px 0 12px;
+      font-size: 14px;
+      opacity: 0.9;
+      color: #f5e8d3;
+    }
+
+    footer {
+      background: #1a252f;
+      color: #eee;
+      text-align: center;
+      padding: 36px 20px;
+      font-size: 14px;
+    }
+
+    .sources-note {
+      background: #fff;
+      padding: 11px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      max-width: 680px;
+      margin: 16px auto;
+      border: 1px solid #f0e6d2;
+    }
+
+    /* Subtle cross decoration */
+    .cross {
+      display: inline-block;
+      position: relative;
+      width: 0.85em;
+      height: 1.05em;
+      vertical-align: middle;
+      margin: 0 0.15em;
+    }
+    .cross::before,
+    .cross::after {
+      content: '';
+      position: absolute;
+      background: #c9a227;
+      opacity: 0.85;
+    }
+    .cross::before {
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+      width: 1.5px;
+      height: 100%;
+    }
+    .cross::after {
+      top: 38%;
+      left: 0;
+      width: 100%;
+      height: 1.5px;
+    }
+
+    .cross-divider {
+      width: 56px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #c9a227, transparent);
+      margin: 18px auto;
+      position: relative;
+    }
+    .cross-divider::after {
+      content: '✝';
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 32px;
+      color: #c9a227;
+      opacity: 0.88;
+      line-height: 1;
+    }
+
+    .motto {
+      font-style: italic;
+      font-size: 18px;
+      color: #e8d9b0;
+      max-width: 540px;
+      margin: 4px auto 20px;
+      line-height: 1.4;
+      opacity: 0.95;
+      font-weight: 500;
+    }
+
+    /* Modal polish */
+    #login-modal .modal-content {
+      text-align: left;
+    }
+
+    #login-modal input {
+      font-size: 15px;
+    }
+
+    /* Password visibility toggle (eye icon) */
+    .password-wrapper {
+      position: relative;
+      display: block;
+    }
+    .password-wrapper input {
+      padding-right: 38px;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 18px;
+      user-select: none;
+      opacity: 0.7;
+      color: #666;
+    }
+    .password-toggle:hover {
+      opacity: 1;
+    }
+
+    /* Fully responsive mobile styles for iPhone and small screens */
+    @media (max-width: 768px) {
+      header {
+        padding: 12px 0;
+      }
+      .logo {
+        font-size: 18px;
+      }
+      .nav-actions {
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .nav-link {
+        font-size: 12px;
+        margin: 0 2px;
+      }
+      .header-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+
+      .hero {
+        padding: 48px 12px 40px;
+      }
+      .hero h1 {
+        font-size: 36px;
+        line-height: 1.1;
+        letter-spacing: -1px;
+      }
+      .hero p {
+        font-size: 15px;
+        margin-bottom: 14px;
+      }
+      .hero-sub {
+        font-size: 16px;
+      }
+      .motto {
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+      .hero-cta {
+        gap: 8px;
+        margin: 4px 0 0;
+      }
+      .hero-cta .btn {
+        margin: 0;
+      }
+
+      .btn {
+        padding: 12px 18px;
+        font-size: 15px;
+        margin: 4px;
+      }
+      .btn-primary {
+        padding: 14px 28px;
+        font-size: 16px;
+      }
+
+      .pricing {
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      .plan {
+        width: 100%;
+        max-width: 100%;
+        padding: 16px 12px;
+      }
+      .plan .price {
+        font-size: 36px;
+      }
+
+      .signup-form {
+        padding: 16px 12px;
+        margin: 12px auto;
+      }
+      .features {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .feature {
+        padding: 12px 10px;
+      }
+      .feature h3 {
+        font-size: 15px;
+      }
+
+      .container {
+        padding: 0 10px;
+      }
+      section {
+        padding: 28px 0;
+      }
+      h2 {
+        font-size: 20px;
+        margin-bottom: 6px;
+      }
+      .section-subtitle {
+        margin-bottom: 16px;
+        font-size: 13px;
+      }
+      .social-proof {
+        font-size: 11px;
+        margin: 14px 0;
+      }
+      footer {
+        padding: 20px 10px;
+        font-size: 11px;
+      }
+      .sources-note {
+        padding: 8px 8px;
+        font-size: 11px;
+      }
+
+      /* Prevent iOS zoom + good touch targets */
+      .signup-form input,
+      .auth-input {
+        padding: 12px 14px;
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+
+      /* Hero decorative cross smaller on mobile */
+      .hero::after {
+        font-size: 110px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      header {
+        padding: 10px 0;
+      }
+      .logo {
+        font-size: 16px;
+      }
+      .nav-actions {
+        gap: 4px;
+      }
+      .nav-link {
+        font-size: 11px;
+        display: none; /* hide secondary links on tiny screens to prevent overflow */
+      }
+      .header-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+      }
+
+      .hero {
+        padding: 32px 8px 24px;
+      }
+      .hero h1 {
+        font-size: 28px;
+        line-height: 1.08;
+        letter-spacing: -0.6px;
+      }
+      .hero p,
+      .hero-sub {
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      .motto {
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+
+      .btn {
+        padding: 13px 16px;
+        font-size: 15px;
+      }
+      /* Only make prominent CTAs (hero, pricing, signup) full-width stacked on tiny phones; keep header compact */
+      .hero-cta .btn,
+      .pricing .btn,
+      .signup-form .btn,
+      .plan .btn {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        margin: 6px auto;
+        text-align: center;
+      }
+      .btn-primary {
+        padding: 14px 20px;
+        font-size: 16px;
+        max-width: 320px;
+      }
+      .hero-cta {
+        gap: 6px;
+        margin: 2px 0 0;
+      }
+
+      .plan {
+        padding: 12px 8px;
+      }
+      .plan .price {
+        font-size: 32px;
+      }
+      .plan ul {
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .signup-form {
+        padding: 14px 10px;
+      }
+
+      .container {
+        padding: 0 8px;
+      }
+      section {
+        padding: 22px 0;
+      }
+
+      /* Even smaller hero cross on very small phones */
+      .hero::after {
+        font-size: 80px;
+      }
+
+      /* Web app first section and similar full-bleed blocks */
+      section[style*="padding:40px"] {
+        padding: 20px 8px !important;
+      }
+
+      /* Login modal tighter on small phones */
+      #login-modal .modal-content {
+        padding: 18px 14px !important;
+        max-width: 94% !important;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="container">
       <nav>
-        <a href="/" class="logo">📖 The Word in Context</a>
-        <div>
-          <a href="#features" style="color:white; margin-right:20px; text-decoration:none;">Features</a>
-          <a href="#pricing" style="color:white; margin-right:20px; text-decoration:none;">Pricing</a>
-          <a href="/app?demo=1" class="btn" style="padding:8px 20px; font-size:14px;">Try the App (demo)</a>
+        <a href="/" class="logo">📖 The Word in Context <span class="cross" aria-hidden="true"></span></a>
+        <div class="nav-actions">
+          <a href="#features" class="nav-link">Features</a>
+          <a href="#pricing" class="nav-link">Pricing</a>
+          <a href="/app?demo=1" class="btn header-btn">Try demo</a>
+          <button onclick="showLoginModal()" class="btn header-btn" style="background:#fff; color:#1a252f; border:1px solid #c9a227;">Log in</button>
         </div>
       </nav>
     </div>
@@ -51,17 +710,22 @@
 
   <div class="hero">
     <div class="container">
-      <h1>The Word in Context<br>Voice-first study of Scripture<br>in original languages + literary context</h1>
-      <p>Speak naturally with "John". Hear precise, citable text from the Greek New Testament (SBL) and Hebrew Old Testament (WLC) — fetched live and spoken back to you. Low monthly fee. Excellent free local voices.</p>
-      <a href="#signup" class="btn">Start 7-Day Free Trial</a>
-      <a href="/app?demo=1" class="btn btn-outline">Try the App (limited demo)</a>
+      <h1>Understand the Bible the way it was meant to be read.</h1>
+      <p class="hero-sub">Discover what Jesus really taught and what the disciples actually meant — in their original context.</p>
+      <p class="hero-sub">No more relying on someone else’s interpretation.</p>
+      <p class="motto">Read Scripture in context. Listen to His voice. Live free.</p>
+      <div class="hero-cta">
+        <a href="#signup" class="btn btn-primary">Start 7-Day Free Trial</a>
+        <a href="/app?demo=1" class="btn btn-outline">Try the App (limited demo)</a>
+      </div>
       <div class="social-proof">Trusted by Bible students, pastors, and scholars • 100% private chats • No data sold</div>
+      <div class="cross-divider"></div>
     </div>
   </div>
 
   <section id="features" class="container">
-    <h2>Why The Word in Context is different</h2>
-    <p style="text-align:center; max-width:700px; margin:-20px auto 30px; font-size:15px; opacity:0.85;">Deep, reverent engagement with Scripture — not just surface-level answers.</p>
+    <h2>Why The Word in Context is different <span class="cross" aria-hidden="true" style="font-size:0.65em; opacity:0.5; margin-left:4px;"></span></h2>
+    <p style="text-align:center; max-width:700px; margin:-4px auto 28px; font-size:15px; opacity:0.82;">Deep, reverent engagement with Scripture — not just surface-level answers.</p>
     <div class="features">
       <div class="feature">
         <h3>🗣️ "John" Hands-Free</h3>
@@ -73,7 +737,7 @@
       </div>
       <div class="feature">
         <h3>🔊 Free High-Quality Voices</h3>
-        <p>All your Mac system voices (including paid packs) work perfectly — unlimited and free. Optional ElevenLabs with your own key (you pay them directly).</p>
+        <p>All your Mac/Windows system voices (including enhanced and neural ones like Google UK English Male, Samantha, etc.) work perfectly — unlimited, private, and completely free. No installation required. Optional ElevenLabs with your own key for even more voices.</p>
       </div>
       <div class="feature">
         <h3>💬 Grok-like Conversations</h3>
@@ -91,19 +755,19 @@
   </section>
 
   <section id="pricing" class="container">
-    <h2>Simple, affordable pricing</h2>
+    <h2>Simple, affordable pricing <span class="cross" aria-hidden="true" style="font-size:0.6em; opacity:0.45;"></span></h2>
     <div class="pricing">
       <div class="plan">
         <h3>Free / Tester</h3>
         <div class="price">$0<span>/mo</span></div>
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
-          <li>Full access to local voices</li>
+          <li>Full access to your device's excellent built-in voices (unlimited & free)</li>
           <li>Quick demo: limited to a few responses (no signup, default 10)</li>
           <li><strong>Tester access (email signup)</strong>: 14 days full unlimited access, no card, ends automatically</li>
           <li>Public Bible sources</li>
         </ul>
         <a href="/app?demo=1" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Try limited demo (instant)</a>
-        <small style="display:block; font-size:11px; opacity:0.7;">Or use the tester form below for full card-free access (ends automatically).</small>
+        <small style="display:block; font-size:11px; opacity:0.7;">Testers: dedicated Sign Up &amp; Login form below (14 days, card-free, works for returning logins too).</small>
       </div>
       <div class="plan popular">
         <h3>Pro</h3>
@@ -120,7 +784,7 @@
         <small style="display:block; margin-top:8px; opacity:0.7;">7-day trial then $4.99/mo. Cancel anytime.</small>
       </div>
     </div>
-    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: sign up with just email for 14 days full access (no card required, ends automatically after).</p>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> section below (supports both new signups and returning logins, no card, ends automatically after 14 days).</p>
   </section>
 
   <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
@@ -131,142 +795,371 @@
   </section>
 
   <section id="signup" class="container">
-    <h2 style="text-align:center;">Start your free trial</h2>
+    <h2>Start your free trial or tester access</h2>
+    <p class="section-subtitle">Create your account below. You’ll log in afterwards using the button at the top of the page.</p>
+
     <div class="signup-form">
-      <form id="trial-form">
-        <input type="email" id="trial-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%;">Start 7-Day Free Trial (card required after trial ends)</button>
-        <p style="font-size:12px; text-align:center; margin-top:12px; opacity:0.7;">
-          Card details collected securely by Stripe for after the trial (no charge during trial). We’ll send a login link after checkout.<br>
-          <strong>We will never sell your information.</strong> Payment details handled securely by Stripe. Your chats stay private in your browser only. Full account control — we can grant free access or cut off access at any time.
+
+      <!-- 7-Day Paid Trial (Stripe) -->
+      <form id="trial-form" class="auth-form">
+        <input type="email" id="trial-email" class="auth-input" placeholder="Your email" required>
+        <input type="password" id="trial-password" class="auth-input" placeholder="Choose password (min 8 chars — for future logins)" required minlength="8">
+        <button type="submit" class="btn">Start 7-Day Free Trial (card required after)</button>
+        <p style="font-size:12px; text-align:center; margin-top:10px; opacity:0.7; line-height:1.4;">
+          Card collected securely by Stripe for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top.
         </p>
       </form>
 
-      <!-- Separate card-free tester path: email only, full access for 14 days, ends automatically. No Stripe. -->
-      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e8d9c2; text-align: center;">
-        <p style="font-size:13px; margin-bottom:8px;"><strong>For testers &amp; early feedback (no card, full unlimited access):</strong></p>
-        <form id="tester-form" style="max-width: 400px; margin: 0 auto;">
-          <input type="email" id="tester-email" placeholder="Your email" required style="width:100%;padding:12px;margin-bottom:8px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
-          <button type="submit" class="btn" style="width:100%; background:#555; font-size:14px;">Sign up for 14-day tester access (email only, no card)</button>
-        </form>
-        <div id="tester-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
-          Check your email for the secure login link. Your tester access (full features, no card) is now active and will end after the configured period.
-        </div>
-        <p style="font-size:11px; opacity:0.7; margin-top:6px;">Full features (unlimited messages, hands-free, sources). Access ends automatically after 14 days unless we extend it for you.</p>
-      </div>
-      <div id="trial-success" style="display:none; text-align:center; color:#2c3e50;">
-        <h3>Check your email!</h3>
-        <p>Complete payment to activate your trial. Then use the login link we send.</p>
+      <!-- Trial success -->
+      <div id="trial-success" style="display:none; text-align:center; color:#2c3e50; margin-top:14px; padding:11px 14px; background:#f8f1e3; border-radius:8px; font-size:13px;">
+        <strong>Account created.</strong><br>
+        Complete payment on Stripe. Then click the <strong>Log in</strong> button at the top (or check your email for a magic link).
       </div>
 
-      <hr style="margin:30px 0;">
-      <p style="text-align:center;"><strong>Already have an account?</strong></p>
-      <form id="login-form" style="max-width:400px;margin:0 auto;">
-        <input type="email" id="login-email" placeholder="Your email" required style="width:100%;padding:14px;margin-bottom:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;">
-        <button type="submit" class="btn" style="width:100%; background:#555;">Send me a login link</button>
-      </form>
-      <div id="login-success" style="display:none; text-align:center; color:#2c3e50; margin-top:10px;">
-        <p>Check your email for the secure login link.</p>
+      <!-- 14-day Tester (card-free) -->
+      <div style="margin-top:22px; padding-top:18px; border-top:1px solid #e8d9c2;">
+        <p style="font-size:13.5px; margin-bottom:10px; text-align:center; font-weight:600;">14-day Tester access (no card)</p>
+        <form id="tester-signup-form" class="auth-form" style="max-width: 100%;">
+          <input type="email" id="tester-email" class="auth-input" placeholder="Your email" required>
+          <input type="password" id="tester-password" class="auth-input" placeholder="Choose password (min 8 chars)" required minlength="8">
+          <button type="submit" class="btn" style="background:#555; color:white;">Create 14-day Tester Account</button>
+        </form>
+        <div id="tester-signup-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center; padding:10px; background:#f8f1e3; border-radius:8px;">
+          <strong>Account created.</strong><br>
+          Click the <strong>Log in</strong> button at the top of this page with the email + password you chose, or check your email for a magic link.
+        </div>
+        <div id="tester-signup-error" style="display:none; margin-top:6px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
+        <p style="font-size:11px; opacity:0.7; margin-top:8px; text-align:center;">Full access for 14 days. Ends automatically unless extended by us.</p>
       </div>
+
     </div>
   </section>
 
   <section class="container" style="text-align:center;">
     <div class="sources-note">
+      <span class="cross" aria-hidden="true" style="opacity:0.75; margin-right:6px; font-size:1.15em;"></span>
       <strong>100% transparent sources:</strong> Every citation of The Word — including live SBL Greek NT and WLC Hebrew — is fetched on demand from the public bible.helloao.org API. Nothing is hardcoded. Full citations are always shown and spoken.
     </div>
   </section>
 
+  <!-- Login Modal -->
+  <div id="login-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:2000; align-items:center; justify-content:center;">
+    <div class="modal-content" style="background:white; padding:26px 22px; border-radius:12px; width:100%; max-width:340px; box-shadow:0 10px 30px rgba(0,0,0,0.2); position:relative; border: 1px solid #f0e6d2;">
+      <button onclick="closeLoginModal()" style="position:absolute; top:8px; right:12px; background:none; border:none; font-size:24px; cursor:pointer; line-height:1; color:#888; padding:4px;">&times;</button>
+      
+      <div style="text-align:center; margin-bottom:14px;">
+        <span style="font-size:22px; color:#c9a227;">📖</span>
+        <span class="cross" aria-hidden="true" style="margin-left:4px;"></span>
+      </div>
+      
+      <h3 style="margin:0 0 14px; text-align:center; font-size:19px; color:#1a252f;">Log in to your account</h3>
+      
+      <form id="modal-login-form" class="auth-form">
+        <input type="email" id="modal-login-email" class="auth-input" placeholder="Your email" required>
+        <input type="password" id="modal-login-password" class="auth-input" placeholder="Your password" required>
+        <button type="submit" class="btn" style="width:100%; margin-top:4px;">Log in with password</button>
+      </form>
+      
+      <div id="modal-login-error" style="display:none; margin-top:10px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
+      <div id="modal-login-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center;"></div>
+      
+      <p style="text-align:center; font-size:12.5px; margin-top:13px; opacity:0.75;">
+        Forgot password? <a href="#" id="modal-magic-link" style="color:#c9a227; text-decoration:underline;">Send magic link</a>
+      </p>
+      
+      <p style="text-align:center; font-size:11px; margin-top:6px; opacity:0.55; color:#666;">
+        Works for trial &amp; tester accounts
+      </p>
+    </div>
+  </div>
+
   <footer>
     <div class="container">
       Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/app?demo=1" style="color:#c9a227;">Try the app (demo)</a><br>
-      <small>© 2026 • Private by design • No ads • Your data stays yours</small><br>
-      <small style="opacity:0.6;">Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.</small>
+      <small style="color:#f5e8d3;">© 2026 • Steward of the King LLC • No ads • Your data stays yours</small><br>
+      <small style="color:#f5e8d3; opacity:0.85;">
+        Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.
+      </small><br>
+      <a href="https://www.facebook.com/profile.php?id=61560749516343" target="_blank" rel="noopener" style="color:#c9a227; font-size:13px; text-decoration:underline; display:inline-block; margin-top:6px;">Follow us on Facebook</a>
+      <span class="cross" aria-hidden="true" style="margin-left:8px; opacity:0.7; font-size:1.1em; vertical-align:middle;"></span>
     </div>
   </footer>
 
   <script>
-    // New configurable trial (TRIAL_DAYS env) + Stripe flow; tester path is separate no-card
-    document.getElementById('trial-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('trial-email').value;
-      try {
-        const res = await fetch('/api/create-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-        if (data.url) {
-          window.location.href = data.url; // go to Stripe Checkout
-        } else {
-          alert(data.error || 'Something went wrong.');
+    // === 7-Day Trial (Stripe checkout) — only creates account + starts payment. No auto-login. ===
+    const trialForm = document.getElementById('trial-form');
+    if (trialForm) {
+      trialForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('trial-email').value;
+        const password = document.getElementById('trial-password').value;
+        try {
+          const res = await fetch('/api/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          if (data.url) {
+            // After Stripe success, user will use the Login modal (top of page) or magic link
+            window.location.href = data.url;
+          } else {
+            alert(data.error || 'Something went wrong.');
+          }
+        } catch (err) {
+          alert('Network error. Please try again later.');
         }
-      } catch (err) {
-        alert('Network error. Please try again later.');
-      }
-    });
+      });
+    }
 
-    // New card-free tester signup (14 days full access, no Stripe, ends automatically)
-    document.getElementById('tester-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('tester-email').value;
-      try {
-        const res = await fetch('/api/tester-signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          document.getElementById('tester-form').style.display = 'none';
-          document.getElementById('tester-success').style.display = 'block';
-        } else {
-          alert(data.error || 'Something went wrong.');
+    // === 14-day Tester signup — creates the account, sends magic link for convenience,
+    // then immediately auto-logs the user in with a JWT and redirects to /app.
+    // This matches the 7-day paid trial experience the user requested.
+    const testerSignupForm = document.getElementById('tester-signup-form');
+    if (testerSignupForm) {
+      testerSignupForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('tester-email').value;
+        const password = document.getElementById('tester-password').value;
+        const errDiv = document.getElementById('tester-signup-error');
+        const successDiv = document.getElementById('tester-signup-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/tester-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+
+          if (res.ok) {
+            if (data.token) {
+              localStorage.setItem('auth_token', data.token);
+              localStorage.setItem('user_email', data.email || email);
+              if (successDiv) {
+                successDiv.innerHTML = `Account created. Logging you in...`;
+                successDiv.style.display = 'block';
+              }
+              setTimeout(() => {
+                window.location.href = '/app';
+              }, 550);
+            } else {
+              // Fallback (magic link only)
+              if (testerSignupForm) testerSignupForm.style.display = 'none';
+              if (successDiv) {
+                successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Check your email for the magic link or use the Log in button at the top.`;
+                successDiv.style.display = 'block';
+              }
+            }
+          } else {
+            if (errDiv) {
+              errDiv.textContent = data.error || 'Something went wrong.';
+              errDiv.style.display = 'block';
+            }
+          }
+        } catch (err) {
+          if (errDiv) {
+            errDiv.textContent = 'Network error. Please try again later.';
+            errDiv.style.display = 'block';
+          }
         }
-      } catch (err) {
-        alert('Network error. Please try again later.');
-      }
-    });
+      });
+    }
 
-    // Magic link login request
-    document.getElementById('login-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      try {
-        const res = await fetch('/api/request-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          document.getElementById('login-form').style.display = 'none';
-          document.getElementById('login-success').style.display = 'block';
-        } else {
-          alert(data.error || 'No account found with that email. Start a trial first.');
+    // === Login Modal functions ===
+    function showLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        // Pre-fill email if user was looking at a signup form
+        const trialEmail = document.getElementById('trial-email');
+        const testerEmail = document.getElementById('tester-email');
+        const modalEmail = document.getElementById('modal-login-email');
+        if (modalEmail) {
+          if (trialEmail && trialEmail.value) modalEmail.value = trialEmail.value;
+          else if (testerEmail && testerEmail.value) modalEmail.value = testerEmail.value;
+          setTimeout(() => modalEmail.focus(), 50);
         }
-      } catch (err) {
-        alert('Network error. Please try again later.');
+        // Ensure password eye toggle is attached (in case of timing)
+        setTimeout(addPasswordToggles, 50);
       }
-    });
+    }
 
-    // Pull current trial lengths from server so marketing text matches your env
+    function closeLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) modal.style.display = 'none';
+      // clear messages
+      const err = document.getElementById('modal-login-error');
+      const suc = document.getElementById('modal-login-success');
+      if (err) err.style.display = 'none';
+      if (suc) suc.style.display = 'none';
+    }
+
+    // Unified password login inside the modal (works for both 7-day trial and 14-day tester accounts)
+    const modalLoginForm = document.getElementById('modal-login-form');
+    if (modalLoginForm) {
+      modalLoginForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('modal-login-email').value;
+        const password = document.getElementById('modal-login-password').value;
+        const errDiv = document.getElementById('modal-login-error');
+        const successDiv = document.getElementById('modal-login-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+
+          if (res.ok && data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('user_email', data.email || email);
+            if (successDiv) {
+              successDiv.textContent = 'Logged in! Redirecting to the app...';
+              successDiv.style.display = 'block';
+            }
+            setTimeout(() => {
+              window.location.href = '/app';
+            }, 550);
+          } else {
+            const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
+            // Graceful fallback for accounts that have no password_hash yet (e.g. some admin-created accounts)
+            if (/no password set|no account with that email/i.test(errText)) {
+              if (errDiv) errDiv.style.display = 'none';
+              if (successDiv) {
+                successDiv.textContent = 'No password on file — sending a magic login link to your email...';
+                successDiv.style.display = 'block';
+              }
+              try {
+                const magicRes = await fetch('/api/request-login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email })
+                });
+                const magicData = await magicRes.json();
+                if (magicRes.ok && successDiv) {
+                  successDiv.textContent = magicData.message || 'Check your email for the secure magic login link.';
+                } else if (successDiv) {
+                  successDiv.textContent = (magicData && magicData.error) || 'Could not send magic link.';
+                }
+              } catch (_) {
+                if (successDiv) successDiv.textContent = 'Could not send magic link right now.';
+              }
+            } else {
+              if (errDiv) {
+                errDiv.textContent = errText;
+                errDiv.style.display = 'block';
+              }
+            }
+          }
+        } catch (err) {
+          if (errDiv) {
+            errDiv.textContent = 'Network error. Please try again later.';
+            errDiv.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    // Magic link from inside the login modal
+    const modalMagicLink = document.getElementById('modal-magic-link');
+    if (modalMagicLink) {
+      modalMagicLink.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const emailInput = document.getElementById('modal-login-email');
+        const email = emailInput ? emailInput.value.trim() : '';
+        const errDiv = document.getElementById('modal-login-error');
+        const successDiv = document.getElementById('modal-login-success');
+        if (errDiv) errDiv.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'none';
+
+        if (!email) {
+          alert('Enter your email first.');
+          return;
+        }
+        try {
+          const res = await fetch('/api/request-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            if (successDiv) {
+              successDiv.textContent = data.message || 'Check your email for the magic login link.';
+              successDiv.style.display = 'block';
+            }
+          } else {
+            if (errDiv) {
+              errDiv.textContent = data.error || 'Could not send link.';
+              errDiv.style.display = 'block';
+            }
+          }
+        } catch (err) {
+          if (errDiv) {
+            errDiv.textContent = 'Network error.';
+            errDiv.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    // Close modal when clicking outside the content box
+    const loginModal = document.getElementById('login-modal');
+    if (loginModal) {
+      loginModal.addEventListener('click', function(e) {
+        if (e.target === loginModal) closeLoginModal();
+      });
+    }
+
+    // Pull current trial lengths from server for dynamic button text
     fetch('/api/config').then(r => r.json()).then(c => {
-      const normal = c.trialDays || 7;
-      const tester = c.testerTrialDays || 14;
-      // Update main trial button if present
+      const normalDays = c.trialDays || 7;
+      const testerDays = c.testerTrialDays || 14;
+
       const trialBtn = document.querySelector('#trial-form button');
-      if (trialBtn) trialBtn.textContent = `Start ${normal}-Day Free Trial (card required after)`;
-      // Update tester texts
-      const testerP = document.querySelector('#tester-form + #tester-success ~ p') || document.querySelector('#tester-form ~ p');
-      if (testerP) testerP.innerHTML = `Full features (unlimited messages, hands-free, sources). Access ends automatically after ${tester} days unless we extend it for you.`;
-      const testerBtn = document.querySelector('#tester-form button');
-      if (testerBtn) testerBtn.textContent = `Sign up for ${tester}-day tester access (email only, no card)`;
-      // Update the h2 if present
-      const h2 = document.querySelector('h2');
-      if (h2 && h2.textContent.includes('free trial')) h2.textContent = `Start your free trial (${normal} days normal / ${tester} for testers)`;
+      if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
+
+      // Optional: you can add a small note about tester days if desired
     }).catch(() => {});
+
+    // Add eye-icon show/hide password for all password fields on landing + modal
+    function addPasswordToggles() {
+      const pwInputs = document.querySelectorAll('input[type="password"]');
+      pwInputs.forEach(input => {
+        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
+
+        const wrapper = document.createElement('span');
+        wrapper.className = 'password-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        const toggle = document.createElement('span');
+        toggle.className = 'password-toggle';
+        toggle.textContent = '🙈';
+        toggle.setAttribute('aria-label', 'Show password');
+        wrapper.appendChild(toggle);
+
+        toggle.addEventListener('click', () => {
+          if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '👁';
+            toggle.setAttribute('aria-label', 'Hide password');
+          } else {
+            input.type = 'password';
+            toggle.textContent = '🙈';
+            toggle.setAttribute('aria-label', 'Show password');
+          }
+        });
+      });
+    }
+    addPasswordToggles();
   </script>
 </body>
 </html>

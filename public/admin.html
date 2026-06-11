@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Admin • The Word in Context</title>
 <style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { overflow-x: hidden; -webkit-overflow-scrolling: touch; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#f5e8d3; color:#2c3e50; margin:0; padding:20px; }
   .container { max-width: 960px; margin: 0 auto; }
   h1 { color:#1a252f; }
@@ -9,14 +11,29 @@
   th, td { padding:10px 12px; text-align:left; border-bottom:1px solid #e8d9c2; }
   th { background:#1a252f; color:#f5e8d3; }
   tr:last-child td { border-bottom:none; }
-  .btn { background:#c9a227; color:#1a252f; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; margin:2px; }
+  .btn { background:#c9a227; color:#1a252f; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; margin:2px; min-height: 36px; }
   .btn.danger { background:#c94e4e; color:white; }
   .btn.gray { background:#555; color:white; }
   .login-box { background:white; padding:24px; border-radius:12px; max-width:360px; margin:40px auto; box-shadow:0 8px 24px rgba(0,0,0,0.1); }
-  .login-box input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; }
+  .login-box input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; font-size:16px; }
   .status { font-size:13px; margin:8px 0; color:#8b5e3c; }
   .user-row td { font-size:13px; }
   .small { font-size:11px; opacity:0.7; }
+
+  /* Mobile friendly admin */
+  @media (max-width: 768px) {
+    body { padding: 10px; font-size: 14px; }
+    .container { padding: 0; }
+    h1 { font-size: 20px; }
+    .login-box { margin: 20px 0; padding: 16px; max-width: 100%; }
+    .login-box input { font-size: 16px; padding: 12px; }
+    table { display: block; overflow-x: auto; white-space: nowrap; }
+    th, td { padding: 6px 8px; font-size: 12px; }
+    .btn { padding: 8px 10px; font-size: 11px; min-height: 40px; }
+    input, textarea, button { font-size: 16px; } /* prevent iOS zoom, good touch */
+    #special-email, #bulk-group { width: 100%; }
+    .user-row td { font-size: 12px; }
+  }
 </style>
 </head><body>
 <div class="container">
@@ -35,7 +52,7 @@
 
   <div id="admin-panel" style="display:none;">
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-      <button class="btn" onclick="loadUsers()">🔄 Reload users</button>
+      <button id="reload-users-btn" class="btn">🔄 Reload users</button>
       <button class="btn gray" onclick="logoutAdmin()">Log out</button>
       <a href="/" style="margin-left:auto; color:#c9a227;">← Landing</a>
       <a href="/app" style="color:#c9a227;">App</a>
@@ -46,6 +63,7 @@
         <th>Email</th>
         <th>Status</th>
         <th>Trial End</th>
+        <th>Group / Church</th>
         <th>Access</th>
         <th>Manual Free</th>
         <th>Created</th>
@@ -53,7 +71,28 @@
       </tr></thead>
       <tbody id="users-tbody"></tbody>
     </table>
-    <p class="small" style="margin-top:16px;">Tip: Use "Make free forever" (manual_free=1) for testers you want to keep forever. "Revoke" sets access_granted=0 immediately. Changes take effect on next /api/chat or /api/me.</p>
+
+    <div style="margin-top:24px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">Special Tester / Congregation Invite (30+ days, invite-only)</h3>
+      <p class="small">For congregation leaders or special testers. Sets extended trial (no immediate card required). Sends magic login link.</p>
+      <input type="email" id="special-email" placeholder="email@example.com" style="width:240px; padding:8px;">
+      <input type="number" id="special-days" value="30" style="width:80px; padding:8px;" title="Days of access">
+      <input type="text" id="special-group" placeholder="Church name (optional)" style="width:200px; padding:8px;">
+      <button class="btn" onclick="createSpecialTester()">Create &amp; Send Link</button>
+      <div id="special-status" class="status"></div>
+    </div>
+
+    <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">Bulk Group / Church Grant</h3>
+      <p class="small">Grant access to a whole congregation or group under one church name. One email per line.</p>
+      <input type="text" id="bulk-group" placeholder="Grace Community Church" style="width:100%; padding:8px; margin-bottom:8px;">
+      <textarea id="bulk-emails" placeholder="pastor@church.org&#10;member1@church.org&#10;..." style="width:100%; height:80px; padding:8px;"></textarea>
+      <input type="number" id="bulk-days" value="30" style="width:80px; padding:8px;" title="Trial days (leave for active)">
+      <button class="btn" onclick="bulkGroupGrant()">Grant Group Access</button>
+      <div id="bulk-status" class="status"></div>
+    </div>
+
+    <p class="small" style="margin-top:16px;">Tip: Use "Make free forever" (manual_free=1) for testers you want to keep forever. "Revoke" sets access_granted=0 immediately. Changes take effect on next /api/chat or /api/me. For The Word in Context Special (discounted $3/mo retention) offers, use the per-user button (uses price_1TgRtD9Hq4iefeFs0WbyW9AD). Main monthly: price_1TgQpW9Hq4iefeFs9jsFfcI6. Yearly: price_1TgRqX9Hq4iefeFsCRXz5ES3.</p>
   </div>
 </div>
 
@@ -109,23 +148,38 @@
       users.forEach(u => {
         const tr = document.createElement('tr');
         tr.className = 'user-row';
+        tr.dataset.email = u.email;
         const trial = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : '-';
         const acc = u.access_granted ? '✅' : '❌';
         const free = u.manual_free ? '✅' : '—';
+        const group = u.group_name ? `<span class="small">${u.group_name}</span>` : '—';
         tr.innerHTML = `
           <td>${u.email}</td>
           <td>${u.status || ''}</td>
           <td class="small">${trial}</td>
+          <td>${group}</td>
           <td>${acc}</td>
           <td>${free}</td>
           <td class="small">${(u.created_at || '').slice(0,10)}</td>
-          <td>
-            <button class="btn" onclick="setAccess('${u.email}', 1, ${u.manual_free ? 1 : 0})">Grant access</button>
-            <button class="btn danger" onclick="setAccess('${u.email}', 0, ${u.manual_free ? 1 : 0})">Revoke</button>
-            <button class="btn" onclick="setAccess('${u.email}', ${u.access_granted ? 1 : 0}, 1)">Make free forever</button>
-            <button class="btn gray" onclick="setAccess('${u.email}', ${u.access_granted ? 1 : 0}, 0)">Remove free</button>
-          </td>
+          <td></td>
         `;
+        const actionsTd = tr.querySelector('td:last-child');
+
+        const mkBtn = (text, cls, onClick) => {
+          const b = document.createElement('button');
+          b.className = cls || 'btn';
+          b.textContent = text;
+          b.onclick = (e) => { e.preventDefault(); onClick(); };
+          actionsTd.appendChild(b);
+          return b;
+        };
+
+        mkBtn('Grant access', 'btn', () => setAccess(u.email, 1, u.manual_free ? 1 : 0));
+        mkBtn('Revoke', 'btn danger', () => setAccess(u.email, 0, u.manual_free ? 1 : 0));
+        mkBtn('Make free forever', 'btn', () => setAccess(u.email, u.access_granted ? 1 : 0, 1));
+        mkBtn('Remove free', 'btn gray', () => setAccess(u.email, u.access_granted ? 1 : 0, 0));
+        mkBtn('The Word in Context Special offer', 'btn', () => { if (window.sendRetention) window.sendRetention(u.email); });
+
         tbody.appendChild(tr);
       });
     } catch (e) {
@@ -169,6 +223,65 @@
       const s = document.getElementById('admin-status');
       if (s && !s.textContent) s.textContent = 'Demo limit: ' + (c.demoLimit||10) + ' • Normal trial: ' + (c.trialDays||7) + 'd • Tester trial: ' + (c.testerTrialDays||14) + 'd (no card)';
     }).catch(()=>{});
+
+    // Wire static top buttons safely (avoids any inline onclick timing/scope issues)
+    const reloadBtn = document.getElementById('reload-users-btn');
+    if (reloadBtn) reloadBtn.onclick = () => loadUsers();
+  };
+
+  async function createSpecialTester() {
+    const status = document.getElementById('special-status');
+    const email = document.getElementById('special-email').value.trim();
+    const days = document.getElementById('special-days').value;
+    const group = document.getElementById('special-group').value.trim();
+    if (!email) { status.textContent = 'Email required'; return; }
+    status.textContent = 'Creating...';
+    try {
+      const r = await fetch(base + '/api/admin/create-special-tester', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ email, days: parseInt(days) || 30, group_name: group || null })
+      });
+      const data = await r.json();
+      status.textContent = data.message || data.error || 'Done';
+      if (r.ok) loadUsers();
+    } catch (e) { status.textContent = 'Error'; }
+  }
+
+  async function bulkGroupGrant() {
+    const status = document.getElementById('bulk-status');
+    const group = document.getElementById('bulk-group').value.trim();
+    const emailsText = document.getElementById('bulk-emails').value.trim();
+    const days = document.getElementById('bulk-days').value;
+    if (!group || !emailsText) { status.textContent = 'Group name and emails required'; return; }
+    const emails = emailsText.split(/\r?\n/).map(e => e.trim()).filter(Boolean);
+    status.textContent = 'Granting for ' + emails.length + ' emails...';
+    try {
+      const r = await fetch(base + '/api/admin/bulk-group-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ group_name: group, emails, days: days ? parseInt(days) : null })
+      });
+      const data = await r.json();
+      status.textContent = data.success ? `Granted for ${data.granted} users in ${group}` : (data.error || 'Failed');
+      if (data.success) loadUsers();
+    } catch (e) { status.textContent = 'Error'; }
+  }
+
+  // Retention offer button (call manually or extend table)
+  window.sendRetention = async function(email) {
+    if (!confirm('Send The Word in Context Special (discounted $3/mo) offer to ' + email + '?')) return;
+    const status = document.getElementById('admin-status');
+    status.textContent = 'Sending The Word in Context Special offer to ' + email + '...';
+    try {
+      const r = await fetch(base + '/api/admin/send-retention-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ email })
+      });
+      const data = await r.json();
+      status.textContent = data.message || data.error || 'Sent';
+    } catch (e) { status.textContent = 'Error sending offer'; }
   };
 </script>
 </body></html>
