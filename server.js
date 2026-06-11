@@ -319,7 +319,15 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
     };
 
     const bookKey = book.toLowerCase();
-    const bookCode = bookMap[bookKey] || book.toUpperCase().slice(0, 3);
+    let bookCode = bookMap[bookKey];
+    if (!bookCode) {
+      // Clean the book string to remove spaces/punctuation for bad refs like "2 A"
+      bookCode = book.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+    }
+    if (!bookCode || bookCode.length < 2 || bookCode.includes(' ')) {
+      console.error(`[Bible API] Bad book code extracted from ref "${reference}": "${book}" -> "${bookCode}"`);
+      return null;
+    }
     // Use the translation id exactly as provided (e.g. 'BSB' for English, 'grc_sbl' for SBL Greek NT, 'hbo_wlc' for Westminster Leningrad Codex Hebrew).
     // The API uses specific casing/underscores for original language resources.
     const trans = translation;
@@ -330,9 +338,24 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
 
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
 
+    if (!res.ok) {
+      // Only log errors for actual HTTP errors, not every Hebrew source (some chapters may not be available or return non-JSON)
+      if (trans.includes('hbo') || trans.includes('heb')) {
+        return null; // silent skip for Hebrew to reduce log spam
+      }
+      console.error(`Bible API error for: ${url} (status: ${res.status})`);
+      return null;
+    }
+
     // Guard against HTML error pages / wrong URLs (the source of the "<!doctype" errors)
-    const contentType = res.headers.get('content-type') || '';
-    if (!res.ok || !contentType.includes('json')) {
+    // Try to parse JSON anyway; some endpoints may return wrong content-type even on success.
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (trans.includes('hbo') || trans.includes('heb')) {
+        return null; // silent for Hebrew
+      }
       console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
       return null;
     }
@@ -1057,7 +1080,6 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
     const biblePrompt = 'Transcribe Bible references accurately. Prefer exact matches for: John, 1 John, 2 John, 3 John, Romans, Romans 5, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, Jude, Revelation, chapter, verse, one, two, three, four, five, six, first, second, third, Gospel of John, book of Romans, John 3:16, Romans chapter 5. Use numbers for chapters and verses. Avoid extra words like "cell".';
     form.append('prompt', biblePrompt);
     form.append('language', language);
-    // Some STT endpoints (OpenAI compatible or xAI) expect a model.
     form.append('model', 'whisper-1');
 
     const upstream = await fetch('https://api.x.ai/v1/audio/transcriptions', {
