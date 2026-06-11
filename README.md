@@ -42,7 +42,7 @@ A secure, voice-first application for deep study of The Word — the Hebrew, Ara
 - Deep original-language and literary context study
 - Strict literal translation policy (ESV, NASB, NKJV, LSB, BSB, etc.)
 - Voice input + high-quality text-to-speech (including hands-free back-and-forth mode)
-- Optional premium Grok voices via xAI TTS (toggle in Voice Settings for highest tier; hands-free protected on fast local or xAI when toggled)
+- All voices are your browser's built-in system voices (window.speechSynthesis) only. Every installed voice on Mac/iPhone (including premium/enhanced you downloaded via Piper or Spoken Content) appears with no filters. Use the 🔊 buttons in Voice Settings to test them.
 - Server-side Bible text injection for accuracy
 - Clean, distraction-free interface optimized for long study sessions
 
@@ -59,7 +59,7 @@ This creates a natural spoken conversation while studying Scripture.
 
 ```
 word-in-context/
-├── server.js          # Secure proxy (Grok + xAI TTS for premium voices + optional legacy TTS_SERVER_URL hosted + Bible API)
+├── server.js          # Secure proxy (Grok chat + STT for hands-free + Bible API). All TTS voices are browser window.speechSynthesis only (no server voices).
 ├── package.json
 ├── .env.example
 ├── .gitignore
@@ -78,7 +78,7 @@ word-in-context/
 - All users get excellent free local system voices (Mac "Samantha", "Enhanced", Daniel, Google UK English Male, etc. — modern macOS/iOS neural voices are very good; any purchased voice packs appear automatically in the dropdown).
 - Hands-free conversation ALWAYS uses local system voices for speed/reliability (or xAI premium Grok voices when the user explicitly turns on the "Use Premium Grok Voices" toggle for the highest tier).
 - The legacy free hosted neural voices (via your own TTS_SERVER_URL env, e.g. the edge-tts Render service) are isolated to manual speak (🔊 button or mic when hands-free is off) and can be completely disabled by simply not setting TTS_SERVER_URL.
-- xAI premium (same XAI_API_KEY you already use for chat) is the paid/highest tier option, controlled by one toggle. Ideal for "talking to Grok" seamless experience on hands-free.
+- Voice output uses only the device's own system voices (no xAI or server TTS for speech). STT (for hands-free input) and chat use the XAI_API_KEY.
 
 **Full text for auto-speak**:
 - Hands-free auto-speak uses the full Grok reply (local: free/unlimited; xAI premium when toggled on).
