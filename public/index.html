@@ -1250,16 +1250,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
-      // Wake the speech engine for Mac (silent speak to unlock audio on some Mac setups)
+      // Wake the speech engine for Mac (helps unlock audio for subsequent speaks on Mac/Chrome)
       if (!window.__macSpeechWoken) {
+        window.__macSpeechWoken = true;
         try {
-          const wake = new SpeechSynthesisUtterance(' ');
-          wake.volume = 0.01;
+          const wake = new SpeechSynthesisUtterance('test');
+          wake.volume = 0.08;
+          wake.rate = 1.8;
           synth.speak(wake);
           setTimeout(() => {
             if (synth.speaking) synth.cancel();
-          }, 100);
-          window.__macSpeechWoken = true;
+            try { synth.getVoices(); } catch(e) {} // re-prime the list
+          }, 130);
         } catch(e) {}
       }
 
@@ -1400,12 +1402,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         u.rate = currentUtterance.rate || 0.95;
         u.pitch = currentUtterance.pitch || 1.0;
         u.lang = 'en-US';
-        if (synth.speaking) synth.cancel();
-        synth.speak(u);
+        const doRetry = () => {
+          try { synth.speak(u); } catch (e) { console.error(e); }
+        };
+        if (synth.speaking) {
+          synth.cancel();
+          setTimeout(doRetry, 40);
+        } else {
+          doRetry();
+        }
       };
 
-      if (synth.speaking) synth.cancel();
-      try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
+      // Give the engine a moment to settle after any cancel (helps reliability on Mac/Chrome)
+      const doSpeak = () => {
+        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
+      };
+      if (synth.speaking) {
+        synth.cancel();
+        setTimeout(doSpeak, 40);
+      } else {
+        doSpeak();
+      }
     }
 
     function stopSpeaking() {
@@ -1568,7 +1585,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         console.warn('TTS test error:', event.error);
       };
 
-      synth.speak(utterance);
+      const doTestSpeak = () => {
+        try { synth.speak(utterance); } catch (e) { console.error(e); }
+      };
+      if (synth.speaking) {
+        synth.cancel();
+        setTimeout(doTestSpeak, 40);
+      } else {
+        doTestSpeak();
+      }
     }
 
     // Populate a separate preview list with speaker buttons so user can test ANY voice
@@ -1665,7 +1690,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             console.warn('TTS preview error:', event.error);
           };
 
-          synth.speak(utterance);
+          const doPreviewSpeak = () => {
+            try { synth.speak(utterance); } catch (e) { console.error(e); }
+          };
+          if (synth.speaking) {
+            synth.cancel();
+            setTimeout(doPreviewSpeak, 40);
+          } else {
+            doPreviewSpeak();
+          }
         };
 
         // Layout: [label] [edit] [test]
