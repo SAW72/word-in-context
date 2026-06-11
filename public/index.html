@@ -1417,6 +1417,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceId = 'Google UK English Male';
         localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
+      // If somehow a numeric internal voice is the saved one for main use, clear it so we pick a speakable default next time.
+      if (voiceSettings.voiceId && isNumericVoiceName(voiceSettings.voiceId)) {
+        // Do not auto-clear here (user might have deliberately tested it), but the speak path will override for replies.
+        // We only clear on explicit loadVoices default picker or when user opens settings.
+      }
       // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
       // user's chosen local voice (e.g. the English male from the dropdown).
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
@@ -1544,10 +1549,40 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // Make sure we have a live voice object and set volume + lang explicitly (helps some Mac configs)
-      const finalVoice = currentUtterance.voice || usedVoice || selectedVoice;
+      let finalVoice = currentUtterance.voice || usedVoice || selectedVoice;
+
+      // For normal chat replies (this path), avoid pure numeric internal voices (e.g. "1079").
+      // They are real but frequently produce no audio on Mac + Chrome via Web Speech.
+      // Numeric voices are still available in the Voice Settings list and tester for manual discovery.
+      // If we landed on one, override with a good named English voice or let the browser default.
+      if (finalVoice && isNumericVoiceName(finalVoice.name)) {
+        console.log('[TTS] numeric voice', finalVoice.name, 'detected for main speak — overriding to a named voice for reliability');
+        const better = freshVoices.find(v =>
+          (v.name.toLowerCase().includes('google uk english male') ||
+           (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+           v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena') ||
+           v.name.includes('Alex') || v.name.includes('Karen') || v.name.includes('Moira')) &&
+          !isNumericVoiceName(v.name)
+        ) || freshVoices.find(v => v.lang && v.lang.includes('en') && !isNumericVoiceName(v.name)) ||
+           freshVoices.find(v => !isNumericVoiceName(v.name));
+
+        if (better) {
+          currentUtterance.voice = better;
+          selectedVoice = better;
+          finalVoice = better;
+        } else {
+          // Last resort: speak with no forced voice so the browser picks its current default (often works)
+          currentUtterance.voice = null;
+          finalVoice = null;
+        }
+      }
+
       currentUtterance.volume = 1.0;
       if (finalVoice && finalVoice.lang) {
         currentUtterance.lang = finalVoice.lang;
+      } else {
+        // Safe default lang helps some setups
+        currentUtterance.lang = 'en-US';
       }
 
       currentUtterance.onend = () => {
@@ -1592,7 +1627,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               currentUtterance.voice = reMatch;
             }
           }
-          console.log('[TTS] attempting synth.speak for real utterance, voice:', (currentUtterance.voice && currentUtterance.voice.name) || 'default');
+          const spokenVoiceName = (currentUtterance.voice && currentUtterance.voice.name) || 'default (browser)';
+          if (isNumericVoiceName(spokenVoiceName)) {
+            console.log('[TTS] WARNING: using numeric internal voice', spokenVoiceName, '— this often produces no sound. Pick a named voice (Google/Samantha/etc) in 🔊 Voice Settings.');
+          }
+          console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
           synth.speak(currentUtterance);
         } catch (e) { console.error(e); }
       }, 60);
@@ -1686,6 +1725,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
         .replace(/\s*\(System\)/gi, '')
         .trim();
+    }
+
+    function isNumericVoiceName(name) {
+      return /^\d+$/.test(String(name || '').trim());
     }
 
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
@@ -1970,9 +2013,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-                          voicesToShow.find(v => v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')) ||
+        // Strongly prefer named, speakable voices. Avoid pure numeric internal voices (e.g. "1079")
+        // for the automatic default — they often produce no sound through Web Speech on Mac Chrome.
+        // User can still manually select a numeric one in the list for testing.
+        let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male') && !isNumericVoiceName(v.name)) ||
+                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && !isNumericVoiceName(v.name)) ||
+                          voicesToShow.find(v => (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena') || v.name.includes('Alex') || v.name.includes('Karen')) && !isNumericVoiceName(v.name)) ||
+                          voicesToShow.find(v => !isNumericVoiceName(v.name)) ||
                           voicesToShow[0];
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
