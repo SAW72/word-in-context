@@ -401,7 +401,7 @@
         font-size: 14px;
         padding: 6px;
       }
-      .handsfree-toggle, label[for="premium-voices-toggle"] {
+      .handsfree-toggle {
         font-size: 12px;
       }
     }
@@ -1169,7 +1169,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       wakeWord = 'john';
       localStorage.setItem('wake_word', 'John');
     }
-    let serverHasManagedTTS = false; // not used for voices anymore (xAI premium is controlled client-side via toggle + /api/tts)
+    let serverHasManagedTTS = false; // legacy, voices are always pure browser system voices now
     let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
 
     // ====================== HELPERS ======================
@@ -1332,11 +1332,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     // All output is 100% browser built-in system voices (window.speechSynthesis).
-    // No xAI, no hosted TTS for speech. Pure local getVoices() + speak.
-
-    // 11Labs fully excised (per user: "get rid of 11labs all together dont see a need to keep they didnt work good anyway"). Only local + xAI premium + optional legacy hosted.
-    // Only paths now: local system voices (primary for hands-free + daily use), xAI premium (toggle, on-demand for manual 🔊 when you want the Grok voice quality),
-    // and optional legacy hosted (TTS_SERVER_URL) for manual 🔊 only when enabled.
+    // No xAI, no hosted, no server TTS for speech output whatsoever.
+    // We use only the voices returned by synth.getVoices() on the user's device.
 
     function fallbackToBrowserSpeech(text) {
       // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
@@ -1386,17 +1383,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       };
 
-      // Only log real errors the first time; always retry with a plain utterance
-      // so the user gets audio even if the chosen voice object is temporarily unavailable.
-      currentUtterance.onerror = (e) => {
-        if (!window.__ttsErrorLogged) {
-          window.__ttsErrorLogged = true;
-          console.warn('TTS using browser system voice (retrying for audio):', e && e.error);
+      currentUtterance.onerror = (event) => {
+        // 'canceled' or 'interrupted' is normal/intentional when we call cancel() to start a new utterance
+        // (e.g. new reply while speaking, or hitting speaker again) or stopSpeaking().
+        // Ignore silently per the standard pattern for interrupting speech.
+        if (event.error === 'canceled' || event.error === 'interrupted') {
+          return;
+        }
+        // Unexpected error: log once, retry with plain default system voice to ensure audio plays.
+        if (!window.__ttsUnexpectedErrorLogged) {
+          window.__ttsUnexpectedErrorLogged = true;
+          console.warn('TTS unexpected error (SpeechSynthesisErrorEvent), falling back to default system voice:', event.error);
         }
         const u = new SpeechSynthesisUtterance(text);
         u.volume = 1;
-        u.rate = currentUtterance.rate;
-        u.pitch = currentUtterance.pitch;
+        u.rate = currentUtterance.rate || 0.95;
+        u.pitch = currentUtterance.pitch || 1.0;
         u.lang = 'en-US';
         if (synth.speaking) synth.cancel();
         synth.speak(u);
@@ -1561,6 +1563,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Stop anything currently speaking
       if (synth.speaking) synth.cancel();
 
+      utterance.onerror = (event) => {
+        if (event.error === 'canceled' || event.error === 'interrupted') return;
+        console.warn('TTS test error:', event.error);
+      };
+
       synth.speak(utterance);
     }
 
@@ -1652,6 +1659,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           utterance.rate = voiceSettings.rate || 0.95;
           utterance.pitch = voiceSettings.pitch || 1.0;
           if (synth.speaking) synth.cancel();
+
+          utterance.onerror = (event) => {
+            if (event.error === 'canceled' || event.error === 'interrupted') return;
+            console.warn('TTS preview error:', event.error);
+          };
+
           synth.speak(utterance);
         };
 
@@ -2143,7 +2156,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (handsFreeEnabled && autoSpeakEnabled) {
           // Hands-free auto-speak ALWAYS uses fast local system voices for reliability and near-zero latency.
           // This is the core experience (system voices "work great").
-          // (no xAI TTS voices; only browser system voices for all output)
+          // (pure browser system voices only)
           // Clean any premium notes.
           const lastMsgForClean = document.querySelector('.messages .message:last-child');
           if (lastMsgForClean) {
@@ -3939,7 +3952,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       setTimeout(loadVoices, 900);
       setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
 
-      // On startup, if premium hosted voices are OFF, force voiceSettings to a local voice
       // Ensure we start on local browser system voices only.
       if (voiceSettings.voiceSource !== 'local') {
         voiceSettings.voiceSource = 'local';
