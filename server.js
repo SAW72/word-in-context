@@ -1047,26 +1047,13 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
     form.append('file', blob, `utterance.${ext}`);
     form.append('language', language);
 
-    // Bible-specific keyterm boosting — this is magic for your ref problems.
-    // The model will strongly prefer these tokens when they sound similar.
-    // Heavily boost "John 2" / "John two" variants because STT keeps mangling "John tell me about John two"
-    // into things like "two John two cell", "second John 2 cell", "2 John 2".
-    const bibleKeyterms = [
-      'John', 'John 2', 'John two', 'John chapter two', 'Gospel of John two', 'the gospel of John 2',
-      'John 2 tell me', 'tell me about John two', 'John tell me about John two',
-      '1 John', '2 John', '3 John', 'Romans', 'Romans 5', 'Romans five',
-      '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians',
-      'Colossians', 'Thessalonians', '1 Thessalonians', '2 Thessalonians',
-      'Timothy', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
-      'James', 'Peter', '1 Peter', '2 Peter', 'Jude', 'Revelation',
-      'chapter', 'verse', 'one', 'two', 'three', 'four', 'five', 'six',
-      'first', 'second', 'third', 'Gospel of John', 'book of Romans',
-      'John 2 cell', 'two John two', 'second John two', '2 John 2'
-    ];
-    for (const kt of bibleKeyterms) {
-      form.append('keyterm', kt);
-      form.append('keyterm', kt); // repeat critical ones
-    }
+    // Bible-specific prompt for biasing (more compatible than dozens of keyterm fields).
+    // Strongly prefer correct Bible refs so STT doesn't mangle "John 3:16", "Romans 5", "1 John" etc.
+    const biblePrompt = 'Transcribe Bible references accurately. Prefer exact matches for: John, 1 John, 2 John, 3 John, Romans, Romans 5, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, Jude, Revelation, chapter, verse, one, two, three, four, five, six, first, second, third, Gospel of John, book of Romans, John 3:16, Romans chapter 5. Use numbers for chapters and verses. Avoid extra words like "cell".';
+    form.append('prompt', biblePrompt);
+    form.append('language', language);
+    // Some STT endpoints (OpenAI compatible or xAI) expect a model.
+    form.append('model', 'whisper-1');
 
     const upstream = await fetch('https://api.x.ai/v1/stt', {
       method: 'POST',
@@ -1077,7 +1064,9 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
     if (!upstream.ok) {
       const errText = await upstream.text();
       console.error('[STT] upstream error:', upstream.status, errText);
-      return res.status(502).json({ error: 'STT failed', detail: errText });
+      // Preserve useful statuses (429 rate limit, 4xx client errors); only map 5xx to 502 for proxy
+      const outStatus = upstream.status >= 500 ? 502 : upstream.status;
+      return res.status(outStatus).json({ error: 'STT failed', detail: errText });
     }
 
     const data = await upstream.json();
