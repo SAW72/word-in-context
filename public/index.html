@@ -1373,6 +1373,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
       stopListeningUI();
 
+      // Prime the speech synthesis engine immediately (Mac requires recent getVoices() + gesture context for non-default voices to work reliably)
+      try { synth.getVoices(); } catch (e) {}
+
       // Always use fast local system voices. We no longer support cloud/XAI voices
       // because good local neural voices (especially after installing via Piper etc.) sound better
       // and have zero lag.
@@ -1464,6 +1467,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       currentUtterance.rate = voiceSettings.rate || 0.95;
       currentUtterance.pitch = voiceSettings.pitch || 1.0;
 
+      // Prime the speech engine (critical for Mac — getVoices right before use helps return valid live objects)
+      try { synth.getVoices(); } catch (e) {}
+
       // Always prefer the explicitly chosen local voice from settings/dropdown first.
       // This fixes cases where selectedVoice is stale (e.g. Karen fallback) even though
       // the dropdown and voiceSettings say "Google UK English Male".
@@ -1507,6 +1513,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
+      // Make sure we have a live voice object and set volume + lang explicitly (helps some Mac configs)
+      const finalVoice = currentUtterance.voice || usedVoice || selectedVoice;
+      currentUtterance.volume = 1.0;
+      if (finalVoice && finalVoice.lang) {
+        currentUtterance.lang = finalVoice.lang;
+      }
+
       currentUtterance.onend = () => {
         currentUtterance = null;
         if (handsFreeEnabled && !isListening) {
@@ -1515,7 +1528,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       };
 
-      try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
+      currentUtterance.onerror = (ev) => {
+        console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (currentUtterance && currentUtterance.voice && currentUtterance.voice.name) || 'default');
+        // Last-ditch: try once more with no forced voice (lets browser pick its system default)
+        try {
+          if (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed' || ev.error === 'canceled') {
+            const u2 = new SpeechSynthesisUtterance(text);
+            u2.rate = currentUtterance.rate || 0.95;
+            u2.pitch = currentUtterance.pitch || 1.0;
+            u2.volume = 1.0;
+            if (synth.speaking) synth.cancel();
+            synth.speak(u2);
+          }
+        } catch (e) {}
+      };
+
+      if (synth.speaking) synth.cancel();
+      setTimeout(() => {
+        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
+      }, 0);
     }
 
     function stopSpeaking() {
@@ -1765,17 +1796,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
+      // Prime (Mac)
+      try { synth.getVoices(); } catch(e){}
+
       const utterance = new SpeechSynthesisUtterance(
         cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
       );
       utterance.voice = voice;
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.pitch = voiceSettings.pitch || 1.0;
+      utterance.volume = 1.0;
+      if (voice && voice.lang) utterance.lang = voice.lang;
+
+      utterance.onerror = (ev) => {
+        console.error('[TTS testSelected] error:', ev && ev.error);
+      };
 
       // Stop anything currently speaking
       if (synth.speaking) synth.cancel();
 
-      synth.speak(utterance);
+      setTimeout(() => {
+        try { synth.speak(utterance); } catch (e) { console.error(e); }
+      }, 0);
 
       // After speaking, re-load voices (helps iOS show more after first use)
       setTimeout(() => {
@@ -1867,16 +1909,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         testBtn.onclick = (e) => {
           e.stopImmediatePropagation();
           // Re-resolve fresh voice object right before speaking (Mac/iOS voices can go stale)
-          const freshVoices = synth.getVoices();
-          const freshVoice = freshVoices.find(v => v.name === voice.name) || voice;
+          try { synth.getVoices(); } catch(e){}
+          const freshVoice = findLocalVoiceById(voice.name) || voice;
           const utterance = new SpeechSynthesisUtterance(
             cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
           );
           utterance.voice = freshVoice;
           utterance.rate = voiceSettings.rate || 0.95;
           utterance.pitch = voiceSettings.pitch || 1.0;
+          utterance.volume = 1.0;
+          if (freshVoice && freshVoice.lang) utterance.lang = freshVoice.lang;
+
+          utterance.onerror = (ev) => { console.error('[TTS preview] error:', ev && ev.error); };
+
           if (synth.speaking) synth.cancel();
-          synth.speak(utterance);
+          setTimeout(() => {
+            try { synth.speak(utterance); } catch (e) { console.error(e); }
+          }, 0);
+
           // After speaking, re-load voices (helps iOS show more after first use)
           setTimeout(() => {
             try { synth.getVoices(); } catch(e){}
@@ -1912,7 +1962,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // All available system voices on Mac and iPhone are shown here, including every
       // premium and enhanced voice the user has installed. This is the complete unfiltered
       // result of synth.getVoices().
-      let voicesToShow = voices;
+      // Re-get here in case the initial snapshot was empty (common on first call on Mac).
+      let voicesToShow = (synth.getVoices().length > 0 ? synth.getVoices() : voices);
 
       // Add local voices
       voicesToShow.forEach(voice => {
@@ -1932,9 +1983,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Fallback default selection if nothing was restored (picks something reasonable if no saved voice).
       // Because the list is now the complete raw set, any installed voice (including premium) can be the first.
       if (!voiceSelect.value && voicesToShow.length > 0) {
+        // With the full unfiltered list, still try hard to pick a voice that is likely to produce audio on Mac.
         let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
                           voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
                           voicesToShow.find(v => v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')) ||
+                          voicesToShow.find(v => (v.lang || '').toLowerCase().includes('en') && v.localService) ||
+                          voicesToShow.find(v => (v.lang || '').toLowerCase().includes('en')) ||
                           voicesToShow[0];
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
         if (defaultOption) defaultOption.selected = true;
@@ -1961,7 +2015,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           v.name.toLowerCase().includes('google uk english male') ||
           (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
           v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena')
-        ) || voicesToShow.find(v => v.localService) || voicesToShow[0];
+        ) || voicesToShow.find(v => (v.lang || '').toLowerCase().includes('en') && v.localService) ||
+          voicesToShow.find(v => (v.lang || '').toLowerCase().includes('en')) ||
+          voicesToShow.find(v => v.localService) || voicesToShow[0];
         if (safe) {
           voiceSettings.voiceId = safe.name;
           localStorage.setItem('voice_id', safe.name);
@@ -1989,6 +2045,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const firstGoodLocal = Array.from(voiceSelect.options).find(o => {
           const n = o.value.toLowerCase();
           return n.includes('google uk english male') || (n.includes('google') && n.includes('uk')) || n.includes('samantha') || n.includes('daniel') || n.includes('enhanced') || n.includes('premium');
+        }) || Array.from(voiceSelect.options).find(o => {
+          // try to pick an English localService one from the full list
+          return o.value.toLowerCase().includes('en');
         }) || Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstGoodLocal) firstGoodLocal.selected = true;
         voiceSettings.voiceSource = 'local';
@@ -2927,7 +2986,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // This provides "streaming" improved text to the user using the best available model for this domain
     // (xAI STT with extensive Bible book/chapter/verse keyterm boosting). Browser STT is used only for fast wake/barge-in.
     function triggerLiveImprovedStt() {
-      if (window.__sttLiveDisabled || !serverHasSTT) return;
+      if (window.__sttLiveDisabled || !serverHasSTT) {
+        const lc = document.getElementById('live-transcript-container');
+        if (lc) lc.style.display = 'none';
+        return;
+      }
       if (liveSttTimer) clearTimeout(liveSttTimer);
       liveSttTimer = setTimeout(async () => {
         liveSttTimer = null;
@@ -3225,15 +3288,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         clearTimeout(timer);
 
         if (!r.ok) {
-          // Expected failures for xAI STT (unavailable, rate limit, etc.) — fall back silently to browser STT to avoid console spam.
-          if (r.status >= 500 || r.status === 429) {
-            window.__sttLiveDisabled = true;
-            if (!window.__sttFailedLogged) {
-              window.__sttFailedLogged = true;
-              console.warn('[STT] xAI STT temporarily unavailable (using browser transcription for live + final)');
-            }
-          } else {
-            console.warn('[STT] proxy returned', r.status);
+          // Any failure from the STT proxy → permanently disable proxy path + hide live UI.
+          window.__sttLiveDisabled = true;
+          const liveC = document.getElementById('live-transcript-container');
+          if (liveC) liveC.style.display = 'none';
+          if (!window.__sttFailedLogged) {
+            window.__sttFailedLogged = true;
+            console.warn('[STT] xAI STT proxy unavailable (status ' + r.status + '). Using browser SpeechRecognition only for hands-free input.');
           }
           return fallbackText;
         }

@@ -234,20 +234,14 @@ You are speaking with someone who wants to get as close as possible to what the 
 async function fetchBiblePassage(reference, translation = 'eng_lsv') {
   try {
     const cleaned = reference.trim().replace(/\s+/g, ' ');
-    // Support bare chapters ("John 1", "John chapter 1", "Jn 1") as well as verses/ranges.
-    // Book prefixes like "1 John", "2 Peter" etc. are handled.
     const match = cleaned.match(/^((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
     if (!match) return null;
 
     let book = match[1].trim();
     const chapter = match[2];
 
-    // Always fetch the full chapter for complete literary context and "all the sources".
-    // This fixes cases where only a few verses (e.g. John 1:1-3) were previously grounded
-    // even when the user or model was discussing the whole chapter ("the book of John").
     const fetchStart = 1;
     const fetchEnd = 999;
-
 
     const bookMap = {
       'genesis': 'GEN', 'gen': 'GEN',
@@ -330,31 +324,47 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
       }
       return null;
     }
+
+    // Testament guard: skip Greek-NT API for OT books and Hebrew-OT API for NT books (prevents 200+non-JSON spam).
+    const otBooks = new Set(['GEN','EXO','LEV','NUM','DEU','JOS','JDG','RUT','1SA','2SA','1KI','2KI','1CH','2CH','EZR','NEH','EST','JOB','PSA','PRO','ECC','SNG','ISA','JER','LAM','EZK','DAN','HOS','JOL','AMO','OBA','JON','MIC','NAM','HAB','ZEP','HAG','ZEC','MAL']);
+    const ntBooks = new Set(['MAT','MRK','LUK','JHN','ACT','ROM','1CO','2CO','GAL','EPH','PHP','COL','1TH','2TH','1TI','2TI','TIT','PHM','HEB','JAS','1PE','2PE','1JN','2JN','3JN','JUD','REV']);
+    const isGrc = (trans || '').toLowerCase().startsWith('grc_');
+    const isHbo = (trans || '').toLowerCase().includes('hbo') || (trans || '').toLowerCase().includes('heb');
+    if (isGrc && otBooks.has(bookCode)) return null;
+    if (isHbo && ntBooks.has(bookCode)) return null;
+
     // Use the translation id exactly as provided (e.g. 'BSB' for English, 'grc_sbl' for SBL Greek NT, 'hbo_wlc' for Westminster Leningrad Codex Hebrew).
     // The API uses specific casing/underscores for original language resources.
     const trans = translation;
 
     // Correct endpoint: https://bible.helloao.org/api/BSB/JHN/3.json
     const url = `https://bible.helloao.org/api/${trans}/${bookCode}/${chapter}.json`;
-    console.log(`[Bible API] Trying: ${url}`);
+    // Only log "Trying" for the main English translation to keep production logs clean.
+    // Original-language attempts (grc_sbl, hbo_wlc) are best-effort and frequently expected to be unavailable for some refs.
+    if (!trans.toLowerCase().startsWith('grc_') && !trans.toLowerCase().includes('hbo') && !trans.toLowerCase().includes('heb')) {
+      console.log(`[Bible API] Trying: ${url}`);
+    }
 
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
 
     if (!res.ok) {
-      if (!(trans.includes('hbo') || trans.includes('heb'))) {
+      // Only noisy-log real errors for the English literal. Originals failing is normal (wrong testament, missing data, etc.).
+      const isOriginal = trans.toLowerCase().startsWith('grc_') || trans.toLowerCase().includes('hbo') || trans.toLowerCase().includes('heb');
+      if (!isOriginal) {
         console.error(`Bible API error for: ${url} (status: ${res.status})`);
       }
-      return null; // silent for Hebrew to reduce log spam
+      return null;
     }
 
     let data;
     try {
       data = await res.json();
     } catch (e) {
-      if (!(trans.includes('hbo') || trans.includes('heb'))) {
+      const isOriginal = trans.toLowerCase().startsWith('grc_') || trans.toLowerCase().includes('hbo') || trans.toLowerCase().includes('heb');
+      if (!isOriginal) {
         console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
       }
-      return null; // silent for Hebrew
+      return null;
     }
 
     // The real structure: data.chapter.content is an array of objects
@@ -981,36 +991,42 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
 });
 
 // === STT proxy for high-accuracy voice input (hands-free) ===
-// xAI STT is extremely cheap ($0.10/hr batch, $0.20/hr streaming per audio hour).
-// We use the same XAI_API_KEY you already set for chat.
-// Client captures short utterance via MediaRecorder (only on hands-free commits), sends base64.
-// We forward as proper multipart + heavy Bible book/chapter/verse keyterm boosting so
-// "John one", "first John one", "Romans five", "1st Corinthians" etc. transcribe correctly on the first pass.
-// This is the highest-leverage use of cheap STT for this app: better base text → far fewer grounding/ref extraction failures.
+// xAI STT (when available) for better Bible ref accuracy. Falls back gracefully to browser SpeechRecognition.
+// If the xAI transcription endpoint returns 404/4xx (not enabled for the key, path change, etc.) we treat
+// STT as unavailable for the lifetime of the process and stop spamming logs / upstream calls.
+// STT runtime flags (module scope)
+let sttPermanentlyUnavailable = false;
+let sttErrorLogged = false;
+
 app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
   try {
+    if (sttPermanentlyUnavailable) {
+      // Client should already be using browser fallback; just return empty so it doesn't retry hard.
+      return res.json({ text: '', fallback: true });
+    }
+
     const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
     if (!audio) return res.status(400).json({ error: 'audio (base64) is required' });
 
     const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: 'STT not configured on server' });
+    if (!apiKey) {
+      sttPermanentlyUnavailable = true;
+      return res.status(503).json({ error: 'STT not configured on server' });
+    }
 
     const audioBuffer = Buffer.from(audio, 'base64');
 
-    // Skip very short live chunks (common in hands-free streaming) to avoid unnecessary upstream calls and potential 502s
-    if (audioBuffer.length < 3000) { // ~0.3-0.5s of audio at typical rates — skip tiny live chunks to reduce upstream errors
+    // Skip very short live chunks (common in hands-free streaming) to avoid unnecessary upstream calls.
+    if (audioBuffer.length < 3000) {
       return res.json({ text: '' });
     }
 
-    // Native FormData + Blob works on Node 18+ (Render uses 22.x)
     const form = new FormData();
     const blob = new Blob([audioBuffer], { type: mime });
     const ext = mime.includes('webm') ? 'webm' : (mime.includes('wav') ? 'wav' : 'mp3');
     form.append('file', blob, `utterance.${ext}`);
     form.append('language', language);
 
-    // Bible-specific prompt for biasing (more compatible than dozens of keyterm fields).
-    // Strongly prefer correct Bible refs so STT doesn't mangle "John 3:16", "Romans 5", "1 John" etc.
     const biblePrompt = 'Transcribe Bible references accurately. Prefer exact matches for: John, 1 John, 2 John, 3 John, Romans, Romans 5, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, Jude, Revelation, chapter, verse, one, two, three, four, five, six, first, second, third, Gospel of John, book of Romans, John 3:16, Romans chapter 5. Use numbers for chapters and verses. Avoid extra words like "cell".';
     form.append('prompt', biblePrompt);
     form.append('language', language);
@@ -1024,18 +1040,37 @@ app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
 
     if (!upstream.ok) {
       const errText = await upstream.text();
-      console.error('[STT] upstream error:', upstream.status, errText);
-      // Preserve useful statuses (429 rate limit, 4xx client errors); only map 5xx to 502 for proxy
+      // 404 means the transcription resource is not available for this key / the endpoint path may have changed.
+      // 4xx generally means "this feature isn't enabled or the request is invalid for the service".
+      // Treat as permanent fallback so we stop hammering the upstream and spamming logs.
+      if (upstream.status === 404 || (upstream.status >= 400 && upstream.status < 500)) {
+        if (!sttErrorLogged) {
+          console.warn('[STT] xAI transcription endpoint unavailable (404/4xx). Using browser SpeechRecognition fallback for hands-free. Error:', upstream.status);
+          sttErrorLogged = true;
+        }
+        sttPermanentlyUnavailable = true;
+        return res.status(503).json({ error: 'STT unavailable on this server key', fallback: true });
+      }
+
+      // 5xx / 502 etc. — transient, log once, let client circuit-breaker handle.
+      if (!sttErrorLogged) {
+        console.warn('[STT] upstream error (transient):', upstream.status);
+        sttErrorLogged = true;
+      }
       const outStatus = upstream.status >= 500 ? 502 : upstream.status;
-      return res.status(outStatus).json({ error: 'STT failed', detail: errText });
+      return res.status(outStatus).json({ error: 'STT failed', detail: errText, fallback: true });
     }
 
     const data = await upstream.json();
     const text = (data.text || data.transcript || (typeof data === 'string' ? data : '') || '').trim();
     res.json({ text, raw: data });
   } catch (e) {
-    console.error('[STT] proxy error:', e);
-    res.status(500).json({ error: 'STT proxy failed' });
+    if (!sttErrorLogged) {
+      console.warn('[STT] proxy error (falling back to browser STT):', e && e.message);
+      sttErrorLogged = true;
+    }
+    // Signal to client that proxy is not usable right now.
+    res.status(503).json({ error: 'STT proxy failed', fallback: true });
   }
 });
 
@@ -1762,6 +1797,6 @@ app.listen(PORT, () => {
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used for chat + STT proxy only)`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
-  console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
+  console.log(`   STT: ${sttPermanentlyUnavailable ? 'xAI transcription unavailable for this key (browser SpeechRecognition fallback active)' : (process.env.XAI_API_KEY ? 'xAI (when working) + browser fallback' : 'browser SpeechRecognition only')}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
