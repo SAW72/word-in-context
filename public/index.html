@@ -412,7 +412,7 @@
         font-size: 10px;
       }
       /* Make voice settings more usable on small screens */
-      #default-trans-select, #hosted-voice-select, #voice-select {
+      #default-trans-select, #voice-select { /* hosted-voice-select removed - app uses system voices only */
         font-size: 14px;
         padding: 6px;
       }
@@ -757,11 +757,11 @@
       </div>
 
       <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All voices come from your device (macOS Spoken Content + apps like Piper, or equivalent on Windows/Chrome).
-        <strong>No filters</strong> — every available system voice on Mac, Windows, and iPhone is listed here, including every premium and enhanced voice you have installed.
-        Some voices only appear with numbers (e.g. "925") because the OS gives the browser internal IDs instead of nice names/genders.
-        Use the 🔊 buttons in the preview list below to test any of them.
-        After installing new voices (e.g. Piper), click <strong>"Reload system voices"</strong>.
+        <strong>ONLY your device's built-in system voices (window.speechSynthesis).</strong> 
+        No xAI, no cloud, no server TTS — they lag too much for natural spoken Bible study.
+        Every voice your device reports (including all premium/enhanced on Mac/iPhone) is shown with <strong>no filters</strong>.
+        Some appear as numbers because the OS reports internal IDs.
+        Use the 🔊 buttons to test. Click "Reload system voices" after installing new ones (Piper etc.).
       </p>
       
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice

@@ -782,113 +782,26 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// === TTS: voices are strictly browser built-in system voices (window.speechSynthesis) ===
-// /api/tts (if TTS_SERVER_URL set) is only for legacy manual use and is never called for app speech output.
-// All speaking (replies, tests, hands-free) uses only the device's SpeechSynthesis.
-app.get('/api/debug/tts', async (req, res) => {
-  res.json({ disabled: true, note: 'TTS for voices is client-only via window.speechSynthesis. No server TTS voices.' });
+// === TTS: STRICTLY browser built-in system voices only (window.speechSynthesis) ===
+// The app is designed exclusively for low-latency device system voices.
+// xAI (or any cloud) voices lag too much for natural spoken study.
+// /api/tts is a hard no-op. Client speak() never calls it.
+app.get('/api/debug/tts', (req, res) => {
+  res.json({ disabled: true, note: 'All speech output uses your browser/device system voices via window.speechSynthesis only. No server or xAI TTS.' });
 });
 
-app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
-  try {
-    const { text, voice } = req.body || {};
-    if (!text) return res.status(400).json({ error: 'text is required' });
-
-    const ttsBase = process.env.TTS_SERVER_URL;
-    if (!ttsBase) {
-      return res.status(400).json({ error: 'Server TTS disabled. All voices use your browser built-in system voices (window.speechSynthesis) only.' });
-    }
-
-    const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: text,
-        voice: voice || 'en-US-AvaNeural',
-        response_format: 'mp3'
-      })
-    });
-
-    if (!upstreamRes.ok) {
-      const errText = await upstreamRes.text();
-      console.error('[TTS] upstream error:', upstreamRes.status, errText);
-      const status = upstreamRes.status === 429 ? 429 : 502;
-      return res.status(status).json({ error: 'TTS generation failed', detail: errText, status: upstreamRes.status });
-    }
-
-    const audioBuffer = await upstreamRes.arrayBuffer();
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.send(Buffer.from(audioBuffer));
-  } catch (e) {
-    console.error('[TTS] proxy error:', e);
-    res.status(500).json({ error: 'TTS proxy failed' });
-  }
+app.post('/api/tts', (req, res) => {
+  return res.status(400).json({ 
+    error: 'Server TTS disabled. This app uses only your device\'s built-in system voices (window.speechSynthesis) for zero lag. xAI/cloud voices are not supported.' 
+  });
 });
 
-// === STT proxy for high-accuracy voice input (hands-free) ===
-// xAI STT is extremely cheap ($0.10/hr batch, $0.20/hr streaming per audio hour).
-// We use the same XAI_API_KEY you already set for chat.
-// Client captures short utterance via MediaRecorder (only on hands-free commits), sends base64.
-// We forward as proper multipart + heavy Bible book/chapter/verse keyterm boosting so
-// "John one", "first John one", "Romans five", "1st Corinthians" etc. transcribe correctly on the first pass.
-// This is the highest-leverage use of cheap STT for this app: better base text → far fewer grounding/ref extraction failures.
-app.post('/api/stt', express.json({ limit: '100mb' }), async (req, res) => {
-  try {
-    const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
-    if (!audio) return res.status(400).json({ error: 'audio (base64) is required' });
-
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: 'STT not configured on server' });
-
-    const audioBuffer = Buffer.from(audio, 'base64');
-
-    // Native FormData + Blob works on Node 18+ (Render uses 22.x)
-    const form = new FormData();
-    const blob = new Blob([audioBuffer], { type: mime });
-    const ext = mime.includes('webm') ? 'webm' : (mime.includes('wav') ? 'wav' : 'mp3');
-    form.append('file', blob, `utterance.${ext}`);
-    form.append('language', language);
-
-    // Bible-specific keyterm boosting — this is magic for your ref problems.
-    // The model will strongly prefer these tokens when they sound similar.
-    // Heavily boost "John 2" / "John two" variants because STT keeps mangling "John tell me about John two"
-    // into things like "two John two cell", "second John 2 cell", "2 John 2".
-    const bibleKeyterms = [
-      'John', 'John 2', 'John two', 'John chapter two', 'Gospel of John two', 'the gospel of John 2',
-      'John 2 tell me', 'tell me about John two', 'John tell me about John two',
-      '1 John', '2 John', '3 John', 'Romans', 'Romans 5', 'Romans five',
-      '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians',
-      'Colossians', 'Thessalonians', '1 Thessalonians', '2 Thessalonians',
-      'Timothy', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews',
-      'James', 'Peter', '1 Peter', '2 Peter', 'Jude', 'Revelation',
-      'chapter', 'verse', 'one', 'two', 'three', 'four', 'five', 'six',
-      'first', 'second', 'third', 'Gospel of John', 'book of Romans',
-      'John 2 cell', 'two John two', 'second John two', '2 John 2'
-    ];
-    for (const kt of bibleKeyterms) {
-      form.append('keyterm', kt);
-      form.append('keyterm', kt); // repeat critical ones
-    }
-
-    const upstream = await fetch('https://api.x.ai/v1/stt', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: form
-    });
-
-    if (!upstream.ok) {
-      const errText = await upstream.text();
-      console.error('[STT] upstream error:', upstream.status, errText);
-      return res.status(502).json({ error: 'STT failed', detail: errText });
-    }
-
-    const data = await upstream.json();
-    const text = (data.text || data.transcript || (typeof data === 'string' ? data : '') || '').trim();
-    res.json({ text, raw: data });
-  } catch (e) {
-    console.error('[STT] proxy error:', e);
-    res.status(500).json({ error: 'STT proxy failed' });
-  }
+// === STT: permanently disabled ===
+// Hands-free (wake word "John"), barge-in, live interim, and final transcripts use the browser's
+// built-in SpeechRecognition (webkitSpeechRecognition). This avoids lag, 404s, and the cost/spam
+// of cloud STT. The /api/stt endpoint exists only as a safe fallback stub.
+app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
+  return res.json({ text: '', fallback: true, disabled: true });
 });
 
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
