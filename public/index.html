@@ -1417,10 +1417,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceId = 'Google UK English Male';
         localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
-      // If somehow a numeric internal voice is the saved one for main use, clear it so we pick a speakable default next time.
       if (voiceSettings.voiceId && isNumericVoiceName(voiceSettings.voiceId)) {
-        // Do not auto-clear here (user might have deliberately tested it), but the speak path will override for replies.
-        // We only clear on explicit loadVoices default picker or when user opens settings.
+        console.log('[TTS] speak() saw numeric saved voice ' + voiceSettings.voiceId + ' — resetting to Google UK English Male');
+        voiceSettings.voiceId = 'Google UK English Male';
+        localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
       // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
       // user's chosen local voice (e.g. the English male from the dropdown).
@@ -1505,6 +1505,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Prime the speech engine (critical for Mac — getVoices right before use helps return valid live objects)
       try { synth.getVoices(); } catch (e) {}
 
+      // Always get a fresh list at the start so numeric-override and fallbacks can use it reliably
+      // even if we matched a saved (possibly numeric) voiceId via findLocalVoiceById.
+      const freshVoices = synth.getVoices();
+
       // Always prefer the explicitly chosen local voice from settings/dropdown first.
       // This fixes cases where selectedVoice is stale (e.g. Karen fallback) even though
       // the dropdown and voiceSettings say "Google UK English Male".
@@ -1519,7 +1523,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       if (!usedVoice) {
         // Always re-fetch fresh voices and use robust normalized match (fixes stale objects on Mac/iOS)
-        const freshVoices = synth.getVoices();
         const normId = normalizeVoiceName(voiceSettings.voiceId || '');
         usedVoice = freshVoices.find(v => normalizeVoiceName(v.name) === normId) ||
                     freshVoices.find(v => v.name.toLowerCase() === (voiceSettings.voiceId || '').toLowerCase()) ||
@@ -1996,8 +1999,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSelect.appendChild(option);
 
         if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
-          option.selected = true;
-          selectedVoice = voice;
+          if (isNumericVoiceName(voice.name)) {
+            // don't auto-select a numeric one from saved; let default picker choose a good named voice
+          } else {
+            option.selected = true;
+            selectedVoice = voice;
+          }
         }
       });
 
@@ -4327,6 +4334,15 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       if (voiceSettings.voiceSource !== 'local') {
         voiceSettings.voiceSource = 'local';
         localStorage.setItem('voice_source', 'local');
+      }
+
+      // If a previously saved voiceId is a pure numeric internal Mac voice (e.g. "1079"),
+      // reset it to a reliable named default. This stops the "no sound" problem for normal replies
+      // while still allowing users to manually test numeric voices in the Voice Settings preview list.
+      if (voiceSettings.voiceId && isNumericVoiceName(voiceSettings.voiceId)) {
+        console.log('[TTS] Saved voice was numeric internal (' + voiceSettings.voiceId + ') — resetting to reliable default for chat speech');
+        voiceSettings.voiceId = 'Google UK English Male';
+        localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
