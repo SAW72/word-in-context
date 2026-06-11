@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 const OpenAI = require('openai');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Database = require('better-sqlite3');
@@ -12,73 +11,43 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-// Raw body for Stripe webhook — MUST come *before* any body parser (including express.json())
-// so req.body is a Buffer when we reach constructEvent for signature verification.
-app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+// === Simple SQLite DB for users (persistent on Render disk for beta; migrate to Postgres later) ===
+const db = new Database(path.join(__dirname, 'users.db'));
+db.pragma('journal_mode = WAL');
 
-// === SQLite DB for users (with Render persistent disk support) ===
-// IMPORTANT: On Render, when adding the disk in the dashboard:
-//   - Disk name: data          (this is the "variable data" you saw)
-//   - Mount path: /data        <--- type exactly this (full path, not just "data", not root "/")
-// Only files under /data survive deploys. Code uses /data/users.db so admin users don't get deleted on redeploy.
-// Locally: normal project folder.
-// We now check fs.existsSync('/data') FIRST — this is the most reliable signal that the disk you attached is actually mounted.
-const onRender = fs.existsSync('/data') || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-let dbPath = onRender ? '/data/users.db' : path.join(__dirname, 'users.db');
+// Users table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,                -- bcrypt hash for password login (optional for legacy magic-link users)
+    stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
+    status TEXT DEFAULT 'trialing',  -- trialing, active, past_due, canceled, free, disabled
+    trial_end TEXT,
+    access_granted INTEGER DEFAULT 1,  -- 1 = can use, 0 = cut off
+    manual_free INTEGER DEFAULT 0,     -- admin can grant free forever
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
 
-console.log(`[DB] onRender=${onRender} (fs sees /data? ${fs.existsSync('/data')}), using path: ${dbPath}`);
-
-let db;
+// Migration for existing DBs (safe if column already exists)
 try {
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+} catch (e) {
+  if (!e.message.includes('duplicate column')) {
+    console.error('Migration warning for password_hash:', e.message);
   }
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  console.log(`[DB] Opened successfully at ${dbPath}`);
-} catch (err) {
-  console.error(`[DB] CRITICAL: Failed to open ${dbPath}: ${err.message}`);
-  if (onRender) {
-    console.error('[DB] WARNING: Could not use /data. Falling back to ephemeral local DB. Users WILL be lost on redeploy!');
-  }
-  dbPath = path.join(__dirname, 'users.db');
-  db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  console.log(`[DB] Using fallback local path: ${dbPath}`);
 }
 
-// Schema (CREATE IF NOT EXISTS) must run before any SELECT on users table.
-// This is why a fresh disk volume was causing "no such table" and fallback.
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT,
-      stripe_customer_id TEXT,
-      stripe_subscription_id TEXT,
-      status TEXT DEFAULT 'trialing',
-      trial_end TEXT,
-      access_granted INTEGER DEFAULT 1,
-      manual_free INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-  `);
-  try { db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`); } catch(e){}
-  try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS magic_tokens (
-      token TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      expires_at TEXT NOT NULL
-    );
-  `);
-  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
-} catch (err) {
-  console.error('DB schema error (non-fatal):', err.message);
-}
+// Magic tokens table (short lived)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS magic_tokens (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
 
 // === Email (Resend) ===
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -88,17 +57,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 
 // Configurable for easy tuning without code changes (set in Render env)
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
-const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '5', 10);
+const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
-
-// Developer bypass: this email is always treated as having manual_free access.
-// Use it (e.g. spence.wight@gmail.com) so you can easily log in and test during development
-// without being cut off by trial expiration. The other test accounts (14-day tester and 7-day trial)
-// should use their real DB flags so you can validate the full signup/login/trial-cutoff UX.
-// Override or clear via DEV_BYPASS_EMAILS env (comma-separated). Remove before real production use.
-const DEV_BYPASS_EMAILS = (process.env.DEV_BYPASS_EMAILS ||
-  'spence.wight@gmail.com'
-).split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 function normalizeEmail(e) {
   return (e || '').trim().toLowerCase();
@@ -142,25 +102,6 @@ function checkDemoThrottle(ip) {
   times.push(now);
   demoUsage.set(ip, times);
   return true;
-}
-
-// Hard daily response limit for demo mode (prevents refresh abuse)
-// This is the authoritative cap. Client also enforces for UX.
-const demoResponseCounts = new Map(); // ip -> { date: 'YYYY-MM-DD', count: number }
-function checkAndIncrementDemoResponses(ip) {
-  if (!ip) return true;
-  const today = new Date().toISOString().slice(0, 10);
-  let entry = demoResponseCounts.get(ip);
-  if (!entry || entry.date !== today) {
-    entry = { date: today, count: 0 };
-  }
-  if (entry.count >= DEMO_LIMIT) {
-    demoResponseCounts.set(ip, entry);
-    return false;
-  }
-  entry.count++;
-  demoResponseCounts.set(ip, entry);
-  return { allowed: true, remaining: Math.max(0, DEMO_LIMIT - entry.count) };
 }
 
 // === Strong System Prompt for "The Word in Context" ===
@@ -234,14 +175,20 @@ You are speaking with someone who wants to get as close as possible to what the 
 async function fetchBiblePassage(reference, translation = 'eng_lsv') {
   try {
     const cleaned = reference.trim().replace(/\s+/g, ' ');
+    // Support bare chapters ("John 1", "John chapter 1", "Jn 1") as well as verses/ranges.
+    // Book prefixes like "1 John", "2 Peter" etc. are handled.
     const match = cleaned.match(/^((?:1|2|3)\s*[A-Za-z]+|[A-Za-z]+)\s+(?:ch(?:apter|\.)?\s*)?(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
     if (!match) return null;
 
     let book = match[1].trim();
     const chapter = match[2];
 
+    // Always fetch the full chapter for complete literary context and "all the sources".
+    // This fixes cases where only a few verses (e.g. John 1:1-3) were previously grounded
+    // even when the user or model was discussing the whole chapter ("the book of John").
     const fetchStart = 1;
     const fetchEnd = 999;
+
 
     const bookMap = {
       'genesis': 'GEN', 'gen': 'GEN',
@@ -313,59 +260,25 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
     };
 
     const bookKey = book.toLowerCase();
-    let bookCode = bookMap[bookKey];
-    if (!bookCode) {
-      // Clean the book string to remove spaces/punctuation for bad refs like "2 A"
-      bookCode = book.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
-    }
-    if (!bookCode || bookCode.length < 2 || bookCode.includes(' ')) {
-      if (!(trans.includes('hbo') || trans.includes('heb'))) {
-        console.error(`[Bible API] Bad book code extracted from ref "${reference}": "${book}" -> "${bookCode}" (skipped)`);
-      }
-      return null;
-    }
-
-    // Testament guard: skip Greek-NT API for OT books and Hebrew-OT API for NT books (prevents 200+non-JSON spam).
-    const otBooks = new Set(['GEN','EXO','LEV','NUM','DEU','JOS','JDG','RUT','1SA','2SA','1KI','2KI','1CH','2CH','EZR','NEH','EST','JOB','PSA','PRO','ECC','SNG','ISA','JER','LAM','EZK','DAN','HOS','JOL','AMO','OBA','JON','MIC','NAM','HAB','ZEP','HAG','ZEC','MAL']);
-    const ntBooks = new Set(['MAT','MRK','LUK','JHN','ACT','ROM','1CO','2CO','GAL','EPH','PHP','COL','1TH','2TH','1TI','2TI','TIT','PHM','HEB','JAS','1PE','2PE','1JN','2JN','3JN','JUD','REV']);
-    const isGrc = (trans || '').toLowerCase().startsWith('grc_');
-    const isHbo = (trans || '').toLowerCase().includes('hbo') || (trans || '').toLowerCase().includes('heb');
-    if (isGrc && otBooks.has(bookCode)) return null;
-    if (isHbo && ntBooks.has(bookCode)) return null;
-
+    const bookCode = bookMap[bookKey] || book.toUpperCase().slice(0, 3);
     // Use the translation id exactly as provided (e.g. 'BSB' for English, 'grc_sbl' for SBL Greek NT, 'hbo_wlc' for Westminster Leningrad Codex Hebrew).
     // The API uses specific casing/underscores for original language resources.
     const trans = translation;
 
     // Correct endpoint: https://bible.helloao.org/api/BSB/JHN/3.json
     const url = `https://bible.helloao.org/api/${trans}/${bookCode}/${chapter}.json`;
-    // Only log "Trying" for the main English translation to keep production logs clean.
-    // Original-language attempts (grc_sbl, hbo_wlc) are best-effort and frequently expected to be unavailable for some refs.
-    if (!trans.toLowerCase().startsWith('grc_') && !trans.toLowerCase().includes('hbo') && !trans.toLowerCase().includes('heb')) {
-      console.log(`[Bible API] Trying: ${url}`);
-    }
+    console.log(`[Bible API] Trying: ${url}`);
 
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
 
-    if (!res.ok) {
-      // Only noisy-log real errors for the English literal. Originals failing is normal (wrong testament, missing data, etc.).
-      const isOriginal = trans.toLowerCase().startsWith('grc_') || trans.toLowerCase().includes('hbo') || trans.toLowerCase().includes('heb');
-      if (!isOriginal) {
-        console.error(`Bible API error for: ${url} (status: ${res.status})`);
-      }
+    // Guard against HTML error pages / wrong URLs (the source of the "<!doctype" errors)
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok || !contentType.includes('json')) {
+      console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
       return null;
     }
 
-    let data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      const isOriginal = trans.toLowerCase().startsWith('grc_') || trans.toLowerCase().includes('hbo') || trans.toLowerCase().includes('heb');
-      if (!isOriginal) {
-        console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
-      }
-      return null;
-    }
+    const data = await res.json();
 
     // The real structure: data.chapter.content is an array of objects
     const content = data?.chapter?.content;
@@ -416,6 +329,9 @@ app.use(express.json({ limit: '10mb' }));
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
 
+// Raw body for Stripe webhook
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+
 // Auth middleware
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -435,48 +351,15 @@ function requireAuth(req, res, next) {
     if (!user.access_granted) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
-
-    // Developer bypass: treat the configured dev email(s) as having manual_free access.
-    // This lets you (spence.wight@gmail.com by default) always get in for testing,
-    // while s.a.wight@gmail.com (14-day tester) and beyondbestservices@gmail.com (7-day trial)
-    // follow the real trial/status/manual_free rules so you can test authentic UX flows.
-    const isDevBypass = DEV_BYPASS_EMAILS.includes(user.email);
-    const effectiveManualFree = !!user.manual_free || isDevBypass;
-
-    // manual_free (or dev bypass) is the permanent access override.
-    // It must bypass ALL trial/expiry/subscription checks. Admin panel uses separate auth.
-    if (effectiveManualFree) {
-      req.userRecord = user;  // return the real DB row (so /api/me still reports the true flags)
-      next();
-      return;
-    }
-
     const now = new Date();
     const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-    const hasPaidOrFree = ['active', 'free'].includes(user.status);
-
-    if (user.status === 'trialing') {
-      if (trialValid) {
-        // Still within trial window
-        req.userRecord = user;
-        next();
-        return;
-      } else {
-        // Trial expired for a trialing user (common for tester accounts or if webhook hasn't updated status yet)
-        // Only force-cancel if NOT (manual_free or dev bypass)
-        db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', user.id);
-        return res.status(403).json({ error: 'Trial has expired. Please subscribe for continued access.' });
-      }
+    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+    if (!effectivelyTrialing && !hasPaidOrFree) {
+      return res.status(403).json({ error: 'Subscription required or trial expired.' });
     }
-
-    if (hasPaidOrFree) {
-      req.userRecord = user;
-      next();
-      return;
-    }
-
-    // Any other status (canceled, past_due, etc.) without manual free
-    return res.status(403).json({ error: 'Subscription required or trial expired.' });
+    req.userRecord = user;
+    next();
   } catch (e) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
@@ -517,11 +400,6 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https:;"
   );
 
-  // Note: We intentionally do not set Cross-Origin-Embedder-Policy / Cross-Origin-Opener-Policy here.
-  // Those headers (require-corp + same-origin) were causing scrolling, layout, and viewport problems
-  // for users (page not scrollable, content not sitting right). We can re-add them later only on specific
-  // paths if a future feature truly requires SharedArrayBuffer.
-
   next();
 });
 
@@ -541,21 +419,6 @@ app.get('/app', (req, res) => {
     'Expires': '0',
     'Surrogate-Control': 'no-store'
   });
-
-  // Ensure CSP allows eval for the app to work (browser APIs and any dynamic code).
-  // This matches the dev middleware but is explicit for the main app HTML.
-  res.set('Content-Security-Policy',
-    "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http: ws: wss:; " +
-    "connect-src 'self' https: http: ws: wss:; " +
-    "media-src 'self' blob: data: https:; " +
-    "img-src 'self' data: https:; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
-    "style-src 'self' 'unsafe-inline' https:;"
-  );
-
-  // (Isolation headers removed globally — see middleware above for explanation.
-  // They were breaking normal scrolling and page layout for many users.)
-
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -574,6 +437,7 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // === Simple beta tester signup (stores emails for launch) ===
 // For production: replace with real email service (Mailchimp, ConvertKit, or Supabase)
+const fs = require('fs');
 const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
@@ -693,35 +557,20 @@ app.post('/api/create-checkout', async (req, res) => {
     }
 
     // Create Checkout for subscription with trial
-    // Main monthly price: price_1TgQpW9Hq4iefeFs9jsFfcI6 (set via STRIPE_PRICE_ID env)
-    // Yearly available: price_1TgRqX9Hq4iefeFsCRXz5ES3
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: user.stripe_customer_id,
       line_items: [{
-        price: process.env.STRIPE_PRICE_ID || 'price_1TgQpW9Hq4iefeFs9jsFfcI6',
+        price: process.env.STRIPE_PRICE_ID,
         quantity: 1,
       }],
       subscription_data: {
         trial_period_days: effectiveTrialDays,
       },
-      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/app`,
+      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
       metadata: { email }
     });
-
-    // Send magic login link immediately (user provided a password, but magic link is convenient,
-    // matching the "check your email" experience in the success page and tester flow).
-    // Wrapped so a temporary email failure doesn't break the checkout.
-    try {
-      const token = require('crypto').randomBytes(32).toString('hex');
-      const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
-
-      await sendMagicLink(email, token);  // no isTester flag for paid trial
-    } catch (e) {
-      console.error('Failed to send magic link after initiating paid trial checkout (non-fatal):', e.message);
-    }
 
     res.json({ url: session.url });
   } catch (err) {
@@ -763,17 +612,17 @@ app.post('/api/tester-signup', async (req, res) => {
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
 
-    // Send custom tester magic link email (optional first login / other devices)
+    // Send custom tester magic link email (optional first login)
     await sendMagicLink(email, token, { isTester: true });
 
-    // Issue JWT so the client can auto-login and go straight to the app (exactly like the 7-day paid trial flow)
+    // Since password was provided on signup, issue JWT immediately so they can log in right away (browser can save credentials)
     const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({ 
       success: true, 
       token: jwtToken,
       email,
-      message: `Account created. Logging you in... Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
+      message: `Account created with password. You can log in immediately below (or check email for magic link). Your ${TESTER_TRIAL_DAYS}-day tester access is now active.` 
     });
   } catch (err) {
     console.error('tester-signup error:', err);
@@ -811,11 +660,8 @@ app.post('/api/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) {
-      return res.status(401).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
-    }
-    if (!user.password_hash) {
-      return res.status(401).json({ error: 'No password set for this account. Use the magic link login (or the "Tester Sign Up or Login" form above to set one), or request a magic link.' });
+    if (!user || !user.password_hash) {
+      return res.status(401).json({ error: 'No password set for this account. Use the magic link login or sign up again with a password.' });
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -894,23 +740,12 @@ app.get('/api/verify-magic', (req, res) => {
 // Get current user status
 app.get('/api/me', requireAuth, (req, res) => {
   const u = req.userRecord;
-  const now = new Date();
-  const trialExpired = u.trial_end && now >= new Date(u.trial_end);
-  const isDevBypass = DEV_BYPASS_EMAILS.includes(u.email);
-
-  // Keep status in sync for expired trials (testers etc.), but NEVER override/cancel manual_free accounts
-  // or the developer bypass email (used for easy testing access).
-  if (!u.manual_free && !isDevBypass && u.status === 'trialing' && trialExpired) {
-    db.prepare('UPDATE users SET status = ? WHERE id = ?').run('canceled', u.id);
-    u.status = 'canceled';
-  }
-
   res.json({
     email: u.email,
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free || isDevBypass,
+    manual_free: !!u.manual_free,
     has_password: !!u.password_hash
   });
 });
@@ -925,45 +760,88 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Debug endpoint - hit this after a redeploy to see if the persistent DB is working
-app.get('/api/debug/db', (req, res) => {
-  try {
-    const count = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-    const isPersistent = dbPath.includes('/data');
-    res.json({
-      dbPath,
-      isPersistent,
-      userCount: count,
-      note: isPersistent 
-        ? 'Using persistent disk. Users should survive redeploys.'
-        : 'Using ephemeral storage. Users will be lost on redeploy. Make sure disk is attached in Render dashboard.'
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message, dbPath });
-  }
-});
-
-// === TTS: voices are 100% browser built-in system voices (window.speechSynthesis) ===
-// Server /api/tts is kept only for optional legacy self-hosted neural (TTS_SERVER_URL) for manual speak.
-// We do NOT use xAI TTS / Grok voices for speech output at all. All speaking (replies, tests, hands-free)
-// uses the device's own SpeechSynthesis voices — every one that appears in synth.getVoices(),
-// including all user-installed premium/enhanced voices on Mac and iPhone. No filters.
+// === TTS proxy for seamless premium/custom voices ===
+// Call this from the frontend instead of direct localhost.
+// /api/tts supports:
+// - provider: 'xai' when client's "Use Premium Grok Voices" toggle is on (xAI Grok voices Ara/Eve/etc).
+// - no provider: legacy hosted (only if TTS_SERVER_URL set; manual non-hands-free use only).
+// Client *never* sends provider=xai when the premium toggle is off — it uses local browser voices directly.
+// Unset TTS_SERVER_URL to remove legacy hosted entirely. Uses same XAI_API_KEY as chat.
+// Debug: GET /api/debug/tts to verify your key can do TTS.
 app.get('/api/debug/tts', async (req, res) => {
-  res.json({ disabled: true, note: 'TTS for voices is client-only via window.speechSynthesis. No server TTS voices.' });
+  if (!process.env.XAI_API_KEY) return res.status(500).json({ error: 'No XAI_API_KEY in env' });
+  try {
+    const testRes = await fetch('https://api.x.ai/v1/tts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: "Test from the app.",
+        voice_id: "Eve",
+        output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
+        language: "en"
+      })
+    });
+    const status = testRes.status;
+    const text = await testRes.text();
+    console.log('[DEBUG TTS] status:', status, 'body:', text.substring(0, 200));
+    res.json({ status, success: testRes.ok, sample: text.substring(0, 200) });
+  } catch (e) {
+    console.error('[DEBUG TTS] error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   try {
-    const { text, voice } = req.body || {};
+    const { text, voice, provider } = req.body || {};
     if (!text) return res.status(400).json({ error: 'text is required' });
 
-    // Legacy hosted only (if you set TTS_SERVER_URL for a self-hosted edge-tts style server).
-    // This path is manual/non-hands-free only and is not used for the main app voices.
-    const ttsBase = process.env.TTS_SERVER_URL;
-    if (!ttsBase) {
-      return res.status(400).json({ error: 'Server TTS disabled. All voices use your browser built-in system voices (window.speechSynthesis) only. No xAI or hosted voices for speech.' });
+    // Support both:
+    // - provider: 'xai' for premium (xAI Grok voices Ara/Eve/Leo/Rex/Sal, highest paid tier) — used when the client's
+    //   "Use Premium Grok Voices" toggle is on (affects both manual speak and hands-free auto-speak).
+    // - default/no provider: legacy hosted (free neural, manual non-hands-free only) via TTS_SERVER_URL if set.
+    // Same XAI_API_KEY as chat. xAI TTS: $15/1M chars.
+    // To completely remove legacy hosted: unset TTS_SERVER_URL (client isolates to local + xAI premium only).
+    // When the premium toggle is off, client always requests local browser voices (fast/reliable).
+    const useXai = provider === 'xai';
+    if (useXai && process.env.XAI_API_KEY) {
+      console.log('[TTS] Attempting xAI TTS with voice_id:', voice || 'Eve', 'provider sent:', provider);
+      const xaiRes = await fetch('https://api.x.ai/v1/tts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text: text,
+          voice_id: voice || 'Eve',
+          output_format: {
+            codec: "mp3",
+            sample_rate: 24000,
+            bit_rate: 128000
+          },
+          language: "en"
+        })
+      });
+      if (!xaiRes.ok) {
+        const errText = await xaiRes.text();
+        console.error('[TTS] xAI upstream error:', xaiRes.status, errText);
+        // Forward real status for client handling (429 rate limit from xAI tiers, 403 auth, etc.)
+        const status = xaiRes.status === 429 ? 429 : 502;
+        return res.status(status).json({ error: 'xAI TTS generation failed', detail: errText, status: xaiRes.status });
+      }
+      // Success: clear any previous unavailable flag so the UI shows xAI voices next time
+      // (client will also see success and can clear its local flag)
+      const audioBuffer = await xaiRes.arrayBuffer();
+      res.setHeader('Content-Type', 'audio/mpeg');
+      return res.send(Buffer.from(audioBuffer));
     }
 
+    // Old hosted (if TTS_SERVER_URL still set for legacy/manual use)
+    const ttsBase = process.env.TTS_SERVER_URL || 'http://localhost:5050';
     const upstreamRes = await fetch(`${ttsBase.replace(/\/$/, '')}/v1/audio/speech`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -990,6 +868,13 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 
+// === STT proxy for high-accuracy voice input (hands-free) ===
+// xAI STT is extremely cheap ($0.10/hr batch, $0.20/hr streaming per audio hour).
+// We use the same XAI_API_KEY you already set for chat.
+// Client captures short utterance via MediaRecorder (only on hands-free commits), sends base64.
+// We forward as proper multipart + heavy Bible book/chapter/verse keyterm boosting so
+// "John one", "first John one", "Romans five", "1st Corinthians" etc. transcribe correctly on the first pass.
+// This is the highest-leverage use of cheap STT for this app: better base text → far fewer grounding/ref extraction failures.
 app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
   try {
     const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
@@ -1063,13 +948,8 @@ app.get('/api/admin/users', (req, res) => {
     if (payload.role !== 'admin') throw new Error();
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
-  try {
-    const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, group_name, created_at FROM users ORDER BY created_at DESC').all();
-    res.json(users);
-  } catch (e) {
-    console.error('admin users error:', e);
-    res.status(500).json({ error: 'DB error' });
-  }
+  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, created_at FROM users ORDER BY created_at DESC').all();
+  res.json(users);
 });
 
 app.post('/api/admin/set-access', (req, res) => {
@@ -1079,191 +959,12 @@ app.post('/api/admin/set-access', (req, res) => {
     if (payload.role !== 'admin') throw new Error();
   } catch { return res.status(401).json({ error: 'Admin required' }); }
 
-  try {
-    const email = normalizeEmail(req.body.email);
-    const { access_granted, manual_free, group_name } = req.body;
-    const wantManualFree = !!manual_free;
-    const wantAccess = !!access_granted;
-
-    const params = [wantAccess ? 1 : 0, wantManualFree ? 1 : 0];
-    let sql = `UPDATE users SET access_granted = ?, manual_free = ?`;
-    if (group_name !== undefined) {
-      sql += `, group_name = ?`;
-      params.push(group_name || null);
-    }
-    if (wantManualFree) {
-      sql += `, status = 'active'`;
-    }
-    sql += ` WHERE email = ?`;
-    params.push(email);
-    db.prepare(sql).run(...params);
-    res.json({ success: true });
-  } catch (e) {
-    console.error('admin set-access error:', e);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// Special extended tester / congregation invite (by admin only)
-app.post('/api/admin/create-special-tester', (req, res) => {
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  try {
-    const payload = jwt.verify(adminToken, JWT_SECRET);
-    if (payload.role !== 'admin') throw new Error();
-  } catch { return res.status(401).json({ error: 'Admin required' }); }
-
-  try {
-    const email = normalizeEmail(req.body.email);
-    const days = parseInt(req.body.days) || 30;
-    const groupName = req.body.group_name || null;
-
-    if (!email) return res.status(400).json({ error: 'email required' });
-
-    const trialEnd = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-
-    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) {
-      db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted, group_name)
-        VALUES (?, 'trialing', ?, 1, ?)
-      `).run(email, trialEnd, groupName);
-      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    } else {
-      db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1, group_name = COALESCE(?, group_name)
-        WHERE email = ?
-      `).run(trialEnd, groupName, email);
-    }
-
-    // Send magic link immediately
-    const token = require('crypto').randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
-
-    const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
-    const subject = `Your special access to The Word in Context (${days} days)`;
-    const html = `
-      <p>You've been given special extended access to <strong>The Word in Context</strong>.</p>
-      <p>Your <strong>${days}-day access</strong> is now active. It ends automatically after ${days} days unless extended by the team.</p>
-      <p><a href="${loginUrl}">Log in now</a></p>
-      <p>This link expires in 15 minutes. If you need another, ask the admin.</p>
-      <p><small>Conversations stay in your browser. For congregation/group use as arranged.</small></p>
-    `;
-
-    if (resend) {
-      resend.emails.send({
-        from: process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>',
-        to: email,
-        subject,
-        html
-      }).catch(e => console.error('special tester email error', e));
-    }
-
-    res.json({ success: true, message: `Special ${days}-day access created for ${email} (group: ${groupName || 'none'}). Magic link sent.` });
-  } catch (e) {
-    console.error('admin create-special-tester error:', e);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// Bulk group / church grant
-app.post('/api/admin/bulk-group-grant', (req, res) => {
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  try {
-    const payload = jwt.verify(adminToken, JWT_SECRET);
-    if (payload.role !== 'admin') throw new Error();
-  } catch { return res.status(401).json({ error: 'Admin required' }); }
-
-  try {
-    const { group_name, emails, days } = req.body;
-    if (!group_name || !emails || !Array.isArray(emails)) {
-      return res.status(400).json({ error: 'group_name and emails[] required' });
-    }
-
-    const trialEnd = days ? new Date(Date.now() + parseInt(days) * 24*60*60*1000).toISOString() : null;
-    const status = trialEnd ? 'trialing' : 'active';
-
-    let count = 0;
-    emails.forEach(rawEmail => {
-      const email = normalizeEmail(rawEmail);
-      if (!email) return;
-      let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (!user) {
-        db.prepare(`
-          INSERT INTO users (email, status, trial_end, access_granted, group_name)
-          VALUES (?, ?, ?, 1, ?)
-        `).run(email, status, trialEnd, group_name);
-      } else {
-        db.prepare(`
-          UPDATE users SET status = ?, trial_end = COALESCE(?, trial_end), access_granted = 1, group_name = ?
-          WHERE email = ?
-        `).run(status, trialEnd, group_name, email);
-      }
-      count++;
-    });
-
-    res.json({ success: true, granted: count, group: group_name });
-  } catch (e) {
-    console.error('admin bulk-group-grant error:', e);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-// Send The Word in Context Special (discounted $3/mo retention) offer
-// Uses price_1TgRtD9Hq4iefeFs0WbyW9AD (or STRIPE_RETENTION_PRICE_ID env)
-app.post('/api/admin/send-retention-offer', async (req, res) => {
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  try {
-    const payload = jwt.verify(adminToken, JWT_SECRET);
-    if (payload.role !== 'admin') throw new Error();
-  } catch { return res.status(401).json({ error: 'Admin required' }); }
-
-  try {
-    const email = normalizeEmail(req.body.email);
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user || !user.stripe_customer_id) {
-      return res.status(400).json({ error: 'User has no Stripe customer yet' });
-    }
-
-    // Use the provided Special / Retention price ID (The Word in Context Special - discounted $3/month)
-    const retentionPrice = process.env.STRIPE_RETENTION_PRICE_ID || 'price_1TgRtD9Hq4iefeFs0WbyW9AD';
-    if (!retentionPrice) {
-      return res.status(500).json({ error: 'STRIPE_RETENTION_PRICE_ID not configured in env' });
-    }
-
-    try {
-      // Create a checkout for the cheap retention plan, prefilled for their customer
-      const session = await stripe.checkout.sessions.create({
-        mode: 'subscription',
-        customer: user.stripe_customer_id,
-        line_items: [{ price: retentionPrice, quantity: 1 }],
-        success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/app`,
-        cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
-      });
-
-      const html = `
-        <p>Thanks for using The Word in Context.</p>
-        <p>As a thank you for staying with us, we're offering the <strong>The Word in Context Special</strong> plan — the discounted $3/month rate (normally $4.99).</p>
-        <p><a href="${session.url}">Switch to The Word in Context Special now</a></p>
-        <p>If you have questions, just reply to this email.</p>
-      `;
-      if (resend) {
-        await resend.emails.send({
-          from: process.env.FROM_EMAIL || 'The Word in Context <no-reply@thewordincontext.org>',
-          to: email,
-          subject: 'The Word in Context Special — $3/month retention offer',
-          html
-        });
-      }
-      res.json({ success: true, message: `Retention checkout created and email sent to ${email}.` });
-    } catch (err) {
-      console.error('retention checkout error', err);
-      res.status(500).json({ error: 'Failed to create retention checkout' });
-    }
-  } catch (e) {
-    console.error('admin send-retention-offer error:', e);
-    res.status(500).json({ error: 'DB error' });
-  }
+  const email = normalizeEmail(req.body.email);
+  const { access_granted, manual_free } = req.body;
+  db.prepare(`
+    UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
+  `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+  res.json({ success: true });
 });
 
 // Stripe webhook (for subscription updates)
@@ -1287,9 +988,6 @@ app.post('/api/stripe-webhook', (req, res) => {
     }
   }
 
-  // Optional: on cancel or past_due, you can add extra "The Word in Context Special" email here if desired
-  // (the admin "The Word in Context Special" button also works for manual offers)
-
   if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
     const sub = event.data.object;
     const customerId = sub.customer;
@@ -1309,15 +1007,16 @@ app.post('/api/stripe-webhook', (req, res) => {
   res.json({ received: true });
 });
 
-// Simple success page after Stripe Checkout - immediately redirects user into the app
+// Simple success page after Stripe Checkout
 app.get('/success', (req, res) => {
   res.send(`
-    <html><head><title>Success - The Word in Context</title><meta http-equiv="refresh" content="1;url=/app"></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
+    <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
-    <p>Your ${TRIAL_DAYS}-day trial (or subscription) is now active. Redirecting you into the app...</p>
-    <p>You can log in immediately using the password you chose on the landing page, or check your email for a secure magic login link (sent when you started checkout).</p>
-    <p>If not redirected, <a href="/app">click here to open the App</a>.</p>
+    <p>Your ${TRIAL_DAYS}-day trial has started (or subscription activated).</p>
+    <p>Check your email for a secure login link.</p>
+    <p><a href="/app">Open the App</a> (log in with the link we emailed you)</p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
+    <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
     </body></html>
   `);
 });
@@ -1372,17 +1071,7 @@ app.post('/api/chat', (req, res, next) => {
         console.warn('[demo] throttle hit for', ip);
         return res.status(429).json({ error: 'Too many demo requests from this IP. Please try the full trial.' });
       }
-      const demoCheck = checkAndIncrementDemoResponses(ip);
-      if (!demoCheck || !demoCheck.allowed) {
-        console.warn('[demo] hard response limit reached for', ip);
-        return res.status(429).json({ 
-          error: 'Demo limit reached for today. Please create a free account for full access.',
-          demoRemaining: 0 
-        });
-      }
       console.log('[demo] limited demo chat request (client should enforce small response cap)');
-      // Attach remaining so client can show accurate banner even after refresh
-      req.demoRemaining = demoCheck.remaining;
     }
     const { messages } = req.body;
     // NASB is the default (technical fallback is eng_lsv = Literal Standard Version, a modern NASB 2020-style literal).
@@ -1705,11 +1394,7 @@ app.post('/api/chat', (req, res, next) => {
       }
     }
 
-    const response = { reply, sources };
-    if (req.demo && typeof req.demoRemaining === 'number') {
-      response.demoRemaining = req.demoRemaining;
-    }
-    res.json(response);
+    res.json({ reply, sources });
   } catch (err) {
     console.error('xAI proxy error:', err);
     let status = err.status || 500;
@@ -1723,33 +1408,25 @@ app.post('/api/chat', (req, res, next) => {
   }
 });
 
-// === Voices are purely client-side browser system voices (window.speechSynthesis) ===
-// No server-managed voice list. loadVoices() + synth.getVoices() in the browser shows every installed
-// system voice on Mac and iPhone (including every premium/enhanced the user has downloaded).
-// No xAI TTS / Grok voices are used for speech output.
+// === Voices list via managed key (so users without personal key can still pick nice voices)
+// /api/voices kept minimal (no managed premium voice list needed; xAI voices are known: Ara, Eve, Leo, Rex, Sal etc.).
+// Premium is xAI TTS via the same XAI_API_KEY when the client sends provider or when no TTS_SERVER_URL is configured.
+// Legacy TTS_SERVER_URL (edge-tts compatible) remains supported for optional free hosted neural (manual speak only).
 
 // Health check
 app.get('/api/health', (req, res) => {
-  let dbInfo = { dbPath, isPersistent: dbPath.includes('/data'), userCount: -1, error: null };
-  try {
-    const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-    dbInfo.userCount = count;
-  } catch (e) {
-    dbInfo.error = e.message;
-  }
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
-    hasHostedTTS: !!process.env.TTS_SERVER_URL,
-    hasSTT: !!process.env.XAI_API_KEY,
-    hasTTSKey: false,
-    ttsVoices: 'browser-only (window.speechSynthesis)',
-    model: 'grok-4.3',
-    db: dbInfo
+    hasHostedTTS: !!process.env.TTS_SERVER_URL, // legacy/old hosted; premium now uses xAI TTS by default (same key)
+    hasSTT: !!process.env.XAI_API_KEY,   // same key as chat; extremely cheap for voice input transcription
+    hasTTSKey: false, // 11Labs fully removed; premium voices now use xAI (XAI_API_KEY) or optional TTS_SERVER_URL legacy hosted
+    model: 'grok-4.3'
   });
 });
 
 // Quick way to see what models your xAI key has access to (chat models mainly).
+// For audio/voice (TTS/STT/Voice Agent) the models are on separate endpoints or specified differently — see x.ai docs or console.x.ai.
 app.get('/api/models', async (req, res) => {
   try {
     const list = await xai.models.list();
@@ -1759,19 +1436,11 @@ app.get('/api/models', async (req, res) => {
   }
 });
 
-// Global error handler to ensure responses are always sent (prevents 502s from unhandled errors in routes)
-app.use((err, req, res, next) => {
-  console.error('Unhandled route error:', err);
-  if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used for chat + STT proxy only)`);
-  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
+  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
+  console.log(`   Legacy hosted TTS (TTS_SERVER_URL): ${process.env.TTS_SERVER_URL ? process.env.TTS_SERVER_URL : 'not set (premium now uses xAI TTS via your XAI_API_KEY)'}`);
   console.log(`   STT available (same XAI key, $0.10–0.20 per audio hour): ${process.env.XAI_API_KEY ? 'yes — will use for high-accuracy hands-free input' : 'no'}`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
