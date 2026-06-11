@@ -1170,6 +1170,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Voice settings - cleaned up persistence
     let selectedVoice = null;
+    let hasWokenSpeechEngine = false; // for Mac: we do a low-volume wake speak on first user-initiated speech to unlock full voices + speaking
     let voiceSettings = {
       voiceSource: localStorage.getItem('voice_source') || 'local', // default local for zero cost
       voiceId: (localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '')
@@ -1376,6 +1377,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Prime the speech synthesis engine immediately (Mac requires recent getVoices() + gesture context for non-default voices to work reliably)
       try { synth.getVoices(); } catch (e) {}
 
+      // Mac fix: on first user-initiated speak (reply 🔊 or test), do a very quiet wake utterance from the gesture
+      // to activate the speech engine and make non-default/premium voices speak reliably.
+      if (!hasWokenSpeechEngine) {
+        try {
+          const wake = new SpeechSynthesisUtterance(' ');
+          wake.volume = 0.01;
+          wake.rate = 2;
+          synth.speak(wake);
+          // cancel quickly so it doesn't audibly speak
+          setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 80);
+        } catch(e) {}
+        hasWokenSpeechEngine = true;
+      }
+
       // Always use fast local system voices. We no longer support cloud/XAI voices
       // because good local neural voices (especially after installing via Piper etc.) sound better
       // and have zero lag.
@@ -1544,9 +1559,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       if (synth.speaking) synth.cancel();
-      setTimeout(() => {
-        try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
-      }, 0);
+      try { synth.speak(currentUtterance); } catch (e) { console.error(e); }
     }
 
     function stopSpeaking() {
@@ -1815,9 +1828,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // Stop anything currently speaking
       if (synth.speaking) synth.cancel();
 
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { console.error(e); }
-      }, 0);
+      try { synth.speak(utterance); } catch (e) { console.error(e); }
 
       // After speaking, re-load voices (helps iOS show more after first use)
       setTimeout(() => {
@@ -1923,9 +1934,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           utterance.onerror = (ev) => { console.error('[TTS preview] error:', ev && ev.error); };
 
           if (synth.speaking) synth.cancel();
-          setTimeout(() => {
-            try { synth.speak(utterance); } catch (e) { console.error(e); }
-          }, 0);
+          try { synth.speak(utterance); } catch (e) { console.error(e); }
 
           // After speaking, re-load voices (helps iOS show more after first use)
           setTimeout(() => {
@@ -2882,13 +2891,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // for streaming improved transcription shown to the user. This uses the best available
           // model for accuracy on scripture references (far better than raw browser STT on names/numbers).
           // The user sees the accurate text updating live and can correct by speaking clearly.
-          if (handsFreeEnabled) {
+          if (handsFreeEnabled && serverHasSTT) {
             startAudioCaptureForCurrentUtterance().catch(() => {});
             // Show the live (server-improved) transcript container
             const liveContainer = document.getElementById('live-transcript-container');
             if (liveContainer) liveContainer.style.display = 'block';
             const liveEl = document.getElementById('live-transcript');
             if (liveEl) liveEl.textContent = 'Listening...';
+          } else if (handsFreeEnabled) {
+            // pure browser mode: still show simple listening indicator if desired, but no server STT
+            const liveContainer = document.getElementById('live-transcript-container');
+            if (liveContainer) liveContainer.style.display = 'none';
           }
         } catch (e) {
           startingRecognition = false;

@@ -921,7 +921,7 @@ app.get('/api/config', (req, res) => {
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
-    hasSTT: !!process.env.XAI_API_KEY
+    hasSTT: false  // xAI STT endpoint unavailable (404); using browser SpeechRecognition fallback only
   });
 });
 
@@ -990,88 +990,12 @@ app.post('/api/tts', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 
-// === STT proxy for high-accuracy voice input (hands-free) ===
-// xAI STT (when available) for better Bible ref accuracy. Falls back gracefully to browser SpeechRecognition.
-// If the xAI transcription endpoint returns 404/4xx (not enabled for the key, path change, etc.) we treat
-// STT as unavailable for the lifetime of the process and stop spamming logs / upstream calls.
-// STT runtime flags (module scope)
-let sttPermanentlyUnavailable = false;
-let sttErrorLogged = false;
-
+// === STT disabled ===
+// xAI /audio/transcriptions returns 404 for this key/setup. We never call it.
+// All hands-free uses the browser's native SpeechRecognition (wake word "John", interim results, barge-in, final text).
+// This stops all 404 errors and keeps input working.
 app.post('/api/stt', express.json({ limit: '10mb' }), async (req, res) => {
-  try {
-    if (sttPermanentlyUnavailable) {
-      // Client should already be using browser fallback; just return empty so it doesn't retry hard.
-      return res.json({ text: '', fallback: true });
-    }
-
-    const { audio, mime = 'audio/webm', language = 'en' } = req.body || {};
-    if (!audio) return res.status(400).json({ error: 'audio (base64) is required' });
-
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) {
-      sttPermanentlyUnavailable = true;
-      return res.status(503).json({ error: 'STT not configured on server' });
-    }
-
-    const audioBuffer = Buffer.from(audio, 'base64');
-
-    // Skip very short live chunks (common in hands-free streaming) to avoid unnecessary upstream calls.
-    if (audioBuffer.length < 3000) {
-      return res.json({ text: '' });
-    }
-
-    const form = new FormData();
-    const blob = new Blob([audioBuffer], { type: mime });
-    const ext = mime.includes('webm') ? 'webm' : (mime.includes('wav') ? 'wav' : 'mp3');
-    form.append('file', blob, `utterance.${ext}`);
-    form.append('language', language);
-
-    const biblePrompt = 'Transcribe Bible references accurately. Prefer exact matches for: John, 1 John, 2 John, 3 John, Romans, Romans 5, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, Jude, Revelation, chapter, verse, one, two, three, four, five, six, first, second, third, Gospel of John, book of Romans, John 3:16, Romans chapter 5. Use numbers for chapters and verses. Avoid extra words like "cell".';
-    form.append('prompt', biblePrompt);
-    form.append('language', language);
-    form.append('model', 'whisper-1');
-
-    const upstream = await fetch('https://api.x.ai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: form
-    });
-
-    if (!upstream.ok) {
-      const errText = await upstream.text();
-      // 404 means the transcription resource is not available for this key / the endpoint path may have changed.
-      // 4xx generally means "this feature isn't enabled or the request is invalid for the service".
-      // Treat as permanent fallback so we stop hammering the upstream and spamming logs.
-      if (upstream.status === 404 || (upstream.status >= 400 && upstream.status < 500)) {
-        if (!sttErrorLogged) {
-          console.warn('[STT] xAI transcription endpoint unavailable (404/4xx). Using browser SpeechRecognition fallback for hands-free. Error:', upstream.status);
-          sttErrorLogged = true;
-        }
-        sttPermanentlyUnavailable = true;
-        return res.status(503).json({ error: 'STT unavailable on this server key', fallback: true });
-      }
-
-      // 5xx / 502 etc. — transient, log once, let client circuit-breaker handle.
-      if (!sttErrorLogged) {
-        console.warn('[STT] upstream error (transient):', upstream.status);
-        sttErrorLogged = true;
-      }
-      const outStatus = upstream.status >= 500 ? 502 : upstream.status;
-      return res.status(outStatus).json({ error: 'STT failed', detail: errText, fallback: true });
-    }
-
-    const data = await upstream.json();
-    const text = (data.text || data.transcript || (typeof data === 'string' ? data : '') || '').trim();
-    res.json({ text, raw: data });
-  } catch (e) {
-    if (!sttErrorLogged) {
-      console.warn('[STT] proxy error (falling back to browser STT):', e && e.message);
-      sttErrorLogged = true;
-    }
-    // Signal to client that proxy is not usable right now.
-    res.status(503).json({ error: 'STT proxy failed', fallback: true });
-  }
+  return res.json({ text: '', fallback: true, disabled: true });
 });
 
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
@@ -1766,7 +1690,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
     hasHostedTTS: !!process.env.TTS_SERVER_URL,
-    hasSTT: !!process.env.XAI_API_KEY,
+    hasSTT: false,  // xAI transcription disabled (404s); browser SpeechRecognition only
     hasTTSKey: false,
     ttsVoices: 'browser-only (window.speechSynthesis)',
     model: 'grok-4.3',
@@ -1797,6 +1721,6 @@ app.listen(PORT, () => {
   console.log(`   → http://localhost:${PORT}`);
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used for chat + STT proxy only)`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices`);
-  console.log(`   STT: ${sttPermanentlyUnavailable ? 'xAI transcription unavailable for this key (browser SpeechRecognition fallback active)' : (process.env.XAI_API_KEY ? 'xAI (when working) + browser fallback' : 'browser SpeechRecognition only')}`);
+  console.log(`   STT: browser SpeechRecognition only (xAI transcription endpoint disabled - no 404 calls)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
