@@ -1254,138 +1254,35 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voices = synth.getVoices();
       voiceSelect.innerHTML = '';
 
-      // Keep ALL voices in non-English languages (users may want Spanish, French, German, Japanese, etc.).
-      // For English voices only: keep the good/enhanced/premium ones (Google voices, Enhanced, Samantha, Daniel, etc.).
-      // This removes the old low-quality English Mac voices (Karen, Alex, Bruce, Fred, etc.) while preserving full language variety.
-      const isEnglishVoice = (v) => {
-        const lang = (v.lang || '').toLowerCase();
-        const name = v.name.toLowerCase();
-        return lang.startsWith('en') || name.includes('english') || name.includes(' en-') || name.includes(' en ');
-      };
-      const goodEnglishKeywords = ['enhanced', 'google', 'samantha', 'daniel', 'victoria', 'oliver', 'serena'];
-      let voicesToShow = voices.filter(v => {
-        if (!isEnglishVoice(v)) return true; // keep every non-English voice
-        const n = v.name.toLowerCase();
-        if (n.includes('karen') || n.includes('allison')) return false; // user dislikes Karen and Allison as defaults
-        return goodEnglishKeywords.some(kw => n.includes(kw));
-      });
-      if (voicesToShow.length === 0) voicesToShow = voices; // safety fallback
-
-      // Sort for better user experience:
-      // - Good English voices first, with "Google UK English Male" on top, then other Google UK, Enhanced, etc.
-      // - Then non-English voices in alphabetical order by name.
-      // This avoids pure alphabetical mess and puts quality English defaults first while keeping all other languages.
-      voicesToShow.sort((a, b) => {
-        const na = a.name.toLowerCase();
-        const nb = b.name.toLowerCase();
-        const aIsEng = isEnglishVoice(a);
-        const bIsEng = isEnglishVoice(b);
-
-        if (aIsEng && bIsEng) {
-          // Prioritize Google UK English Male
-          const aUKMale = na.includes('google uk english male') ? 0 : (na.includes('google') && na.includes('uk') ? 1 : 2);
-          const bUKMale = nb.includes('google uk english male') ? 0 : (nb.includes('google') && nb.includes('uk') ? 1 : 2);
-          if (aUKMale !== bUKMale) return aUKMale - bUKMale;
-
-          // Other Google UK
-          const aGoogleUK = (na.includes('google') && na.includes('uk')) ? 0 : 1;
-          const bGoogleUK = (nb.includes('google') && nb.includes('uk')) ? 0 : 1;
-          if (aGoogleUK !== bGoogleUK) return aGoogleUK - bGoogleUK;
-
-          // Enhanced
-          const aEnh = na.includes('enhanced') ? 0 : 1;
-          const bEnh = nb.includes('enhanced') ? 0 : 1;
-          if (aEnh !== bEnh) return aEnh - bEnh;
-
-          // Then other good English keywords
-          const aGood = goodEnglishKeywords.some(kw => na.includes(kw)) ? 0 : 1;
-          const bGood = goodEnglishKeywords.some(kw => nb.includes(kw)) ? 0 : 1;
-          if (aGood !== bGood) return aGood - bGood;
-
-          // Alpha for rest of English
-          return na.localeCompare(nb);
-        } else if (aIsEng && !bIsEng) {
-          return -1; // English before non-English
-        } else if (!aIsEng && bIsEng) {
-          return 1;
-        } else {
-          // Both non-English: alphabetical by name
-          return na.localeCompare(nb);
-        }
-      });
-
-      // Add local voices
-      voicesToShow.forEach(voice => {
+      // Simple, clean population of ALL system voices reported by the browser.
+      // No filters, no sorting by "premium", no English-only logic, no hiding of voices.
+      // This makes the dropdown naturally show every installed system voice on any OS/browser
+      // (Mac, Windows, iOS, Chrome, Safari, etc.) exactly as getVoices() provides them.
+      voices.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = formatVoiceName(voice.name) + " (System)";
+        option.textContent = voice.name;
         voiceSelect.appendChild(option);
 
-        if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
+        if (voiceSettings.voiceId === voice.name) {
           option.selected = true;
           selectedVoice = voice;
         }
       });
 
-      // Add ElevenLabs voices (async) — only if user opted into premium (for cost control) OR provided their own key (they pay directly).
-      // This is the main lever for making a low-monthly-fee subscription viable: premium off by default = zero TTS spend.
-      // Also require serverHasManagedTTS (from health) so we don't show options or burn when owner has no ELEVENLABS_API_KEY configured.
-      // Force load even if !premium if a ElevenLabs voice was previously saved, so the selection doesn't visually revert.
-      let shouldLoadEleven = (premiumVoicesEnabled && serverHasManagedTTS) || !!elevenLabsApiKey;
-      if (!shouldLoadEleven && voiceSettings.voiceSource === 'elevenlabs' && voiceSettings.voiceId) {
-        shouldLoadEleven = true;
-      }
-      if (shouldLoadEleven) {
-        const voicesUrl = elevenLabsApiKey
-          ? 'https://api.elevenlabs.io/v1/voices'
-          : '/api/voices';
-        const voicesHeaders = elevenLabsApiKey
-          ? { 'xi-api-key': elevenLabsApiKey }
-          : {};
-        fetch(voicesUrl, { headers: voicesHeaders })
-          .then(r => r.json())
-          .then(data => {
-            const voices = data?.voices || data; // proxy returns {voices: [...] } or direct
-            if (Array.isArray(voices)) {
-              elevenLabsVoices = voices;
-              voices.forEach(v => {
-                const option = document.createElement('option');
-                option.value = `elevenlabs:${v.voice_id}`;
-                option.textContent = `${v.name} (ElevenLabs)`;
-                voiceSelect.appendChild(option);
-              });
-              // Re-apply saved selection now that ElevenLabs options exist
-              applySavedVoiceSelection();
-            }
-          })
-          .catch((e) => {
-            console.error('Failed to load ElevenLabs voices list:', e);
-          });
-      }
-
-      // Fallback default selection if nothing was restored
-      if (!voiceSelect.value && voicesToShow.length > 0) {
-        // Strongly prefer Google UK English Male (user-requested high quality default).
-        // Then other Google UK, Enhanced, Samantha, Daniel.
-        const preferred = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male')) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-                          voicesToShow.find(v => v.name.includes("Enhanced")) ||
-                          voicesToShow.find(v => v.name.includes('Samantha')) ||
-                          voicesToShow.find(v => v.name.includes('Daniel'));
-        let defaultVoice = preferred;
-        if (!defaultVoice) {
-          // Prefer any remaining English voice (after sort, this will be the best one like Google UK)
-          defaultVoice = voicesToShow.find(v => isEnglishVoice(v)) || voicesToShow[0];
+      // Simple fallback default if no saved selection
+      if (!voiceSelect.value && voices.length > 0) {
+        // Prefer a commonly nice English voice if present, otherwise just the first reported.
+        const preferred = voices.find(v => v.name.toLowerCase().includes('google uk english male')) ||
+                          voices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
+                          voices[0];
+        if (preferred) {
+          voiceSelect.value = `local:${preferred.name}`;
+          voiceSettings.voiceId = preferred.name;
+          selectedVoice = preferred;
+          localStorage.setItem('voice_id', preferred.name);
+          localStorage.setItem('voice_source', 'local');
         }
-        const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
-        if (defaultOption) defaultOption.selected = true;
-
-        selectedVoice = defaultVoice;
-        voiceSettings.voiceId = defaultVoice.name;
-        voiceSettings.voiceSource = 'local';
-
-        // Force the select to the preferred value (helps with timing/order issues in some browsers)
-        voiceSelect.value = `local:${defaultVoice.name}`;
       }
     }
 
