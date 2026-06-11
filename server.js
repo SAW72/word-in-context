@@ -326,6 +326,19 @@ async function fetchBiblePassage(reference, translation = 'eng_lsv') {
 
 app.use(express.json({ limit: '50mb' }));
 
+// Graceful handling for large payloads (e.g. long hands-free audio for STT) so we don't crash the request
+// and the client can fall back to browser transcript.
+app.use((err, req, res, next) => {
+  if (err.status === 413 || err.type === 'entity.too.large' || err.message && err.message.includes('too large')) {
+    console.warn('[body-parser] Payload too large for', req.url, '- returning empty for STT or error for others');
+    if (req.url && req.url.includes('/api/stt')) {
+      return res.status(413).json({ text: '', fallback: true, error: 'payload too large' });
+    }
+    return res.status(413).json({ error: 'Payload too large' });
+  }
+  next(err);
+});
+
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
 
