@@ -1276,6 +1276,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
+    // One-time engine wake helper. Some browsers (esp. Chrome on macOS) require at least one
+    // synthesis call that originates from a direct user gesture before non-default voices
+    // or later async calls will produce audio. We do an inaudible prime utterance + cancel.
+    // This is called from speak(), voice testers, HF enable, and the Voice button.
+    let __ttsWoken = false;
+    function wakeSpeechEngine() {
+      if (__ttsWoken) return;
+      __ttsWoken = true;
+      try {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0.001;
+        synth.speak(u);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 40);
+      } catch (e) {}
+    }
+
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
     let lastSpokenText = '';
     let currentTranscript = '';
@@ -1366,6 +1382,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function speak(text, voiceNoteEl = null) {
       text = cleanTextForSpeech(text);
+      wakeSpeechEngine();   // ensure browser TTS is unlocked for this session (first call must be gesture-driven)
       stopSpeaking();
 
       // Make sure we're not listening while the AI is speaking its reply.
@@ -1728,6 +1745,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
+      wakeSpeechEngine();
       // Prime (Mac)
       try { synth.getVoices(); } catch(e){}
 
@@ -1841,6 +1859,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         testBtn.title = 'Test this voice with John 3:16';
         testBtn.onclick = (e) => {
           e.stopImmediatePropagation();
+          wakeSpeechEngine();
           // Re-resolve fresh voice object right before speaking (Mac/iOS voices can go stale)
           try { synth.getVoices(); } catch(e){}
           const freshVoice = findLocalVoiceById(voice.name) || voice;
@@ -1908,6 +1927,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           selectedVoice = voice;
         }
       });
+
+      // If a previously saved voiceId no longer exists in this browser's getVoices() list
+      // (e.g. old injected "Ava (Premium)" name from before the clean restore), drop it so we pick a real current system voice.
+      if (voiceSettings.voiceId) {
+        const stillThere = Array.from(voiceSelect.options).some(o => o.value === `local:${voiceSettings.voiceId}`);
+        if (!stillThere) {
+          voiceSettings.voiceId = '';
+          localStorage.removeItem('voice_id');
+        }
+      }
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
@@ -3304,13 +3333,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     stopBtn.addEventListener("click", stopSpeaking);
     voiceBtn.addEventListener('click', () => {
-      // Extra wake on iPhone before opening modal (user gesture helps unlock voices)
-      try {
-        const u = new SpeechSynthesisUtterance(' ');
-        u.volume = 0.001;
-        synth.speak(u);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch(e){} }, 50);
-      } catch(e) {}
+      wakeSpeechEngine();
       openVoiceSettings();
     });
 
@@ -3697,6 +3720,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         micBtn.style.background = '#c9a227';
         micBtn.style.color = 'white';
         micBtn.title = "Click to interrupt (Hands-free active)";
+        wakeSpeechEngine();
         if (!isListening) scheduleHandsFreeRestart(400);
       } else {
         continuousMode = false;
@@ -4188,6 +4212,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         micBtn.style.background = '#c9a227';
         micBtn.style.color = 'white';
         micBtn.title = "Click to interrupt (Hands-free active)";
+        wakeSpeechEngine();
         scheduleHandsFreeRestart(800);
       }
 
