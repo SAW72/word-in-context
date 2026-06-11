@@ -3532,7 +3532,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     updateHandsFreeLabel();
 
     // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
-    const userInput = document.getElementById('user-input');
     const chatCont = document.querySelector('.chat-container');
     if (userInput && chatCont) {
       const toggleMobileKeyboardClass = () => {
