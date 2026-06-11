@@ -945,7 +945,8 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'}`);
-  console.log(`   ElevenLabs (managed TTS for subs): ${process.env.ELEVENLABS_API_KEY ? 'yes (owner pays for included quota)' : 'NO — add ELEVENLABS_API_KEY to .env for premium voices in low-fee plans'}`);
+  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used only for chat/LLM answers)`);
+  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
+  console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
 });
