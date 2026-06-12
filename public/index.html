@@ -2036,11 +2036,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const voices = synth.getVoices();
         selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || findLocalVoiceById(voiceSettings.voiceId) || null;
       } else {
-        // The saved voice isn't in the list yet (getVoices is still populating).
-        // Just show the first one in the UI for now, but do NOT overwrite the saved voiceId.
-        // A later call to loadVoices / applySaved (or onvoiceschanged) will pick it when it appears.
+        // The saved voice isn't in the list yet (getVoices is still populating lazily on Mac).
+        // Do NOT overwrite the saved voiceId. Just show the first option in UI for now.
+        // Schedule another attempt soon.
         const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstLocal) firstLocal.selected = true;
+        setTimeout(applySavedVoiceSelection, 500);
       }
 
       // Populate the independent preview list with per-voice speaker test buttons
@@ -2065,6 +2066,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       const voices = synth.getVoices();
       if (voices.length === 0) synth.onvoiceschanged = loadVoices;
+
+      // Whenever voices update (lazy load on Mac), repopulate and try to restore the saved selection.
+      const origOnVoices = synth.onvoiceschanged;
+      synth.onvoiceschanged = () => {
+        loadVoices();
+        setTimeout(applySavedVoiceSelection, 100);
+        if (origOnVoices) origOnVoices();
+      };
 
       // Populate the per-voice preview list with speaker buttons
       setTimeout(populateVoicePreviews, 100);
@@ -2144,13 +2153,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       loadVoices();
 
-      // Ensure the saved local voice is selected in the dropdown
+      // Ensure the saved local voice is selected in the dropdown.
+      // Multiple attempts to catch lazy getVoices() population on Mac.
       setTimeout(() => {
         applySavedVoiceSelection();
       }, 80);
       setTimeout(() => {
         applySavedVoiceSelection();
       }, 300);
+      setTimeout(() => {
+        applySavedVoiceSelection();
+      }, 1200);
+      setTimeout(() => {
+        applySavedVoiceSelection();
+      }, 2500);
 
       rateSlider.value = voiceSettings.rate;
       pitchSlider.value = voiceSettings.pitch;
