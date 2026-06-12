@@ -107,7 +107,7 @@ const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew
 CORE COMMITMENTS — never violate these:
 
 Translation Policy
-Use only the NASB 2020 by default. Quote exclusively from NASB 2020, ESV, LSB, NKJV, Berean Standard Bible, or Young's Literal Translation. Never quote or recommend the NIV, NLT, or The Message. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew or Greek.
+Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below, quote that exact wording verbatim and cite the translation named in that block. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew or Greek.
 
 Strict Context Rule
 Answer strictly from what the biblical text explicitly says. Interpret Scripture only with Scripture. Never use any information, history, or context that comes from outside the biblical text itself.
@@ -122,7 +122,7 @@ Original Languages
 Use Hebrew or Greek words only when the user specifically asks for word study. Never speak or pronounce Hebrew or Greek words aloud unless requested.
 
 Citations
-Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the NASB 2020." Mention the original language source only once per response, such as "in the Hebrew text."
+Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the Berean Standard Bible." Mention the original language source only once per response, such as "in the Hebrew text."
 
 Tone and Boundaries
 Stay humble, reverent, and strictly evidence-based. Use phrases like "the text indicates..." or "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond the text.
@@ -834,8 +834,9 @@ app.post('/api/chat', (req, res, next) => {
     }
 
     // User-selected default English translation from Voice Settings (client sends defaultTranslation).
-    const ALLOWED_ENGLISH_TRANS = new Set(['eng_lsv', 'BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
-    const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'eng_lsv';
+    // Only translations actually available on bible.helloao.org (no NASB/ESV/NKJV there).
+    const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
+    const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'BSB';
 
     // === Improved scripture grounding: scan recent conversation for references ===
     // We pull live from the public Bible API (https://bible.helloao.org) so the model
@@ -859,7 +860,6 @@ app.post('/api/chat', (req, res, next) => {
 
     // Translation display names for citations and UI
     const transDisplayNames = {
-      'eng_lsv': 'NASB 2020',
       'BSB': 'Berean Standard Bible',
       'eng_asv': 'American Standard Version (ASV)',
       'eng_ylt': "Young's Literal Translation (YLT)",
@@ -913,7 +913,7 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nUse only the above literal text(s) as your source(s). Answer strictly from what these texts explicitly say — interpret Scripture only with Scripture. For English quotations, cite "${englishTransDisplay}" unless the user asked for another allowed literal translation. Mention the original language source only once per response when relevant.`;
+      }).join('') + `\n\nUse only the above literal text(s) as your source(s). Quote English verses verbatim from the [ACCURATE BIBLE TEXT] blocks — do not substitute NASB, ESV, NKJV, or any wording from memory. Answer strictly from what these texts explicitly say — interpret Scripture only with Scripture. For English quotations, cite "${englishTransDisplay}" unless the user asked for another helloao.org translation (BSB, ASV, YLT, WEB). Mention the original language source only once per response when relevant.`;
     }
 
     // Build the messages for xAI
