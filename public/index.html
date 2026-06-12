@@ -1411,15 +1411,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         voiceSettings.voiceSource = 'local';
         localStorage.setItem('voice_source', 'local');
       }
-      if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-        voiceSettings.voiceId = 'Google UK English Male';
-        localStorage.setItem('voice_id', voiceSettings.voiceId);
-      }
-      if (voiceSettings.voiceId && isNumericVoiceName(voiceSettings.voiceId)) {
-        console.log('[TTS] speak() saw numeric saved voice ' + voiceSettings.voiceId + ' — resetting to Google UK English Male');
-        voiceSettings.voiceId = 'Google UK English Male';
-        localStorage.setItem('voice_id', voiceSettings.voiceId);
-      }
       // Re-resolve the selected voice object right now so fallbackToBrowserSpeech uses the
       // user's chosen local voice (e.g. the English male from the dropdown).
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
@@ -1493,96 +1484,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // No xAI / cloud / hosted TTS voices are used. speak() always resolves to fallbackToBrowserSpeech.
 
     function fallbackToBrowserSpeech(text) {
-      // Clean markdown/symbols so TTS reads naturally (no asterisks, hashes, etc. spoken)
       text = cleanTextForSpeech(text);
       currentUtterance = new SpeechSynthesisUtterance(text);
       lastSpokenText = text;
       currentUtterance.rate = voiceSettings.rate || 0.95;
       currentUtterance.pitch = voiceSettings.pitch || 1.0;
-
-      // Prime the speech engine (critical for Mac — getVoices right before use helps return valid live objects)
-      try { synth.getVoices(); } catch (e) {}
-
-      // Always get a fresh list at the start so numeric-override and fallbacks can use it reliably
-      // even if we matched a saved (possibly numeric) voiceId via findLocalVoiceById.
-      const freshVoices = synth.getVoices();
-
-      // Always prefer the explicitly chosen local voice from settings/dropdown first.
-      // This fixes cases where selectedVoice is stale (e.g. Karen fallback) even though
-      // the dropdown and voiceSettings say "Google UK English Male".
-      let usedVoice = null;
-      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-        usedVoice = findLocalVoiceById(voiceSettings.voiceId);
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
-        }
-      }
-
-      if (!usedVoice) {
-        // Always re-fetch fresh voices and use robust normalized match (fixes stale objects on Mac/iOS)
-        const normId = normalizeVoiceName(voiceSettings.voiceId || '');
-        usedVoice = freshVoices.find(v => normalizeVoiceName(v.name) === normId) ||
-                    freshVoices.find(v => v.name.toLowerCase() === (voiceSettings.voiceId || '').toLowerCase()) ||
-                    freshVoices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
-
-        if (usedVoice) {
-          currentUtterance.voice = usedVoice;
-          selectedVoice = usedVoice;
-        } else if (selectedVoice && selectedVoice.voiceURI) {
-          // Fallback to previously resolved object (still better than nothing)
-          currentUtterance.voice = selectedVoice;
-        } else {
-          // Last resort: pick a reasonable English voice
-          const fallback = freshVoices.find(v =>
-            v.name.toLowerCase().includes('google uk english male') ||
-            (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && v.name.toLowerCase().includes('english') && v.name.toLowerCase().includes('male')) ||
-            v.name.includes('Samantha') ||
-            v.name.includes('Daniel') || v.name.includes('Serena') ||
-            (v.lang && v.lang.includes('en') && v.localService)
-          ) || freshVoices.find(v => v.lang && v.lang.includes('en'));
-
-          if (fallback) {
-            currentUtterance.voice = fallback;
-            selectedVoice = fallback;
-          }
-        }
-      }
-
-      // Make sure we have a live voice object and set volume + lang explicitly (helps some Mac configs)
-      let finalVoice = currentUtterance.voice || usedVoice || selectedVoice;
-
-      // For normal chat replies (this path), avoid pure numeric internal voices (e.g. "1079").
-      // They are real but frequently produce no audio on Mac + Chrome via Web Speech.
-      // Numeric voices are still available in the Voice Settings list and tester for manual discovery.
-      // If we landed on one, override with a good named English voice or let the browser default.
-      if (finalVoice && isNumericVoiceName(finalVoice.name)) {
-        console.log('[TTS] numeric voice', finalVoice.name, 'detected for main speak — overriding to a named voice for reliability');
-        const better = freshVoices.find(v =>
-          (v.name.toLowerCase().includes('google uk english male') ||
-           (v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk')) ||
-           v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena') ||
-           v.name.includes('Alex') || v.name.includes('Karen') || v.name.includes('Moira')) &&
-          !isNumericVoiceName(v.name)
-        ) || freshVoices.find(v => v.lang && v.lang.includes('en') && !isNumericVoiceName(v.name)) ||
-           freshVoices.find(v => !isNumericVoiceName(v.name));
-
-        if (better) {
-          currentUtterance.voice = better;
-          selectedVoice = better;
-          finalVoice = better;
-        } else {
-          // Last resort: speak with no forced voice so the browser picks its current default (often works)
-          currentUtterance.voice = null;
-          finalVoice = null;
-        }
-      }
-
       currentUtterance.volume = 1.0;
-      if (finalVoice && finalVoice.lang) {
-        currentUtterance.lang = finalVoice.lang;
+
+      let voiceId = voiceSettings.voiceId;
+      const voiceModalEl = document.getElementById('voice-modal');
+      const voiceSelectEl = document.getElementById('voice-select');
+      if (voiceModalEl && voiceModalEl.style.display === 'flex' && voiceSelectEl && voiceSelectEl.value && voiceSelectEl.value.startsWith('local:')) {
+        voiceId = voiceSelectEl.value.replace('local:', '');
+      }
+
+      let usedVoice = voiceId ? findLocalVoiceById(voiceId) : null;
+      if (!usedVoice && selectedVoice) usedVoice = selectedVoice;
+
+      if (usedVoice) {
+        currentUtterance.voice = usedVoice;
+        currentUtterance.lang = usedVoice.lang || 'en-US';
+        selectedVoice = usedVoice;
       } else {
-        // Safe default lang helps some setups
         currentUtterance.lang = 'en-US';
       }
 
@@ -1627,11 +1550,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             if (reMatch) {
               currentUtterance.voice = reMatch;
             }
-          }
-
-          const spokenVoiceName = (currentUtterance.voice && currentUtterance.voice.name) || 'default';
-          if (isNumericVoiceName(spokenVoiceName)) {
-            console.log('[TTS] note: numeric internal voice', spokenVoiceName);
           }
 
           setTimeout(() => {
@@ -1730,10 +1648,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
         .replace(/\s*\(System\)/gi, '')
         .trim();
-    }
-
-    function isNumericVoiceName(name) {
-      return /^\d+$/.test(String(name || '').trim());
     }
 
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
@@ -1848,12 +1762,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         try { synth.speak(utterance); } catch (e) { console.error(e); }
       }, 60);
 
-      // After speaking, re-load voices (helps iOS show more after first use)
-      setTimeout(() => {
-        try { synth.getVoices(); } catch(e){}
-        loadVoices();
-        populateVoicePreviews();
-      }, 1500);
     }
 
     // Populate a separate preview list with speaker buttons so user can test ANY voice
@@ -1957,12 +1865,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             try { synth.speak(utterance); } catch (e) { console.error(e); }
           }, 60);
 
-          // After speaking, re-load voices (helps iOS show more after first use)
-          setTimeout(() => {
-            try { synth.getVoices(); } catch(e){}
-            loadVoices();
-            populateVoicePreviews();
-          }, 1500);
         };
 
         // Layout: [label] [edit] [test]
@@ -1977,45 +1879,43 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect) return;
 
-      // Multiple kicks help newly installed voices (Piper, premium Mac voices) appear.
-      let voices = synth.getVoices();
-      if (voices.length < 5) {
-        // Try again shortly — macOS sometimes populates lazily
-        setTimeout(() => {
-          voices = synth.getVoices();
-          if (voiceSelect.options.length < 3) loadVoices();
-        }, 400);
-      }
+      const voices = synth.getVoices();
+      if (!voices || voices.length === 0) return;
+
+      const voiceModal = document.getElementById('voice-modal');
+      const modalOpen = voiceModal && voiceModal.style.display === 'flex';
+      const preserveValue = modalOpen ? voiceSelect.value : '';
+
       voiceSelect.innerHTML = '';
 
-      // Show ALL voices with no filters (the state before premium voice filter attempts that broke Mac).
-      // This includes every system voice on Mac and iPhone.
-      let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
-      if (voicesToShow.length === 0) voicesToShow = voices;
-
-      // Just populate the list in the exact order the browser / OS gives us via getVoices().
-      // No custom "best voice" logic, no overwriting the user's saved choice.
-      // Let the list populate naturally.
-      voicesToShow.forEach(voice => {
+      voices.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
         option.textContent = getDisplayVoiceName(voice.name);
         voiceSelect.appendChild(option);
       });
 
-      // If we have a saved voice, try to select it if it is currently present in the list.
-      // Do not clear the saved value or force any default here.
-      if (voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-        const target = `local:${voiceSettings.voiceId}`;
-        let opt = Array.from(voiceSelect.options).find(o => o.value === target);
-        if (!opt) {
+      const options = Array.from(voiceSelect.options);
+      const optionValues = new Set(options.map(o => o.value));
+      let pickValue = '';
+
+      // While the modal is open, never clobber the user's in-progress dropdown pick.
+      if (preserveValue && optionValues.has(preserveValue)) {
+        pickValue = preserveValue;
+      } else if (voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+        const exact = `local:${voiceSettings.voiceId}`;
+        if (optionValues.has(exact)) {
+          pickValue = exact;
+        } else {
           const normSaved = normalizeVoiceName(voiceSettings.voiceId);
-          opt = Array.from(voiceSelect.options).find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
+          const match = options.find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
+          if (match) pickValue = match.value;
         }
-        if (opt) {
-          opt.selected = true;
-          selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
-        }
+      }
+
+      if (pickValue) {
+        voiceSelect.value = pickValue;
+        selectedVoice = findLocalVoiceById(pickValue.replace('local:', ''));
       }
     }
 
@@ -2024,28 +1924,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const voiceSelect = document.getElementById('voice-select');
       if (!voiceSelect || !voiceSettings.voiceId) return;
 
+      if (voiceSelect.options.length === 0) {
+        setTimeout(applySavedVoiceSelection, 500);
+        return;
+      }
+
       const targetValue = `local:${voiceSettings.voiceId}`;
       let option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
       if (!option) {
-        // robust normalized fallback
         const normSaved = normalizeVoiceName(voiceSettings.voiceId);
         option = Array.from(voiceSelect.options).find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
       }
       if (option) {
-        option.selected = true;
-        const voices = synth.getVoices();
-        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || findLocalVoiceById(voiceSettings.voiceId) || null;
+        voiceSelect.value = option.value;
+        selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
       } else {
-        // The saved voice isn't in the list yet (getVoices is still populating lazily on Mac).
-        // Do NOT overwrite the saved voiceId. Just show the first option in UI for now.
-        // Schedule another attempt soon.
-        const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
-        if (firstLocal) firstLocal.selected = true;
+        // Voices still loading — retry without forcing the first/top voice (Lee, UK Male, etc.)
         setTimeout(applySavedVoiceSelection, 500);
       }
-
-      // Populate the independent preview list with per-voice speaker test buttons
-      setTimeout(populateVoicePreviews, 30);
     }
 
     function openVoiceSettings() {
@@ -2057,25 +1953,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const rateValue = document.getElementById('rate-value');
       const pitchValue = document.getElementById('pitch-value');
 
-      // Basic reloads for voices (the state before aggressive iPhone premium wake logic)
+      voiceModal.style.display = 'flex';
+
       loadVoices();
-      setTimeout(loadVoices, 300);
-      setTimeout(loadVoices, 800);
-      setTimeout(populateVoicePreviews, 200);
-      setTimeout(populateVoicePreviews, 800);
-
-      const voices = synth.getVoices();
-      if (voices.length === 0) synth.onvoiceschanged = loadVoices;
-
-      // Whenever voices update (lazy load on Mac), repopulate and try to restore the saved selection.
-      const origOnVoices = synth.onvoiceschanged;
-      synth.onvoiceschanged = () => {
-        loadVoices();
-        setTimeout(applySavedVoiceSelection, 100);
-        if (origOnVoices) origOnVoices();
-      };
-
-      // Populate the per-voice preview list with speaker buttons
+      setTimeout(loadVoices, 400);
+      setTimeout(applySavedVoiceSelection, 100);
+      setTimeout(applySavedVoiceSelection, 800);
       setTimeout(populateVoicePreviews, 100);
       setTimeout(populateVoicePreviews, 800);
 
@@ -2151,23 +2034,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
-      loadVoices();
-
-      // Ensure the saved local voice is selected in the dropdown.
-      // Multiple attempts to catch lazy getVoices() population on Mac.
-      setTimeout(() => {
-        applySavedVoiceSelection();
-      }, 80);
-      setTimeout(() => {
-        applySavedVoiceSelection();
-      }, 300);
-      setTimeout(() => {
-        applySavedVoiceSelection();
-      }, 1200);
-      setTimeout(() => {
-        applySavedVoiceSelection();
-      }, 2500);
-
       rateSlider.value = voiceSettings.rate;
       pitchSlider.value = voiceSettings.pitch;
       rateValue.textContent = voiceSettings.rate;
@@ -2175,8 +2041,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       rateSlider.oninput = () => rateValue.textContent = rateSlider.value;
       pitchSlider.oninput = () => pitchValue.textContent = pitchSlider.value;
-
-      voiceModal.style.display = 'flex';
     }
 
     function saveVoiceSettings() {
@@ -2483,10 +2347,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if (voiceSettings.voiceSource !== 'local') {
             voiceSettings.voiceSource = 'local';
             localStorage.setItem('voice_source', 'local');
-          }
-          if (!voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-            voiceSettings.voiceId = 'Google UK English Male';
-            localStorage.setItem('voice_id', voiceSettings.voiceId);
           }
           speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
@@ -4332,15 +4192,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       if (voiceSettings.voiceSource !== 'local') {
         voiceSettings.voiceSource = 'local';
         localStorage.setItem('voice_source', 'local');
-      }
-
-      // If a previously saved voiceId is a pure numeric internal Mac voice (e.g. "1079"),
-      // reset it to a reliable named default. This stops the "no sound" problem for normal replies
-      // while still allowing users to manually test numeric voices in the Voice Settings preview list.
-      if (voiceSettings.voiceId && isNumericVoiceName(voiceSettings.voiceId)) {
-        console.log('[TTS] Saved voice was numeric internal (' + voiceSettings.voiceId + ') — resetting to reliable default for chat speech');
-        voiceSettings.voiceId = 'Google UK English Male';
-        localStorage.setItem('voice_id', voiceSettings.voiceId);
       }
 
       // Wire up the Save Settings button (this was missing — that's why nothing was saving!)
