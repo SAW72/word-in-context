@@ -1614,10 +1614,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       if (synth.speaking) synth.cancel();
 
-      // Basic reliable pattern: small delay after cancel + fresh getVoices + assign chosen voice before speak.
-      // (The heavy Chrome-specific workarounds were removed once it was confirmed the root cause was a local
-      // Chrome app restart on the user's Mac, not a code issue. Simple getVoices + onvoiceschanged + proper
-      // prime on gesture + cancel+timeout remains.)
+      // Simple, clean pattern: fresh getVoices + resolve the saved/chosen voice, then
+      // cancel + tiny timeout + speak. Let the browser populate voices naturally.
       setTimeout(() => {
         try {
           try { synth.getVoices(); } catch (e) {}
@@ -1631,29 +1629,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             }
           }
 
-          const spokenVoiceName = (currentUtterance.voice && currentUtterance.voice.name) || 'default (browser)';
+          const spokenVoiceName = (currentUtterance.voice && currentUtterance.voice.name) || 'default';
           if (isNumericVoiceName(spokenVoiceName)) {
-            console.log('[TTS] WARNING: using numeric internal voice', spokenVoiceName, '— this often produces no sound. Pick a named voice (Google/Samantha/etc) in 🔊 Voice Settings.');
-          }
-
-          // Optional voice-specific silent prime (using the target voice) to help activation on some setups,
-          // then speak the text with the chosen voice (or default if none).
-          if (currentUtterance.voice) {
-            const voicePrime = new SpeechSynthesisUtterance(' ');
-            voicePrime.voice = currentUtterance.voice;
-            voicePrime.volume = 0.001;
-            voicePrime.rate = currentUtterance.rate || 0.95;
-            if (currentUtterance.lang) voicePrime.lang = currentUtterance.lang;
-            synth.speak(voicePrime);
+            console.log('[TTS] note: numeric internal voice', spokenVoiceName);
           }
 
           setTimeout(() => {
             try { if (synth.speaking) synth.cancel(); } catch (e) {}
-            console.log('[TTS] speak voice:', spokenVoiceName);
             synth.speak(currentUtterance);
-          }, 50);
+          }, 0);
         } catch (e) { console.error(e); }
-      }, 50);
+      }, 0);
     }
 
     function stopSpeaking() {
@@ -2007,25 +1993,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let voicesToShow = voices.length > 0 ? voices : synth.getVoices();
       if (voicesToShow.length === 0) voicesToShow = voices;
 
-      // Add local voices
+      // Just populate the list in the exact order the browser / OS gives us via getVoices().
+      // No custom "best voice" logic, no overwriting the user's saved choice.
+      // Let the list populate naturally.
       voicesToShow.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
         option.textContent = getDisplayVoiceName(voice.name);
         voiceSelect.appendChild(option);
-
-        if (voiceSettings.voiceSource === 'local' && voice.name === voiceSettings.voiceId) {
-          if (isNumericVoiceName(voice.name)) {
-            // don't auto-select a numeric one from saved; let default picker choose a good named voice
-          } else {
-            option.selected = true;
-            selectedVoice = voice;
-          }
-        }
       });
 
-      // Robust restore of saved selection (use normalized match, not fragile exact name === ).
-      // This prevents loadVoices from clobbering a user's saved choice during population.
+      // If we have a saved voice, try to select it if it is currently present in the list.
+      // Do not clear the saved value or force any default here.
       if (voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
         const target = `local:${voiceSettings.voiceId}`;
         let opt = Array.from(voiceSelect.options).find(o => o.value === target);
@@ -2037,41 +2016,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           opt.selected = true;
           selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
         }
-      }
-
-      // If a previously saved voiceId no longer exists in this browser's getVoices() list
-      // (e.g. old injected "Ava (Premium)" name from before the clean restore), drop it so we pick a real current system voice.
-      if (voiceSettings.voiceId) {
-        const stillThere = Array.from(voiceSelect.options).some(o => o.value === `local:${voiceSettings.voiceId}` || normalizeVoiceName(o.value.replace(/^local:/,'')) === normalizeVoiceName(voiceSettings.voiceId));
-        if (!stillThere) {
-          voiceSettings.voiceId = '';
-          localStorage.removeItem('voice_id');
-        }
-      }
-
-      // Fallback default selection ONLY if there is truly no saved voiceId after robust restore + sanitize.
-      // This stops the dropdown from reverting the user's choice back to the top/UK English default every time settings are opened or voices reloaded.
-      if (!voiceSelect.value && !voiceSettings.voiceId && voicesToShow.length > 0) {
-        // Strongly prefer named, speakable voices. Prefer reliable Mac system voices (Samantha, Daniel, etc.)
-        // over Chrome's "Google" voices (which can be less reliable for synthesis on some Mac setups).
-        // Avoid pure numeric internal voices (e.g. "1079") for the automatic default.
-        // User can still manually select any (including numeric or Google) in the list for testing.
-        let defaultVoice = voicesToShow.find(v => (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Karen') || v.name.includes('Moira') || v.name.includes('Tessa')) && !isNumericVoiceName(v.name)) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male') && !isNumericVoiceName(v.name)) ||
-                          voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && !isNumericVoiceName(v.name)) ||
-                          voicesToShow.find(v => !isNumericVoiceName(v.name)) ||
-                          voicesToShow[0];
-        const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
-        if (defaultOption) defaultOption.selected = true;
-
-        selectedVoice = defaultVoice;
-        voiceSettings.voiceId = defaultVoice.name;
-        voiceSettings.voiceSource = 'local';
-
-        localStorage.setItem('voice_source', 'local');
-        localStorage.setItem('voice_id', defaultVoice.name);
-
-        voiceSelect.value = `local:${defaultVoice.name}`;
       }
     }
 
@@ -2092,11 +2036,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const voices = synth.getVoices();
         selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || findLocalVoiceById(voiceSettings.voiceId) || null;
       } else {
-        // fallback to first local (only if saved one truly not present)
+        // The saved voice isn't in the list yet (getVoices is still populating).
+        // Just show the first one in the UI for now, but do NOT overwrite the saved voiceId.
+        // A later call to loadVoices / applySaved (or onvoiceschanged) will pick it when it appears.
         const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstLocal) firstLocal.selected = true;
-        voiceSettings.voiceSource = 'local';
-        voiceSettings.voiceId = firstLocal ? firstLocal.value.replace('local:', '') : '';
       }
 
       // Populate the independent preview list with per-voice speaker test buttons
