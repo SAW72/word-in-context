@@ -1667,15 +1667,36 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             voicePrime.rate = currentUtterance.rate || 0.95;
             if (currentUtterance.lang) voicePrime.lang = currentUtterance.lang;
             synth.speak(voicePrime);
+
+            // Extra general activation prime, especially helpful for Chrome on macOS.
+            const isChrome = /Chrome/.test(navigator.userAgent);
+            if (isChrome) {
+              try {
+                const extra = new SpeechSynthesisUtterance(' ');
+                extra.volume = 0.01;
+                synth.speak(extra);
+              } catch (e) {}
+            }
+
             setTimeout(() => {
               try { if (synth.speaking) synth.cancel(); } catch (e) {}
-              // For the actual reply text on Mac Chrome, speak with browser default (voice=null).
-              // The prime above has warmed the engine using the user's chosen voice from settings.
-              // This combination gives reliable audio while still respecting the chosen voice for warm-up and testers.
-              currentUtterance.voice = null;
+              // For the actual reply text, use a completely fresh utterance with browser default.
+              // This avoids any stale state from previous voice assignments or the object.
+              // The primes above have activated the engine.
+              const realText = lastSpokenText || currentUtterance.text;
+              const finalUtterance = new SpeechSynthesisUtterance(realText);
+              finalUtterance.rate = currentUtterance.rate || 0.95;
+              finalUtterance.pitch = currentUtterance.pitch || 1.0;
+              finalUtterance.volume = 1.0;
+              finalUtterance.lang = 'en-US';
+              // no .voice for maximum reliability on Chrome/Mac
+
+              finalUtterance.onend = currentUtterance.onend;
+              finalUtterance.onerror = currentUtterance.onerror;
+
               lastSpeakCallTime = Date.now();
               console.log('[TTS] attempting synth.speak for real utterance, voice: browser default (primed with ' + spokenVoiceName + ')');
-              synth.speak(currentUtterance);
+              synth.speak(finalUtterance);
             }, 80);
           } else {
             lastSpeakCallTime = Date.now();
