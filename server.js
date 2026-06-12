@@ -107,13 +107,19 @@ const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew
 CORE COMMITMENTS — never violate these:
 
 Translation Policy
-Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below, quote that exact wording verbatim and cite the translation named in that block. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew or Greek.
+Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below for a specific reference, quote that exact wording verbatim and cite the translation named in that block. For any other passage you discuss, quote from the allowed translations above. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew, Aramaic, or Greek.
+
+Conversation Scope
+Each new user question sets the topic for your reply. You may discuss any Scripture, book, chapter, verse, theme, or topic the user asks about — across the entire Bible, in any allowed English translation and in Greek, Hebrew, or Aramaic where relevant. You are never limited to only the verses in grounding blocks below. If the user previously discussed one passage and now asks a different question (for example, moving from Revelation 21:8 to "healing verses in the Bible"), answer the new question fully and bring in every relevant passage. Grounding blocks are supplementary anchors for specific references, not a cage around the conversation.
+
+Topical Scripture Requests
+When the user asks for scriptures, verses, or passages about a subject or theme (healing, faith, fear, marriage, salvation, etc.), actively identify and present every relevant biblical passage across the Old and New Testaments. Quote or cite each reference, state what that text explicitly says about the subject, and use allowed translations. Never refuse a topical request because no grounding block was fetched for those verses, and never limit yourself to an earlier verse from the same conversation. The user is asking you to find scriptures — bring them.
 
 Strict Context Rule
-Answer strictly from what the biblical text explicitly says. Interpret Scripture only with Scripture. Never use any information, history, or context that comes from outside the biblical text itself.
+Every answer must be grounded in what the biblical text explicitly says. Interpret Scripture only with Scripture. Never use information, history, or context from outside the biblical text itself. "According to Scripture" means all claims must be supported by biblical texts — it does NOT mean you may only discuss verses already shown in grounding blocks below.
 
 No Inferences or Weighing of Passages
-Never compare the number of passages on a topic, never weigh one set of verses against another, and never suggest that frequency of mention implies importance or emphasis. Address only what each specific text explicitly states.
+Never compare the number of passages on a topic, never weigh one set of verses against another, and never suggest that frequency of mention implies importance or emphasis. When the user asks for multiple passages on a theme, you may survey and explain each text on its own merits — but do not rank or count them.
 
 Handling Traditions and Practices
 When asked about any religious practice or tradition, first state exactly what the biblical text explicitly commands or institutes. If the text does not command or institute that practice, the AI may state: "This practice is not commanded in the text."
@@ -838,9 +844,9 @@ app.post('/api/chat', (req, res, next) => {
     const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
     const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'BSB';
 
-    // === Improved scripture grounding: scan recent conversation for references ===
-    // We pull live from the public Bible API (https://bible.helloao.org) so the model
-    // is always grounded in actual literal text rather than relying solely on training data.
+    // === Scripture grounding: fetch live text for refs in the CURRENT question ===
+    // We pull from bible.helloao.org so quoted text is verbatim when available.
+    // Do NOT carry old refs from earlier turns into unrelated new questions.
     function extractRefs(text) {
       if (!text) return [];
       // Matches common Bible refs: "John 3:16", "Galatians 6:1-10", "1 John 1:1", "Ps 23:1" etc.
@@ -849,14 +855,39 @@ app.post('/api/chat', (req, res, next) => {
       return [...new Set(matches.map(m => m.trim()))];
     }
 
-    // Collect refs from the last several messages (user questions + previous AI answers)
-    // so we ground the whole current context, not just the very last user turn.
-    let allRefs = [];
-    const recent = messages.slice(-8);
-    for (const m of recent) {
-      if (m.content) allRefs.push(...extractRefs(m.content));
+    function isFollowUpToPriorPassage(text) {
+      if (!text || typeof text !== 'string') return false;
+      if (extractRefs(text).length > 0) return false;
+      const t = text.toLowerCase().trim();
+      return /\b(that|this|it|those|these|the verse|the passage|same (verse|passage|chapter)|explain (more|further|that)|go deeper|tell me more|elaborate|expand on)\b/.test(t)
+        || /\bwhat about (it|that|verse|this)\b/.test(t);
     }
-    allRefs = [...new Set(allRefs)];
+
+    function isTopicalScriptureRequest(text) {
+      if (!text || typeof text !== 'string') return false;
+      if (extractRefs(text).length > 0) return false;
+      const t = text.toLowerCase();
+      return /\b(verses?|passages?|scriptures?|what does the bible say|bible say about|tell me about|scripture about|passages about|verses about)\b/.test(t)
+        || /\babout\s+(healing|faith|love|fear|peace|marriage|salvation|forgiveness|prayer|wisdom|hope|sin|grace|mercy|judgment|angels|demons|money|work|family|children|death|resurrection)\b/.test(t);
+    }
+
+    const userMessages = messages.filter(m => m.role === 'user');
+    const lastUserContent = userMessages[userMessages.length - 1]?.content || '';
+
+    let allRefs = [...new Set(extractRefs(lastUserContent))];
+
+    // Only pull refs from earlier turns when the user is clearly following up on the same passage.
+    if (allRefs.length === 0 && isFollowUpToPriorPassage(lastUserContent)) {
+      const recent = messages.slice(-6);
+      for (const m of recent) {
+        if (m.content && (m.role === 'user' || m.role === 'assistant')) {
+          allRefs.push(...extractRefs(m.content));
+        }
+      }
+      allRefs = [...new Set(allRefs)];
+    }
+
+    allRefs = allRefs.slice(0, 4);
 
     // Translation display names for citations and UI
     const transDisplayNames = {
@@ -913,7 +944,9 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nUse only the above literal text(s) as your source(s). Quote English verses verbatim from the [ACCURATE BIBLE TEXT] blocks — do not substitute NASB, ESV, NKJV, or any wording from memory. Answer strictly from what these texts explicitly say — interpret Scripture only with Scripture. For English quotations, cite "${englishTransDisplay}" unless the user asked for another helloao.org translation (BSB, ASV, YLT, WEB). Mention the original language source only once per response when relevant.`;
+      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && isFollowUpToPriorPassage(lastUserContent) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible. For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.`;
+    } else if (isTopicalScriptureRequest(lastUserContent)) {
+      bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Search across the whole Bible (Old and New Testaments) and present every relevant passage using allowed translations ("${englishTransDisplay}" by default). Quote or cite each reference and explain what that text explicitly says about the subject. Empty grounding blocks are expected — you are not limited to any earlier verse in this conversation.`;
     }
 
     // Build the messages for xAI
