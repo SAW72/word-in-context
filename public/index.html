@@ -1276,21 +1276,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
-    // One-time engine wake helper. Some browsers (esp. Chrome on macOS) require at least one
-    // synthesis call that originates from a direct user gesture before non-default voices
-    // or later async calls will produce audio. We do an inaudible prime utterance + cancel.
-    // This is called explicitly from speak() etc., and also automatically on the very first
-    // user click/touch anywhere in the app for maximum reliability.
+    // One-time engine wake helper. Some browsers require at least one synthesis call that
+    // originates from a direct user gesture before non-default voices (or later async calls)
+    // will produce audio. We do a very low-volume inaudible prime + cancel.
     let __ttsWoken = false;
     function wakeSpeechEngine() {
       if (__ttsWoken) return;
       __ttsWoken = true;
-      console.log('[TTS] wakeSpeechEngine: priming browser speechSynthesis (first gesture)');
       try {
-        // Some Chrome/Mac setups need getVoices() + a speak in the same gesture to fully activate.
         try { synth.getVoices(); } catch (e) {}
         const u = new SpeechSynthesisUtterance(' ');
-        // If we already have a chosen voice, prime with it (helps the specific voice activate during the gesture).
         if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
           const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
           if (target) u.voice = target;
@@ -1301,10 +1296,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       } catch (e) {}
     }
 
-    // Automatic first-gesture wake. This removes the need to specifically click the Voice button
-    // before any speaker will work. The first time the user clicks or taps anywhere on the page
-    // (send button, input, mic, a message, header, etc.), we prime the speech engine.
-    // Subsequent speaker clicks (even async HF auto-speak) will then produce sound.
+    // Automatic first-gesture wake on any click/touch in the app. This helps ensure the speech
+    // engine is activated early so later (including async) speaks work reliably.
     function setupGlobalTTSWake() {
       const handler = () => wakeSpeechEngine();
       document.addEventListener('click', handler, { once: true });
@@ -1313,7 +1306,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
     let lastSpokenText = '';
-    let lastSpeakCallTime = 0;  // for detecting silent/fast-ending utterances (common on Mac Chrome with some voices)
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
@@ -1595,21 +1587,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       currentUtterance.onend = () => {
-        const speakDuration = (lastSpeakCallTime ? Date.now() - lastSpeakCallTime : 0);
         currentUtterance = null;
-        if (speakDuration > 0 && speakDuration < 250 && lastSpokenText && lastSpokenText.length > 10) {
-          console.warn('[TTS] Utterance ended very quickly (' + speakDuration + 'ms) for long text — likely silent (no audio). Auto-retrying with browser default voice (no forced .voice) for reliability.');
-          try {
-            if (synth.speaking) synth.cancel();
-            const retry = new SpeechSynthesisUtterance(lastSpokenText);
-            retry.volume = 1.0;
-            retry.rate = voiceSettings.rate || 0.95;
-            retry.pitch = voiceSettings.pitch || 1.0;
-            retry.lang = 'en-US';
-            synth.speak(retry);
-          } catch (e) {}
-          return;
-        }
         if (handsFreeEnabled && !isListening) {
           // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
           scheduleHandsFreeRestart(1200);
@@ -1636,15 +1614,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       if (synth.speaking) synth.cancel();
 
-      // Slightly longer delay after cancel + fresh getVoices right before speak is more reliable on Mac Chrome.
-      // For delayed (async) speaks after the initial gesture, do a tiny voice-specific silent prime using the
-      // exact target voice object right before the real text. This warms up the chosen voice for cases where
-      // a general wake + later assigned-voice speak produces no audio on Mac Chrome.
+      // Basic reliable pattern: small delay after cancel + fresh getVoices + assign chosen voice before speak.
+      // (The heavy Chrome-specific workarounds were removed once it was confirmed the root cause was a local
+      // Chrome app restart on the user's Mac, not a code issue. Simple getVoices + onvoiceschanged + proper
+      // prime on gesture + cancel+timeout remains.)
       setTimeout(() => {
         try {
-          // Re-prime and re-resolve the voice object at the absolute last moment.
           try { synth.getVoices(); } catch (e) {}
-          if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId && !currentUtterance.voice) {
+          if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
             const lastFresh = synth.getVoices();
             const norm = normalizeVoiceName(voiceSettings.voiceId);
             const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm) ||
@@ -1659,56 +1636,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             console.log('[TTS] WARNING: using numeric internal voice', spokenVoiceName, '— this often produces no sound. Pick a named voice (Google/Samantha/etc) in 🔊 Voice Settings.');
           }
 
+          // Optional voice-specific silent prime (using the target voice) to help activation on some setups,
+          // then speak the text with the chosen voice (or default if none).
           if (currentUtterance.voice) {
-            // Voice-specific silent prime using the exact same voice object (helps delayed speaks on Mac Chrome).
             const voicePrime = new SpeechSynthesisUtterance(' ');
             voicePrime.voice = currentUtterance.voice;
             voicePrime.volume = 0.001;
             voicePrime.rate = currentUtterance.rate || 0.95;
             if (currentUtterance.lang) voicePrime.lang = currentUtterance.lang;
             synth.speak(voicePrime);
-
-            // Extra general activation prime, especially helpful for Chrome on macOS.
-            const isChrome = /Chrome/.test(navigator.userAgent);
-            if (isChrome) {
-              try {
-                const extra = new SpeechSynthesisUtterance(' ');
-                extra.volume = 0.01;
-                synth.speak(extra);
-              } catch (e) {}
-            }
-
-            setTimeout(() => {
-              try { if (synth.speaking) synth.cancel(); } catch (e) {}
-              // For the actual reply text, use a completely fresh utterance.
-              // Assign the user's chosen voice (after the heavy priming above).
-              // The primes (voice-specific + extra general on Chrome) activate the engine so the assignment works.
-              const realText = lastSpokenText || currentUtterance.text;
-              const finalUtterance = new SpeechSynthesisUtterance(realText);
-              finalUtterance.rate = currentUtterance.rate || 0.95;
-              finalUtterance.pitch = currentUtterance.pitch || 1.0;
-              finalUtterance.volume = 1.0;
-              finalUtterance.lang = 'en-US';
-
-              const targetVoice = currentUtterance.voice;
-              if (targetVoice) {
-                finalUtterance.voice = targetVoice;
-              }
-
-              finalUtterance.onend = currentUtterance.onend;
-              finalUtterance.onerror = currentUtterance.onerror;
-
-              lastSpeakCallTime = Date.now();
-              console.log('[TTS] attempting synth.speak for real utterance, voice: ' + (targetVoice ? targetVoice.name : 'browser default') + ' (after priming)');
-              synth.speak(finalUtterance);
-            }, 80);
-          } else {
-            lastSpeakCallTime = Date.now();
-            console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
-            synth.speak(currentUtterance);
           }
+
+          setTimeout(() => {
+            try { if (synth.speaking) synth.cancel(); } catch (e) {}
+            console.log('[TTS] speak voice:', spokenVoiceName);
+            synth.speak(currentUtterance);
+          }, 50);
         } catch (e) { console.error(e); }
-      }, 60);
+      }, 50);
     }
 
     function stopSpeaking() {
