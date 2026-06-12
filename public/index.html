@@ -1669,8 +1669,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             synth.speak(voicePrime);
             setTimeout(() => {
               try { if (synth.speaking) synth.cancel(); } catch (e) {}
+              // For the actual reply text on Mac Chrome, speak with browser default (voice=null).
+              // The prime above has warmed the engine using the user's chosen voice from settings.
+              // This combination gives reliable audio while still respecting the chosen voice for warm-up and testers.
+              currentUtterance.voice = null;
               lastSpeakCallTime = Date.now();
-              console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
+              console.log('[TTS] attempting synth.speak for real utterance, voice: browser default (primed with ' + spokenVoiceName + ')');
               synth.speak(currentUtterance);
             }, 80);
           } else {
