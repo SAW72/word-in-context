@@ -296,13 +296,27 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
   }
 }
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '50mb' }));
+
+// === STT: permanently disabled (pure browser SpeechRecognition fallback) ===
+// HF (wake "John"), barge-in, live interim, and final transcript all use webkitSpeechRecognition.
+app.post('/api/stt', express.json({ limit: '100mb' }), (req, res) => {
+  return res.json({ text: '', fallback: true, disabled: true });
+});
+
+// 413 catcher so huge audio payloads don't spam logs; client falls back to browser SR.
+app.use((err, req, res, next) => {
+  if (err && (err.status === 413 || err.type === 'entity.too.large' || (err.message || '').toLowerCase().includes('too large'))) {
+    if (req.path === '/api/stt') {
+      return res.status(413).json({ text: '', fallback: true, error: 'payload too large' });
+    }
+    return res.status(413).json({ error: 'payload too large' });
+  }
+  next(err);
+});
 
 // Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
 app.set('trust proxy', 1);
-
-// Raw body for Stripe webhook
-app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 
 // Auth middleware
 function requireAuth(req, res, next) {
@@ -652,7 +666,19 @@ app.get('/api/config', (req, res) => {
   res.json({
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
-    testerTrialDays: TESTER_TRIAL_DAYS
+    testerTrialDays: TESTER_TRIAL_DAYS,
+    hasSTT: false
+  });
+});
+
+// === TTS: browser built-in system voices only (window.speechSynthesis) ===
+app.get('/api/debug/tts', (req, res) => {
+  res.json({ disabled: true, note: 'All speech output uses browser system voices via window.speechSynthesis only.' });
+});
+
+app.post('/api/tts', (req, res) => {
+  return res.status(400).json({
+    error: 'Server TTS disabled. This app uses only your device\'s built-in system voices (window.speechSynthesis).'
   });
 });
 
@@ -919,77 +945,12 @@ app.post('/api/chat', (req, res, next) => {
   }
 });
 
-// === Voices list via managed key (so users without personal key can still pick nice voices)
-app.get('/api/voices', async (req, res) => {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'managed voices not configured' });
-  try {
-    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': apiKey }
-    });
-    if (!r.ok) return res.status(r.status).send(await r.text());
-    const data = await r.json();
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: 'failed to list voices' });
-  }
-});
-
-// === TTS proxy using server-side ElevenLabs key (for low-cost subscription "managed voices") ===
-// Users without a personal key (or who want included quota) use this.
-// Cost is borne by the app/subscription fee. Add auth/rate-limiting per user later.
-// IMPORTANT for low monthly fee viability: hard cap + cheapest model + log usage so owner can monitor burn.
-app.post('/api/tts', express.json({ limit: '256kb' }), async (req, res) => {
-  try {
-    const { text, voiceId = 'XrExE9yKIg1WjnnlVkGX' } = req.body || {};
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      return res.status(400).json({ error: 'text is required' });
-    }
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Server not configured with ELEVENLABS_API_KEY for managed voices' });
-    }
-    // Hard safety cap for (any) TTS via proxy. For user-provided keys, this is less critical but still protects.
-    // Increased to allow longer complete responses with EL voices (~1-2 min speech possible).
-    // Manual full speak from UI uses direct if key, but proxy path caps here.
-    const safeText = text.slice(0, 2000);
-    const model = 'eleven_turbo_v2_5'; // cheapest low-latency good quality model (Flash equiv)
-    console.log(`[TTS managed] ${safeText.length} chars (capped), voice:${voiceId}, model:${model} — owner cost`);
-
-    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: safeText,
-        model_id: model,
-        voice_settings: { stability: 0.55, similarity_boost: 0.8 }
-      })
-    });
-    if (!r.ok) {
-      const errText = await r.text().catch(() => '');
-      console.error('[TTS managed] upstream error:', r.status, errText.slice(0, 200));
-      return res.status(r.status).send(errText || 'TTS generation failed');
-    }
-    res.setHeader('Content-Type', r.headers.get('content-type') || 'audio/mpeg');
-    res.setHeader('X-TTS-Chars-Used', String(safeText.length)); // for future client metering UI
-    // Stream the audio back (no buffering whole file in memory)
-    r.body.pipe(res);
-  } catch (e) {
-    console.error('TTS proxy error:', e);
-    res.status(500).json({ error: 'TTS proxy failed' });
-  }
-});
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
-    hasTTSKey: !!process.env.ELEVENLABS_API_KEY,
+    hasSTT: false,
     model: 'grok-4.3'
   });
 });
