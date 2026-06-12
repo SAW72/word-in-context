@@ -820,7 +820,7 @@ app.post('/api/chat', (req, res, next) => {
       }
       console.log('[demo] limited demo chat request (client should enforce small response cap)');
     }
-    const { messages } = req.body;
+    const { messages, defaultTranslation } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array required' });
@@ -829,6 +829,10 @@ app.post('/api/chat', (req, res, next) => {
     if (!process.env.XAI_API_KEY) {
       return res.status(500).json({ error: 'Server not configured with XAI_API_KEY' });
     }
+
+    // User-selected default English translation from Voice Settings (client sends defaultTranslation).
+    const ALLOWED_ENGLISH_TRANS = new Set(['eng_lsv', 'BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
+    const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'eng_lsv';
 
     // === Improved scripture grounding: scan recent conversation for references ===
     // We pull live from the public Bible API (https://bible.helloao.org) so the model
@@ -852,7 +856,11 @@ app.post('/api/chat', (req, res, next) => {
 
     // Translation display names for citations and UI
     const transDisplayNames = {
+      'eng_lsv': 'NASB (Literal Standard Version)',
       'BSB': 'Berean Standard Bible',
+      'eng_asv': 'American Standard Version (ASV)',
+      'eng_ylt': "Young's Literal Translation (YLT)",
+      'ENGWEBP': 'World English Bible (WEB)',
       'grc_sbl': 'SBL Greek New Testament',
       'hbo_wlc': 'Westminster Leningrad Codex (Hebrew OT)',
       'heb_wlc': 'Westminster Leningrad Codex (Hebrew)',
@@ -869,11 +877,21 @@ app.post('/api/chat', (req, res, next) => {
       return t || 'Unknown';
     }
 
+    const englishTransDisplay = getDisplayTrans(englishTrans);
+    const userTransPref = `\n\nUSER PREFERENCE: The user has selected "${englishTransDisplay}" as their default English translation. For all English scripture quotations and citations, use and cite this translation by name unless the user explicitly asks for a different one.`;
+
+    async function fetchEnglishPassage(ref) {
+      let passage = await fetchBiblePassage(ref, englishTrans);
+      if (!passage && englishTrans !== 'BSB') {
+        passage = await fetchBiblePassage(ref, 'BSB');
+      }
+      return passage;
+    }
+
     const fetchedPassages = [];
     for (const ref of allRefs.slice(0, 4)) { // cap refs, will fetch originals too
-      // Always fetch the English literal (BSB)
-      const bsb = await fetchBiblePassage(ref, 'BSB');
-      if (bsb) fetchedPassages.push(bsb);
+      const english = await fetchEnglishPassage(ref);
+      if (english) fetchedPassages.push(english);
 
       // Also fetch main original language text for Greek NT or Hebrew OT
       // The API will return null for incompatible (e.g. Hebrew trans on NT book)
@@ -892,12 +910,12 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + '\n\nUse the above literal text(s) — including original Greek (SBLGNT etc.) and Hebrew (WLC) when provided — as your primary source(s). For any verse or phrase discussed, explicitly cite the translation/source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").';
+      }).join('') + `\n\nUse the above literal text(s) — including original Greek (SBLGNT etc.) and Hebrew (WLC) when provided — as your primary source(s). For English quotations, prefer "${englishTransDisplay}" (the user's default). For any verse or phrase discussed, explicitly cite the translation/source.`;
     }
 
     // Build the messages for xAI
     const apiMessages = [
-      { role: 'system', content: SYSTEM_PROMPT + bibleContext },
+      { role: 'system', content: SYSTEM_PROMPT + userTransPref + bibleContext },
       ...messages.filter(m => m.role !== 'system')
     ];
 
@@ -915,8 +933,8 @@ app.post('/api/chat', (req, res, next) => {
     const replyRefs = extractRefs(reply);
     for (const ref of replyRefs) {
       if (!allRefs.includes(ref)) {
-        const bsb = await fetchBiblePassage(ref, 'BSB');
-        if (bsb) fetchedPassages.push(bsb);
+        const english = await fetchEnglishPassage(ref);
+        if (english) fetchedPassages.push(english);
         const grc = await fetchBiblePassage(ref, 'grc_sbl');
         if (grc) fetchedPassages.push(grc);
         const heb = await fetchBiblePassage(ref, 'hbo_wlc');
