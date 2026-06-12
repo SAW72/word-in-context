@@ -768,7 +768,7 @@
            Shown during hands-free listening so user can see the improved text as they speak
            and correct if needed (e.g. by speaking clearly or rephrasing). -->
       <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
-        <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Live transcription (improved for Bible accuracy):</div>
+        <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
         <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
       </div>
 
@@ -2385,25 +2385,24 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       recognition.lang = "en-US";
 
       recognition.onresult = (event) => {
-        // With interimResults=true and continuous=true, we get progressive results.
-        // Use the latest transcript (interim or final) to capture full sentences without cutting off.
-        const result = event.results[event.results.length - 1];
-        let transcript = result[0].transcript.trim();
-        transcript = normalizeBibleTranscript(transcript);  // fix common STT errors for Bible refs like "1 John 4"
-        const confidence = result[0].confidence || 0;
-        const isFinal = result.isFinal;
+        // Build the full utterance from ALL result segments (not just the last one).
+        // Using only results[length-1] made the live captions show a fragment instead of what you said.
+        const transcript = buildTranscriptFromResults(event);
+        const lastResult = event.results[event.results.length - 1];
+        const confidence = (lastResult && lastResult[0].confidence) || 0;
+        const isFinal = lastResult && lastResult.isFinal;
 
-        currentTranscript = transcript;  // for non-handsfree stop handlers etc.
+        currentTranscript = transcript;
 
-        // Update live display with fast browser interim (will be corrected by server STT when chunks arrive)
+        // Live captions: show exactly what the browser heard (no Bible normalization on display).
         if (handsFreeEnabled) {
-          updateLiveTranscript(currentTranscript);
+          updateLiveTranscript(transcript);
         }
 
         if (handsFreeEnabled) {
           const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
           const hasWake = containsWakeWord(transcript);
-          const cmd = hasWake ? getCommandAfterWake(transcript) : '';
+          const cmd = hasWake ? stripWakeWordPrefix(transcript) : '';
 
           if (hasWake) {
             // Strong interrupt: if the wake word is heard while the AI is speaking,
@@ -2492,14 +2491,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                 return;
               }
 
-              const thisCmd = cmd || transcript;
-              if (pendingTranscript && pendingTranscript.length > 0) {
-                if (thisCmd.length > pendingTranscript.length * 0.6) {
-                  pendingTranscript = pendingTranscript + ' ' + thisCmd;
-                } else {
-                  pendingTranscript = thisCmd;
-                }
-              } else {
+              const thisCmd = cmd || stripWakeWordPrefix(transcript) || transcript;
+              if (thisCmd && (!pendingTranscript || thisCmd.length >= pendingTranscript.length)) {
                 pendingTranscript = thisCmd;
               }
               lastTranscriptConfidence = confidence;
@@ -2530,12 +2523,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // and this utterance has no "John" in it but is within the window.
           const recentlyWoke = Date.now() < wakeWordActiveUntil;
           if (recentlyWoke) {
-            // Continuation after hearing the name earlier: append to build full command
-            // (later segments often don't repeat "John" in the current transcript)
-            if (pendingTranscript && pendingTranscript.length > 0) {
-              pendingTranscript = pendingTranscript + ' ' + transcript;
-            } else {
-              pendingTranscript = transcript;
+            // Continuation after hearing the name earlier — use the latest full transcript,
+            // not a fragment append (buildTranscriptFromResults already has the full utterance).
+            const continuation = stripWakeWordPrefix(transcript) || transcript.trim();
+            if (continuation && (!pendingTranscript || continuation.length >= pendingTranscript.length)) {
+              pendingTranscript = continuation;
             }
             lastTranscriptConfidence = confidence;
             wakeWordActiveUntil = Date.now() + 9000; // extend window while user is speaking
@@ -2568,9 +2560,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (isFinal) {
           stopListeningUI();
           if (transcript && transcript.length > 1) {
-            const t = normalizeBibleTranscript(transcript);
             currentTranscript = '';
-            sendToGrok(t);
+            sendToGrok(normalizeBibleTranscript(transcript));
           }
         }
       };
@@ -2713,9 +2704,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             const liveEl = document.getElementById('live-transcript');
             if (liveEl) liveEl.textContent = 'Listening...';
           } else if (handsFreeEnabled) {
-            // pure browser mode: still show simple listening indicator if desired, but no server STT
             const liveContainer = document.getElementById('live-transcript-container');
-            if (liveContainer) liveContainer.style.display = 'none';
+            if (liveContainer) liveContainer.style.display = 'block';
+            const liveEl = document.getElementById('live-transcript');
+            if (liveEl) liveEl.textContent = 'Listening...';
           }
         } catch (e) {
           startingRecognition = false;
@@ -2922,7 +2914,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return getCurrentWakePhrases().some(phrase => t.includes(phrase));
     }
 
-    function getCommandAfterWake(fullText) {
+    // Strip the wake word prefix only — used for live captions / pending accumulation (no rewriting).
+    function stripWakeWordPrefix(fullText) {
       if (!fullText) return '';
       const lower = fullText.toLowerCase();
       let startIdx = -1;
@@ -2939,14 +2932,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       if (startIdx === -1) return '';
 
-      let remainder = fullText.substring(startIdx + wakeLen).trim();
+      return fullText.substring(startIdx + wakeLen).replace(/^[\s,.;:!?]+/, '').trim();
+    }
+
+    function buildTranscriptFromResults(event) {
+      if (!event || !event.results) return '';
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      return transcript.trim();
+    }
+
+    function getCommandAfterWake(fullText) {
+      let remainder = stripWakeWordPrefix(fullText);
+      if (!remainder) return '';
 
       // Strip common leading filler words/punctuation so "[name], let's talk about..."
       // becomes "let's talk about..."
-      remainder = remainder.replace(/^[\s,.;:!?]+/, '').trim();
       remainder = remainder.replace(/^(hey|ok|okay|please|now|um|uh|so|well|lets|let us|can you|could you|would you|go ahead|talk about|tell me about)\s+/i, '').trim();
 
-      // Re-normalize the extracted command to catch Bible refs like "John one" that may have been after the wake word.
+      // Bible ref normalization only when committing to Grok — not on live captions.
       remainder = normalizeBibleTranscript(remainder).trim();
 
       return remainder;
@@ -3180,9 +3186,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // === Wake-word gated commit ===
-      // Prefer the live server-improved transcription (from the visible box) over the raw browser finalText.
-      // This ensures the AI receives the accurate boosted transcript, not the often-inaccurate browser one.
-      textForCommit = currentTranscript || textForCommit;
+      // Prefer the accumulated pending text (built from raw browser SR) over a partial live caption.
+      textForCommit = (finalText && finalText.trim()) || currentTranscript || textForCommit;
       textForCommit = normalizeBibleTranscript(textForCommit);
       let cmd = getCommandAfterWake(textForCommit);
       const recentlyWoke = Date.now() < wakeWordActiveUntil;
