@@ -1313,6 +1313,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
     let lastSpokenText = '';
+    let lastSpeakCallTime = 0;  // for detecting silent/fast-ending utterances (common on Mac Chrome with some voices)
     let currentTranscript = '';
     let lastTranscriptConfidence = 0;
     let autoSpeakEnabled = localStorage.getItem('auto_speak_enabled') !== 'false'; // default true (with short text)
@@ -1594,7 +1595,21 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       currentUtterance.onend = () => {
+        const speakDuration = (lastSpeakCallTime ? Date.now() - lastSpeakCallTime : 0);
         currentUtterance = null;
+        if (speakDuration > 0 && speakDuration < 250 && lastSpokenText && lastSpokenText.length > 10) {
+          console.warn('[TTS] Utterance ended very quickly (' + speakDuration + 'ms) for long text — likely silent (no audio). Auto-retrying with browser default voice (no forced .voice) for reliability.');
+          try {
+            if (synth.speaking) synth.cancel();
+            const retry = new SpeechSynthesisUtterance(lastSpokenText);
+            retry.volume = 1.0;
+            retry.rate = voiceSettings.rate || 0.95;
+            retry.pitch = voiceSettings.pitch || 1.0;
+            retry.lang = 'en-US';
+            synth.speak(retry);
+          } catch (e) {}
+          return;
+        }
         if (handsFreeEnabled && !isListening) {
           // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
           scheduleHandsFreeRestart(1200);
@@ -1654,10 +1669,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             synth.speak(voicePrime);
             setTimeout(() => {
               try { if (synth.speaking) synth.cancel(); } catch (e) {}
+              lastSpeakCallTime = Date.now();
               console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
               synth.speak(currentUtterance);
             }, 80);
           } else {
+            lastSpeakCallTime = Date.now();
             console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
             synth.speak(currentUtterance);
           }
