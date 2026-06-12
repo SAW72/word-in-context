@@ -2079,20 +2079,36 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       });
 
+      // Robust restore of saved selection (use normalized match, not fragile exact name === ).
+      // This prevents loadVoices from clobbering a user's saved choice during population.
+      if (voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
+        const target = `local:${voiceSettings.voiceId}`;
+        let opt = Array.from(voiceSelect.options).find(o => o.value === target);
+        if (!opt) {
+          const normSaved = normalizeVoiceName(voiceSettings.voiceId);
+          opt = Array.from(voiceSelect.options).find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
+        }
+        if (opt) {
+          opt.selected = true;
+          selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
+        }
+      }
+
       // If a previously saved voiceId no longer exists in this browser's getVoices() list
       // (e.g. old injected "Ava (Premium)" name from before the clean restore), drop it so we pick a real current system voice.
       if (voiceSettings.voiceId) {
-        const stillThere = Array.from(voiceSelect.options).some(o => o.value === `local:${voiceSettings.voiceId}`);
+        const stillThere = Array.from(voiceSelect.options).some(o => o.value === `local:${voiceSettings.voiceId}` || normalizeVoiceName(o.value.replace(/^local:/,'')) === normalizeVoiceName(voiceSettings.voiceId));
         if (!stillThere) {
           voiceSettings.voiceId = '';
           localStorage.removeItem('voice_id');
         }
       }
 
-      // Fallback default selection if nothing was restored
-      if (!voiceSelect.value && voicesToShow.length > 0) {
+      // Fallback default selection ONLY if there is truly no saved voiceId after robust restore + sanitize.
+      // This stops the dropdown from reverting the user's choice back to the top/UK English default every time settings are opened or voices reloaded.
+      if (!voiceSelect.value && !voiceSettings.voiceId && voicesToShow.length > 0) {
         // Strongly prefer named, speakable voices. Prefer reliable Mac system voices (Samantha, Daniel, etc.)
-        // over Chrome's "Google" voices (which can be flakier for synthesis on some Mac setups).
+        // over Chrome's "Google" voices (which can be less reliable for synthesis on some Mac setups).
         // Avoid pure numeric internal voices (e.g. "1079") for the automatic default.
         // User can still manually select any (including numeric or Google) in the list for testing.
         let defaultVoice = voicesToShow.find(v => (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Karen') || v.name.includes('Moira') || v.name.includes('Tessa')) && !isNumericVoiceName(v.name)) ||
@@ -2120,13 +2136,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (!voiceSelect || !voiceSettings.voiceId) return;
 
       const targetValue = `local:${voiceSettings.voiceId}`;
-      const option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
+      let option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
+      if (!option) {
+        // robust normalized fallback
+        const normSaved = normalizeVoiceName(voiceSettings.voiceId);
+        option = Array.from(voiceSelect.options).find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
+      }
       if (option) {
         option.selected = true;
         const voices = synth.getVoices();
-        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || null;
+        selectedVoice = voices.find(v => v.name === voiceSettings.voiceId) || findLocalVoiceById(voiceSettings.voiceId) || null;
       } else {
-        // fallback to first local
+        // fallback to first local (only if saved one truly not present)
         const firstLocal = Array.from(voiceSelect.options).find(o => o.value.startsWith('local:'));
         if (firstLocal) firstLocal.selected = true;
         voiceSettings.voiceSource = 'local';
