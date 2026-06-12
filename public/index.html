@@ -2062,12 +2062,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       // Fallback default selection if nothing was restored
       if (!voiceSelect.value && voicesToShow.length > 0) {
-        // Strongly prefer named, speakable voices. Avoid pure numeric internal voices (e.g. "1079")
-        // for the automatic default — they often produce no sound through Web Speech on Mac Chrome.
-        // User can still manually select a numeric one in the list for testing.
-        let defaultVoice = voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male') && !isNumericVoiceName(v.name)) ||
+        // Strongly prefer named, speakable voices. Prefer reliable Mac system voices (Samantha, Daniel, etc.)
+        // over Chrome's "Google" voices (which can be flakier for synthesis on some Mac setups).
+        // Avoid pure numeric internal voices (e.g. "1079") for the automatic default.
+        // User can still manually select any (including numeric or Google) in the list for testing.
+        let defaultVoice = voicesToShow.find(v => (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Karen') || v.name.includes('Moira') || v.name.includes('Tessa')) && !isNumericVoiceName(v.name)) ||
+                          voicesToShow.find(v => v.name.toLowerCase().includes('google uk english male') && !isNumericVoiceName(v.name)) ||
                           voicesToShow.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('uk') && !isNumericVoiceName(v.name)) ||
-                          voicesToShow.find(v => (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Serena') || v.name.includes('Alex') || v.name.includes('Karen')) && !isNumericVoiceName(v.name)) ||
                           voicesToShow.find(v => !isNumericVoiceName(v.name)) ||
                           voicesToShow[0];
         const defaultOption = Array.from(voiceSelect.options).find(o => o.value === `local:${defaultVoice.name}`);
