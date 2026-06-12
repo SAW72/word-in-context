@@ -1290,6 +1290,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         // Some Chrome/Mac setups need getVoices() + a speak in the same gesture to fully activate.
         try { synth.getVoices(); } catch (e) {}
         const u = new SpeechSynthesisUtterance(' ');
+        // If we already have a chosen voice, prime with it (helps the specific voice activate during the gesture).
+        if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
+          const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
+          if (target) u.voice = target;
+        }
         u.volume = 0.001;
         synth.speak(u);
         setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
@@ -1617,6 +1622,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (synth.speaking) synth.cancel();
 
       // Slightly longer delay after cancel + fresh getVoices right before speak is more reliable on Mac Chrome.
+      // For delayed (async) speaks after the initial gesture, do a tiny voice-specific silent prime using the
+      // exact target voice object right before the real text. This warms up the chosen voice for cases where
+      // a general wake + later assigned-voice speak produces no audio on Mac Chrome.
       setTimeout(() => {
         try {
           // Re-prime and re-resolve the voice object at the absolute last moment.
@@ -1630,12 +1638,29 @@ STRICT RULES — FOLLOW THESE ALWAYS:
               currentUtterance.voice = reMatch;
             }
           }
+
           const spokenVoiceName = (currentUtterance.voice && currentUtterance.voice.name) || 'default (browser)';
           if (isNumericVoiceName(spokenVoiceName)) {
             console.log('[TTS] WARNING: using numeric internal voice', spokenVoiceName, '— this often produces no sound. Pick a named voice (Google/Samantha/etc) in 🔊 Voice Settings.');
           }
-          console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
-          synth.speak(currentUtterance);
+
+          if (currentUtterance.voice) {
+            // Voice-specific silent prime using the exact same voice object (helps delayed speaks on Mac Chrome).
+            const voicePrime = new SpeechSynthesisUtterance(' ');
+            voicePrime.voice = currentUtterance.voice;
+            voicePrime.volume = 0.001;
+            voicePrime.rate = currentUtterance.rate || 0.95;
+            if (currentUtterance.lang) voicePrime.lang = currentUtterance.lang;
+            synth.speak(voicePrime);
+            setTimeout(() => {
+              try { if (synth.speaking) synth.cancel(); } catch (e) {}
+              console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
+              synth.speak(currentUtterance);
+            }, 80);
+          } else {
+            console.log('[TTS] attempting synth.speak for real utterance, voice:', spokenVoiceName);
+            synth.speak(currentUtterance);
+          }
         } catch (e) { console.error(e); }
       }, 60);
     }
