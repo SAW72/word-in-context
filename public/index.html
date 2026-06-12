@@ -1680,22 +1680,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
             setTimeout(() => {
               try { if (synth.speaking) synth.cancel(); } catch (e) {}
-              // For the actual reply text, use a completely fresh utterance with browser default.
-              // This avoids any stale state from previous voice assignments or the object.
-              // The primes above have activated the engine.
+              // For the actual reply text, use a completely fresh utterance.
+              // Assign the user's chosen voice (after the heavy priming above).
+              // The primes (voice-specific + extra general on Chrome) activate the engine so the assignment works.
               const realText = lastSpokenText || currentUtterance.text;
               const finalUtterance = new SpeechSynthesisUtterance(realText);
               finalUtterance.rate = currentUtterance.rate || 0.95;
               finalUtterance.pitch = currentUtterance.pitch || 1.0;
               finalUtterance.volume = 1.0;
               finalUtterance.lang = 'en-US';
-              // no .voice for maximum reliability on Chrome/Mac
+
+              const targetVoice = currentUtterance.voice;
+              if (targetVoice) {
+                finalUtterance.voice = targetVoice;
+              }
 
               finalUtterance.onend = currentUtterance.onend;
               finalUtterance.onerror = currentUtterance.onerror;
 
               lastSpeakCallTime = Date.now();
-              console.log('[TTS] attempting synth.speak for real utterance, voice: browser default (primed with ' + spokenVoiceName + ')');
+              console.log('[TTS] attempting synth.speak for real utterance, voice: ' + (targetVoice ? targetVoice.name : 'browser default') + ' (after priming)');
               synth.speak(finalUtterance);
             }, 80);
           } else {
