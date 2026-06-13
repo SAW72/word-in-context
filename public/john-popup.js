@@ -1,5 +1,5 @@
 /**
- * Embeddable "Talk to John" pop-out — text + voice on landing, help, and other pages.
+ * Embeddable "Ask John" pop-out — text + voice on landing, help, and other pages.
  */
 (function () {
   'use strict';
@@ -11,9 +11,9 @@
   };
 
   const POPUP_TITLES = {
-    demo: '🎙️ Talk to John',
-    help: '💬 Ask John',
-    sources: '📚 Ask John — Sources'
+    demo: '🎙️ Ask John?',
+    help: '💬 Ask John?',
+    sources: '📚 Ask John? — Sources'
   };
 
   let demoLimit = 10;
@@ -275,7 +275,7 @@
     overlay.innerHTML = `
       <div class="john-popup-panel" role="dialog" aria-labelledby="john-popup-title" aria-modal="true">
         <div class="john-popup-header">
-          <h3 id="john-popup-title">🎙️ Talk to John</h3>
+          <h3 id="john-popup-title">🎙️ Ask John?</h3>
           <button type="button" class="john-popup-close" aria-label="Close chat">&times;</button>
         </div>
         <div class="john-popup-messages" id="john-popup-messages"></div>

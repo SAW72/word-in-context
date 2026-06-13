@@ -1583,7 +1583,7 @@
         <div class="library-toolbar">
           <div class="library-ask-john">
             <span class="library-ask-john-label">Need help?</span>
-            <button type="button" class="library-ask-john-btn" data-john-popup data-john-popup-mode="help" aria-label="Ask John for help using the Library">Ask John</button>
+            <button type="button" class="library-ask-john-btn" data-john-popup data-john-popup-mode="help" aria-label="Ask John for help using the Library">Ask John?</button>
           </div>
           <button type="button" class="library-back-btn" id="library-back-btn" style="display:none;">← Books</button>
           <div class="library-title" id="library-view-title">Bible Library</div>
@@ -1812,7 +1812,7 @@
       </div>
 
       <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; align-items:center;">
-        <button type="button" id="sources-ask-john-btn" data-john-popup data-john-popup-mode="sources" data-john-popup-dismiss="#sources-modal" style="background:#c9a227; color:#1a252f; border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer;">Ask John</button>
+        <button type="button" id="sources-ask-john-btn" data-john-popup data-john-popup-mode="sources" data-john-popup-dismiss="#sources-modal" style="background:#c9a227; color:#1a252f; border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer;">Ask John?</button>
         <button type="button" onclick="document.getElementById('sources-modal').style.display='none'" style="background:#777; color:#fff; border:none; padding:10px 18px; border-radius:8px; cursor:pointer;">Close</button>
       </div>
     </div>
@@ -3490,7 +3490,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const askBtn = document.createElement('button');
           askBtn.type = 'button';
           askBtn.className = 'verse-study-btn';
-          askBtn.textContent = 'Ask John';
+          askBtn.textContent = 'Ask John?';
           askBtn.disabled = !navigator.onLine;
           askBtn.title = navigator.onLine
             ? 'Discuss this verse with John in Chat'
@@ -3537,7 +3537,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       window.addEventListener('online', () => {
         updateLibraryMeta();
         document.querySelectorAll('.library-verse .verse-study-btn').forEach((btn) => {
-          if (btn.textContent === 'Ask John') {
+          if (btn.textContent === 'Ask John?') {
             btn.disabled = false;
             btn.title = 'Discuss this verse with John in Chat';
           }
@@ -3548,7 +3548,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       window.addEventListener('offline', () => {
         updateLibraryMeta();
         document.querySelectorAll('.library-verse .verse-study-btn').forEach((btn) => {
-          if (btn.textContent === 'Ask John') {
+          if (btn.textContent === 'Ask John?') {
             btn.disabled = true;
             btn.title = 'Ask John needs internet';
           }
