@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-1';
+const CACHE_VERSION = 'wic-pwa-2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -8,35 +8,55 @@ const BIBLE_ORIGIN = 'https://bible.helloao.org';
 const SHELL_URLS = [
   '/',
   '/app',
+  '/admin',
   '/index.html',
   '/landing.html',
   '/instructions.html',
+  '/admin.html',
   '/manifest.webmanifest',
   '/pwa.js',
   '/pwa.css',
+  '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
 
-const BIBLE_PRECACHE = [
-  '/api/available_translations.json',
-  '/api/BSB/JHN/3.json',
-  '/api/BSB/GEN/1.json',
-  '/api/BSB/PSA/23.json',
-  '/api/BSB/ROM/8.json',
-  '/api/grc_sbl/JHN/3.json',
-  '/api/hbo_wlc/GEN/1.json',
-];
+function biblePrecacheUrls() {
+  const urls = ['/api/available_translations.json'];
+
+  for (let ch = 1; ch <= 21; ch += 1) {
+    urls.push(`/api/BSB/JHN/${ch}.json`);
+    urls.push(`/api/grc_sbl/JHN/${ch}.json`);
+  }
+
+  urls.push(
+    '/api/BSB/GEN/1.json',
+    '/api/BSB/PSA/23.json',
+    '/api/BSB/ROM/8.json',
+    '/api/hbo_wlc/GEN/1.json',
+    '/api/eng_asv/JHN/3.json',
+    '/api/eng_ylt/JHN/3.json',
+    '/api/ENGWEBP/JHN/3.json'
+  );
+
+  return urls;
+}
+
+const BIBLE_PRECACHE = biblePrecacheUrls();
 
 async function cacheUrls(cache, urls) {
-  await Promise.allSettled(urls.map(async (url) => {
-    try {
-      const res = await fetch(url, { cache: 'reload' });
-      if (res.ok) await cache.put(url, res);
-    } catch (e) {
-      console.warn('[SW] precache failed:', url, e);
-    }
-  }));
+  const batchSize = 40;
+  for (let i = 0; i < urls.length; i += batchSize) {
+    const batch = urls.slice(i, i + batchSize);
+    await Promise.allSettled(batch.map(async (url) => {
+      try {
+        const res = await fetch(url, { cache: 'reload' });
+        if (res.ok) await cache.put(url, res);
+      } catch (e) {
+        console.warn('[SW] precache failed:', url, e);
+      }
+    }));
+  }
 }
 
 self.addEventListener('install', (event) => {
@@ -106,6 +126,9 @@ async function navigationResponse(request) {
     if (path.startsWith('/app')) {
       return (await cache.match('/app')) || (await cache.match('/index.html'));
     }
+    if (path.startsWith('/admin')) {
+      return (await cache.match('/admin')) || (await cache.match('/admin.html'));
+    }
     return (await cache.match(path)) || (await cache.match('/app')) || (await cache.match('/index.html'));
   }
 }
@@ -140,6 +163,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin) {
-    event.respondWith(shellResponse(request));
+    const isStatic = /\.(html|css|js|json|png|svg|webmanifest)$/i.test(url.pathname)
+      || url.pathname === '/sw.js';
+    if (isStatic) {
+      event.respondWith(shellResponse(request));
+    }
   }
 });
