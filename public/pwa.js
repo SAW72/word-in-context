@@ -31,7 +31,7 @@
     banner.innerHTML = `
       <img class="pwa-icon" src="/icons/icon-192.png" alt="" width="44" height="44">
       <div class="pwa-copy">
-        <strong>Install Word in Context</strong>
+        <strong>Install THE WORD IN CONTEXT</strong>
         <span id="pwa-install-subtitle">Voice-first Bible study — works offline for cached Scripture.</span>
       </div>
       <div class="pwa-actions">
