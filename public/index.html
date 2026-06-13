@@ -210,6 +210,7 @@
       max-width: 820px;
       flex: 1;
       min-height: 0;   /* allows the container to shrink and the inner .messages to scroll */
+      height: 100%;
       background: var(--bg-chat);
       border-radius: 16px;
       box-shadow: 0 10px 30px var(--shadow-chat);
@@ -309,8 +310,31 @@
     }
     .library-scroll {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       padding: 14px;
+    }
+    #library-verses-view {
+      min-height: min-content;
+    }
+    .library-chapter-summary {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      background: var(--bg-library-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      line-height: 1.4;
+    }
+    .library-chapter-end {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 16px 8px 8px;
+      opacity: 0.85;
     }
     .library-section-title {
       font-size: 11px;
@@ -746,6 +770,12 @@
         border-radius: 0;
         /* Height tuned to leave max room for the messages read area + speak buttons after header + policy-note + input */
         height: calc(100dvh - 78px);
+      }
+      .library-panel.active {
+        min-height: 0;
+      }
+      .library-scroll {
+        min-height: 0;
       }
       .input-area {
         padding: 6px 4px;
@@ -2003,22 +2033,38 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       for (const item of content) {
         if (item.type === 'heading' && Array.isArray(item.content)) {
-          blocks.push({
-            type: 'heading',
-            text: item.content.map(bibleContentPartText).join(' ').trim()
-          });
+          const headingText = item.content.map(bibleContentPartText).join(' ').trim();
+          if (headingText) {
+            blocks.push({ type: 'heading', text: headingText });
+          }
         } else if (item.type === 'verse' && typeof item.number === 'number') {
           const text = (item.content || [])
             .map(bibleContentPartText)
             .join(' ')
             .replace(/\s+/g, ' ')
             .trim();
-          if (text) {
-            blocks.push({ type: 'verse', number: item.number, text });
-          }
+          blocks.push({
+            type: 'verse',
+            number: item.number,
+            text: text || '[Verse text unavailable]'
+          });
         }
       }
       return blocks;
+    }
+
+    function countVersesInContent(content) {
+      if (!Array.isArray(content)) return 0;
+      return content.filter((item) => item.type === 'verse' && typeof item.number === 'number').length;
+    }
+
+    function buildLibraryChapterPayload(bookName, translation, chapter, expectedVerses) {
+      return {
+        bookName,
+        translation,
+        chapter,
+        expectedVerses: expectedVerses || countVersesInContent(chapter?.content)
+      };
     }
 
     async function preloadOfflineBible() {
@@ -2052,38 +2098,51 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     async function fetchLibraryChapter(bookCode, chapterNum) {
+      const chapterUrl = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/${bookCode}/${chapterNum}.json`;
+
       try {
-        const complete = await loadOfflineBibleComplete();
-        const book = complete.books.find((b) => b.id === bookCode);
-        if (book && Array.isArray(book.chapters)) {
-          const entry = book.chapters.find((c) => c.chapter && c.chapter.number === chapterNum);
-          if (entry && entry.chapter) {
-            return {
-              bookName: book.commonName || book.name || bookCode,
-              translation: complete.translation?.englishName || LIBRARY_TRANSLATION_NAME,
-              chapter: entry.chapter
-            };
+        const res = await fetch(chapterUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.chapter?.content) {
+            return buildLibraryChapterPayload(
+              data.book?.commonName || data.book?.name || bookCode,
+              data.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+              data.chapter
+            );
           }
         }
       } catch (e) {
-        console.warn('[Library] complete.json lookup failed, trying chapter file:', e);
+        console.warn('[Library] chapter file fetch failed, trying complete.json:', e);
       }
 
-      const chapterUrl = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/${bookCode}/${chapterNum}.json`;
-      const res = await fetch(chapterUrl);
-      if (!res.ok) throw new Error(`Chapter unavailable offline (${res.status})`);
-      const data = await res.json();
-      if (!data || !data.chapter) throw new Error('Invalid chapter data');
-      return {
-        bookName: data.book?.commonName || data.book?.name || bookCode,
-        translation: data.translation?.englishName || LIBRARY_TRANSLATION_NAME,
-        chapter: data.chapter
-      };
+      const complete = await loadOfflineBibleComplete();
+      const book = complete.books.find((b) => b.id === bookCode);
+      if (!book || !Array.isArray(book.chapters)) {
+        throw new Error('Book not found in offline Bible');
+      }
+
+      const entry = book.chapters.find((c) => c.chapter && c.chapter.number === chapterNum);
+      if (!entry || !entry.chapter) {
+        throw new Error(`Chapter ${chapterNum} not found in offline Bible`);
+      }
+
+      return buildLibraryChapterPayload(
+        book.commonName || book.name || bookCode,
+        complete.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+        entry.chapter,
+        entry.numberOfVerses || countVersesInContent(entry.chapter.content)
+      );
     }
 
     function setLibrarySearchVisible(visible) {
       const search = document.getElementById('library-search');
       if (search) search.style.display = visible ? 'block' : 'none';
+    }
+
+    function setLibraryMetaVisible(visible) {
+      const meta = document.getElementById('library-meta');
+      if (meta) meta.style.display = visible ? 'block' : 'none';
     }
 
     function updateLibraryBackButton() {
@@ -2134,6 +2193,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (versesView) versesView.style.display = 'none';
       container.style.display = 'block';
       setLibrarySearchVisible(true);
+      setLibraryMetaVisible(true);
       updateLibraryBackButton();
       if (titleEl) titleEl.textContent = 'Bible Library';
       updateLibraryMeta();
@@ -2165,6 +2225,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (versesView) versesView.style.display = 'none';
       chaptersView.style.display = 'block';
       setLibrarySearchVisible(false);
+      setLibraryMetaVisible(true);
       updateLibraryBackButton();
       if (titleEl) titleEl.textContent = book.name;
 
@@ -2196,23 +2257,37 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       chaptersView.style.display = 'none';
       versesView.style.display = 'block';
       setLibrarySearchVisible(false);
+      setLibraryMetaVisible(false);
       updateLibraryBackButton();
       if (titleEl) {
         titleEl.textContent = `${book.name} ${chapterNum}`;
       }
 
       versesView.innerHTML = '<div class="library-loading">Loading chapter…</div>';
+      const scrollEl = document.getElementById('library-scroll');
+      if (scrollEl) scrollEl.scrollTop = 0;
 
       try {
         const payload = await fetchLibraryChapter(book.code, chapterNum);
         const blocks = parseChapterContent(payload.chapter.content);
-        if (!blocks.length) {
+        const verseBlocks = blocks.filter((b) => b.type === 'verse');
+        if (!verseBlocks.length) {
           versesView.innerHTML = '<div class="library-error">No verses found in this chapter.</div>';
           return;
         }
 
         const wrapper = document.createElement('div');
         wrapper.className = 'library-verses';
+
+        const summary = document.createElement('div');
+        summary.className = 'library-chapter-summary';
+        const expected = payload.expectedVerses || verseBlocks.length;
+        const rangeStart = verseBlocks[0].number;
+        const rangeEnd = verseBlocks[verseBlocks.length - 1].number;
+        summary.textContent = expected === verseBlocks.length
+          ? `Showing all ${verseBlocks.length} verses (${rangeStart}–${rangeEnd}). Scroll to read the full chapter.`
+          : `Showing ${verseBlocks.length} of ${expected} verses (${rangeStart}–${rangeEnd}). Scroll to read more.`;
+        wrapper.appendChild(summary);
 
         const studyBtn = document.createElement('button');
         studyBtn.type = 'button';
@@ -2277,8 +2352,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           wrapper.appendChild(verseEl);
         });
 
+        const endMarker = document.createElement('div');
+        endMarker.className = 'library-chapter-end';
+        endMarker.textContent = `— End of ${book.name} ${chapterNum} (${verseBlocks.length} verses) —`;
+        wrapper.appendChild(endMarker);
+
         versesView.innerHTML = '';
         versesView.appendChild(wrapper);
+
+        if (scrollEl) scrollEl.scrollTop = 0;
       } catch (err) {
         versesView.innerHTML = `<div class="library-error">Could not load this chapter offline yet. Visit Library once while online so the Bible cache can download.<br><br><small>${err.message || err}</small></div>`;
       }
