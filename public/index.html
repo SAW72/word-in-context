@@ -307,6 +307,33 @@
     .library-search:focus {
       border-color: #c9a227;
     }
+    .library-trans-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .library-trans-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .library-trans-select {
+      flex: 1;
+      min-width: 180px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-input);
+      border-radius: 8px;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+    }
+    .library-trans-select:focus {
+      border-color: #c9a227;
+    }
     .library-scroll {
       flex: 1;
       overflow-y: auto;
@@ -1224,6 +1251,15 @@
           <div class="library-title" id="library-view-title">Bible Library</div>
         </div>
         <div class="library-scroll" id="library-scroll">
+          <div class="library-trans-row" id="library-trans-row">
+            <label for="library-trans-select" class="library-trans-label">Translation</label>
+            <select id="library-trans-select" class="library-trans-select" aria-label="Bible translation for Library reading">
+              <option value="BSB">BSB — Berean Standard Bible</option>
+              <option value="eng_asv">ASV — American Standard Version</option>
+              <option value="eng_ylt">YLT — Young's Literal Translation</option>
+              <option value="ENGWEBP">WEB — World English Bible</option>
+            </select>
+          </div>
           <div class="library-meta" id="library-meta">Berean Standard Bible — cached for offline reading</div>
           <input type="search" class="library-search" id="library-search" placeholder="Search books..." aria-label="Search Bible books" style="margin-bottom:12px;">
           <div id="library-books-view"></div>
@@ -1566,7 +1602,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
    - Use complete sentences. Avoid walls of text.
 
 4. Tone:
-   - Humble, careful, and evidence-based. Say "the text indicates..." or "a more literal rendering is..." rather than overconfident claims.
+   - Humble, careful, and evidence-based. Say "The Word states..." or "The Word indicates..." (never "The text states") or "a more literal rendering is..." rather than overconfident claims.
    - Always cite the specific reference clearly (book, chapter, verse).`;
 
     // ====================== STATE ======================
@@ -1959,8 +1995,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     };
 
     const BIBLE_API_ORIGIN = 'https://bible.helloao.org';
-    const LIBRARY_TRANSLATION_ID = 'BSB';
-    const LIBRARY_TRANSLATION_NAME = 'Berean Standard Bible';
+    const LIBRARY_TRANSLATIONS = [
+      { id: 'BSB', name: 'Berean Standard Bible', short: 'BSB' },
+      { id: 'eng_asv', name: 'American Standard Version', short: 'ASV' },
+      { id: 'eng_ylt', name: "Young's Literal Translation", short: 'YLT' },
+      { id: 'ENGWEBP', name: 'World English Bible', short: 'WEB' }
+    ];
 
     const NT_BOOK_CODES = new Set(
       BIBLE_LIBRARY.nt.map((b) => b.code)
@@ -1970,8 +2010,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let librarySelectedChapter = null;
     let libraryView = 'books';
     let libraryChapterVerses = [];
-    let offlineBibleComplete = null;
-    let offlineBibleLoadPromise = null;
+    let offlineBibleCompleteByTrans = {};
+    let offlineBibleLoadPromises = {};
     let offlineTranslationCache = {};
     let offlineTranslationPromises = {};
     let studyLexicon = null;
@@ -2039,14 +2079,53 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       });
     }
 
+    function getLibraryTranslationId() {
+      let saved = localStorage.getItem('library_english_trans') || getDefaultEnglishTrans();
+      if (!ALLOWED_ENGLISH_TRANS.has(saved)) saved = 'BSB';
+      return saved;
+    }
+
+    function getLibraryTranslationInfo() {
+      const id = getLibraryTranslationId();
+      return LIBRARY_TRANSLATIONS.find((t) => t.id === id) || LIBRARY_TRANSLATIONS[0];
+    }
+
+    function setLibraryTranslationId(transId) {
+      const id = ALLOWED_ENGLISH_TRANS.has(transId) ? transId : 'BSB';
+      localStorage.setItem('library_english_trans', id);
+      delete offlineBibleCompleteByTrans[id];
+      delete offlineBibleLoadPromises[id];
+      const sel = document.getElementById('library-trans-select');
+      if (sel) sel.value = id;
+      updateLibraryMeta();
+    }
+
     function updateLibraryMeta() {
       const meta = document.getElementById('library-meta');
       if (!meta) return;
+      const info = getLibraryTranslationInfo();
       const offline = !navigator.onLine;
       meta.classList.toggle('offline', offline);
       meta.textContent = offline
-        ? `${LIBRARY_TRANSLATION_NAME} — reading from offline cache`
-        : `${LIBRARY_TRANSLATION_NAME} — cached for offline reading`;
+        ? `${info.name} — reading from offline cache when available`
+        : `${info.name} — cached for offline reading`;
+    }
+
+    function initLibraryTranslationSelector() {
+      const sel = document.getElementById('library-trans-select');
+      if (!sel) return;
+      sel.value = getLibraryTranslationId();
+      sel.addEventListener('change', async () => {
+        setLibraryTranslationId(sel.value);
+        preloadOfflineBible();
+        if (libraryView === 'verses' && librarySelectedBook && librarySelectedChapter) {
+          await renderLibraryVerses(librarySelectedBook, librarySelectedChapter);
+        } else if (libraryView === 'chapters' && librarySelectedBook) {
+          renderLibraryChapters(librarySelectedBook);
+        } else {
+          renderLibraryBooks(document.getElementById('library-search')?.value || '');
+        }
+      });
     }
 
     function bibleContentPartText(part) {
@@ -2241,7 +2320,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function buildContextExplanation(opts) {
       const lines = [];
       if (opts.heading) lines.push(`Setting: ${opts.heading}`);
-      lines.push(`${opts.ref} (BSB): "${opts.english}"`);
+      lines.push(`${opts.ref} (${opts.translationShort || 'BSB'}): "${opts.english}"`);
       if (opts.originalText) {
         lines.push(`Original (${opts.originalLabel}): ${opts.originalText}`);
       }
@@ -2323,6 +2402,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           body = buildContextExplanation({
             ref,
             english: block.text,
+            translationShort: getLibraryTranslationInfo().short,
             originalText: originals.contextText,
             originalLabel: originals.contextLabel,
             heading,
@@ -2358,30 +2438,32 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
       switchMainView('chat');
-      const prompt = `Please discuss ${ref} (BSB): "${englishText}". Explain the surrounding context and the key Greek or Hebrew words and how they deepen our understanding of the English translation.`;
+      const trans = getLibraryTranslationInfo();
+      const prompt = `Please discuss ${ref} (${trans.short}): "${englishText}". Explain the surrounding context and the key Greek or Hebrew words and how they deepen our understanding of the English translation.`;
       userInput.value = prompt;
       userInput.focus();
       sendToGrok(prompt);
     }
 
-    async function loadOfflineBibleComplete() {
-      if (offlineBibleComplete) return offlineBibleComplete;
-      if (offlineBibleLoadPromise) return offlineBibleLoadPromise;
+    async function loadOfflineBibleComplete(transId) {
+      const id = transId || getLibraryTranslationId();
+      if (offlineBibleCompleteByTrans[id]) return offlineBibleCompleteByTrans[id];
+      if (offlineBibleLoadPromises[id]) return offlineBibleLoadPromises[id];
 
-      offlineBibleLoadPromise = (async () => {
-        const url = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/complete.json`;
+      offlineBibleLoadPromises[id] = (async () => {
+        const url = `${BIBLE_API_ORIGIN}/api/${id}/complete.json`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Bible data unavailable (${res.status})`);
         const data = await res.json();
         if (!data || !Array.isArray(data.books)) throw new Error('Invalid Bible data');
-        offlineBibleComplete = data;
+        offlineBibleCompleteByTrans[id] = data;
         return data;
       })();
 
       try {
-        return await offlineBibleLoadPromise;
+        return await offlineBibleLoadPromises[id];
       } catch (err) {
-        offlineBibleLoadPromise = null;
+        delete offlineBibleLoadPromises[id];
         throw err;
       }
     }
@@ -2395,7 +2477,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           if (entry && entry.chapter) {
             return {
               bookName: book.commonName || book.name || bookCode,
-              translation: complete.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+              translation: complete.translation?.englishName || getLibraryTranslationInfo().name,
               chapter: entry.chapter
             };
           }
@@ -2404,14 +2486,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         console.warn('[Library] complete.json lookup failed, trying chapter file:', e);
       }
 
-      const chapterUrl = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/${bookCode}/${chapterNum}.json`;
+      const chapterUrl = `${BIBLE_API_ORIGIN}/api/${getLibraryTranslationId()}/${bookCode}/${chapterNum}.json`;
       const res = await fetch(chapterUrl);
       if (!res.ok) throw new Error(`Chapter unavailable offline (${res.status})`);
       const data = await res.json();
       if (!data || !data.chapter) throw new Error('Invalid chapter data');
       return {
         bookName: data.book?.commonName || data.book?.name || bookCode,
-        translation: data.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+        translation: data.translation?.englishName || getLibraryTranslationInfo().name,
         chapter: data.chapter
       };
     }
@@ -2419,6 +2501,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function setLibrarySearchVisible(visible) {
       const search = document.getElementById('library-search');
       if (search) search.style.display = visible ? 'block' : 'none';
+    }
+
+    function setLibraryTransVisible(visible) {
+      const row = document.getElementById('library-trans-row');
+      if (row) row.style.display = visible ? 'flex' : 'none';
     }
 
     function updateLibraryBackButton() {
@@ -2469,6 +2556,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (versesView) versesView.style.display = 'none';
       container.style.display = 'block';
       setLibrarySearchVisible(true);
+      setLibraryTransVisible(true);
       updateLibraryBackButton();
       if (titleEl) titleEl.textContent = 'Bible Library';
       updateLibraryMeta();
@@ -2500,6 +2588,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (versesView) versesView.style.display = 'none';
       chaptersView.style.display = 'block';
       setLibrarySearchVisible(false);
+      setLibraryTransVisible(true);
       updateLibraryBackButton();
       if (titleEl) titleEl.textContent = book.name;
 
@@ -2531,6 +2620,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       chaptersView.style.display = 'none';
       versesView.style.display = 'block';
       setLibrarySearchVisible(false);
+      setLibraryTransVisible(true);
       updateLibraryBackButton();
       if (titleEl) {
         titleEl.textContent = `${book.name} ${chapterNum}`;
@@ -2703,6 +2793,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const studyHdr = document.querySelector('.library-study-btn');
         if (studyHdr) studyHdr.disabled = true;
       });
+      initLibraryTranslationSelector();
       updateLibraryMeta();
       preloadOfflineBible();
       renderLibraryBooks('');
