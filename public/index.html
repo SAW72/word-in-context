@@ -1199,7 +1199,9 @@
         </div>
 
         <div class="input-area">
-          <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
+          <form id="chat-input-form" autocomplete="off" onsubmit="return false;" style="display:contents;">
+          <input type="text" id="user-input" name="wic-bible-question" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore aria-label="Type your question or Bible reference">
+          </form>
           <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
           <button id="send-btn" aria-label="Send message">
             <span class="send-label">Send</span>
@@ -1461,8 +1463,8 @@
       <!-- Login form for unauthenticated users (password login for saved credentials) -->
       <div id="login-section" style="display:none;">
         <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester (14-day) or trial account (password saved by browser). The tester sign-up/login form on the landing page also works for login.</p>
-        <input type="email" id="modal-login-email" placeholder="Your email" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
-        <input type="password" id="modal-login-password" placeholder="Your password" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
+        <input type="email" id="modal-login-email" placeholder="Your email" autocomplete="username" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
+        <input type="password" id="modal-login-password" placeholder="Your password" autocomplete="current-password" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
         <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Log in with password</button>
         <div id="modal-login-success" style="display:none; margin-top:8px; color:#2c3e50; font-size:13px;">
           Logged in! Redirecting...
@@ -2593,6 +2595,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             translation: payload.translation,
             text: block.text
           };
+
+          const speakBtn = document.createElement('button');
+          speakBtn.type = 'button';
+          speakBtn.className = 'verse-speak-btn';
+          speakBtn.textContent = '🔊 Speak';
+          speakBtn.addEventListener('click', () => speak(formatVerseCitation(source)));
+          actions.appendChild(speakBtn);
+
+          const shareBtn = document.createElement('button');
+          shareBtn.type = 'button';
+          shareBtn.className = 'verse-share-btn';
+          shareBtn.textContent = 'Share';
+          shareBtn.addEventListener('click', () => copyVerseCitation(source, shareBtn));
+          actions.appendChild(shareBtn);
 
           const contextBtn = document.createElement('button');
           contextBtn.type = 'button';
