@@ -402,6 +402,53 @@
       gap: 6px;
       flex-wrap: wrap;
     }
+    .verse-study-btn {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg-input);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .verse-study-btn:hover {
+      border-color: #c9a227;
+      color: var(--text-primary);
+    }
+    .verse-study-btn.active {
+      border-color: #c9a227;
+      background: rgba(201, 162, 39, 0.15);
+      color: var(--text-primary);
+    }
+    .verse-study-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .library-verse-expand {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg-sources-detail);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .library-verse-expand[hidden] {
+      display: none !important;
+    }
+    .library-expand-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #c9a227;
+      margin-bottom: 6px;
+    }
+    .library-expand-body {
+      white-space: pre-wrap;
+      color: var(--text-primary);
+    }
     .library-study-btn {
       margin-left: auto;
       font-size: 11px;
@@ -1913,11 +1960,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     const LIBRARY_TRANSLATION_ID = 'BSB';
     const LIBRARY_TRANSLATION_NAME = 'Berean Standard Bible';
 
+    const NT_BOOK_CODES = new Set(
+      BIBLE_LIBRARY.nt.map((b) => b.code)
+    );
+
     let librarySelectedBook = null;
     let librarySelectedChapter = null;
     let libraryView = 'books';
+    let libraryChapterVerses = [];
     let offlineBibleComplete = null;
     let offlineBibleLoadPromise = null;
+    let offlineTranslationCache = {};
+    let offlineTranslationPromises = {};
+    let studyLexicon = null;
+    let studyLexiconPromise = null;
 
     function isDarkMode() {
       return localStorage.getItem('dark_mode') === 'true';
@@ -2023,10 +2079,287 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     async function preloadOfflineBible() {
       try {
-        await loadOfflineBibleComplete();
+        await Promise.allSettled([
+          loadOfflineBibleComplete(),
+          loadStudyLexicon(),
+          loadOfflineTranslation('grc_sbl'),
+          loadOfflineTranslation('hbo_wlc'),
+          loadOfflineTranslation('grc_bre')
+        ]);
       } catch (e) {
         console.warn('[Library] offline Bible preload failed:', e);
       }
+    }
+
+    async function loadStudyLexicon() {
+      if (studyLexicon) return studyLexicon;
+      if (studyLexiconPromise) return studyLexiconPromise;
+      studyLexiconPromise = (async () => {
+        const res = await fetch('/data/study-lexicon.json');
+        if (!res.ok) throw new Error('Lexicon unavailable');
+        studyLexicon = await res.json();
+        return studyLexicon;
+      })();
+      try {
+        return await studyLexiconPromise;
+      } catch (err) {
+        studyLexiconPromise = null;
+        throw err;
+      }
+    }
+
+    async function loadOfflineTranslation(transId) {
+      if (offlineTranslationCache[transId]) return offlineTranslationCache[transId];
+      if (offlineTranslationPromises[transId]) return offlineTranslationPromises[transId];
+
+      offlineTranslationPromises[transId] = (async () => {
+        const url = `${BIBLE_API_ORIGIN}/api/${transId}/complete.json`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${transId} unavailable (${res.status})`);
+        const data = await res.json();
+        if (!data || !Array.isArray(data.books)) throw new Error(`Invalid ${transId} data`);
+        offlineTranslationCache[transId] = data;
+        return data;
+      })();
+
+      try {
+        return await offlineTranslationPromises[transId];
+      } catch (err) {
+        delete offlineTranslationPromises[transId];
+        throw err;
+      }
+    }
+
+    function getVerseTextFromComplete(complete, bookCode, chapterNum, verseNum) {
+      const book = complete.books.find((b) => b.id === bookCode);
+      if (!book || !Array.isArray(book.chapters)) return null;
+      const entry = book.chapters.find((c) => c.chapter && c.chapter.number === chapterNum);
+      if (!entry || !entry.chapter || !Array.isArray(entry.chapter.content)) return null;
+      const blocks = parseChapterContent(entry.chapter.content);
+      const verse = blocks.find((b) => b.type === 'verse' && b.number === verseNum);
+      return verse ? verse.text : null;
+    }
+
+    async function fetchOriginalVerseFromApi(transId, bookCode, chapterNum, verseNum) {
+      try {
+        const complete = await loadOfflineTranslation(transId);
+        const text = getVerseTextFromComplete(complete, bookCode, chapterNum, verseNum);
+        if (text) return text;
+      } catch (e) {}
+
+      const url = `${BIBLE_API_ORIGIN}/api/${transId}/${bookCode}/${chapterNum}.json`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const blocks = parseChapterContent(data?.chapter?.content || []);
+      const verse = blocks.find((b) => b.type === 'verse' && b.number === verseNum);
+      return verse ? verse.text : null;
+    }
+
+    async function fetchOriginalVerseTexts(bookCode, chapterNum, verseNum, isNT) {
+      if (isNT) {
+        const greek = await fetchOriginalVerseFromApi('grc_sbl', bookCode, chapterNum, verseNum);
+        return {
+          contextText: greek,
+          contextLabel: 'SBL Greek NT',
+          greekText: greek,
+          greekLabel: 'SBL Greek NT'
+        };
+      }
+
+      const hebrew = await fetchOriginalVerseFromApi('hbo_wlc', bookCode, chapterNum, verseNum);
+      const lxx = await fetchOriginalVerseFromApi('grc_bre', bookCode, chapterNum, verseNum);
+      return {
+        contextText: hebrew,
+        contextLabel: 'Westminster Leningrad Codex (Hebrew)',
+        greekText: lxx,
+        greekLabel: 'Brenton Septuagint (Greek OT)'
+      };
+    }
+
+    function normalizeGreekToken(token) {
+      return token
+        .replace(/[⸀⸁⸂⸃.,;:!?'"""''()[\]{}«»—–·]/g, '')
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .toLowerCase();
+    }
+
+    function normalizeHebrewToken(token) {
+      return token.replace(/[.,;:!?'"""''()[\]{}—–·]/g, '').trim();
+    }
+
+    function lookupLexiconWords(text, lang, max = 8) {
+      if (!studyLexicon || !text) return [];
+      const dict = lang === 'hebrew' ? studyLexicon.hebrew : studyLexicon.greek;
+      if (!dict) return [];
+
+      const rawTokens = text.split(/\s+/).filter(Boolean);
+      const seen = new Set();
+      const matches = [];
+
+      for (const raw of rawTokens) {
+        const key = lang === 'hebrew' ? normalizeHebrewToken(raw) : normalizeGreekToken(raw);
+        if (!key || key.length < 2 || seen.has(key)) continue;
+        const entry = dict[key];
+        if (!entry) continue;
+        seen.add(key);
+        matches.push({
+          token: raw,
+          translit: entry.translit,
+          gloss: entry.gloss,
+          note: entry.note || ''
+        });
+        if (matches.length >= max) break;
+      }
+      return matches;
+    }
+
+    function findSectionHeading(verses, verseNum) {
+      let heading = '';
+      for (const v of verses) {
+        if (v.type === 'heading') heading = v.text;
+        if (v.type === 'verse' && v.number === verseNum) break;
+      }
+      return heading;
+    }
+
+    function getNeighborVerses(verses, verseNum, bookName, chapterNum) {
+      const onlyVerses = verses.filter((v) => v.type === 'verse');
+      const idx = onlyVerses.findIndex((v) => v.number === verseNum);
+      const prev = idx > 0
+        ? { ref: `${bookName} ${chapterNum}:${onlyVerses[idx - 1].number}`, text: onlyVerses[idx - 1].text }
+        : null;
+      const next = idx >= 0 && idx < onlyVerses.length - 1
+        ? { ref: `${bookName} ${chapterNum}:${onlyVerses[idx + 1].number}`, text: onlyVerses[idx + 1].text }
+        : null;
+      return { prev, next };
+    }
+
+    function buildContextExplanation(opts) {
+      const lines = [];
+      if (opts.heading) lines.push(`Setting: ${opts.heading}`);
+      lines.push(`${opts.ref} (BSB): "${opts.english}"`);
+      if (opts.originalText) {
+        lines.push(`Original (${opts.originalLabel}): ${opts.originalText}`);
+      }
+      if (opts.prev) {
+        lines.push(`Leading in from ${opts.prev.ref}: "${opts.prev.text}"`);
+      }
+      if (opts.next) {
+        lines.push(`Flowing into ${opts.next.ref}: "${opts.next.text}"`);
+      }
+      if (opts.lexWords.length) {
+        const emphasis = opts.lexWords
+          .slice(0, 5)
+          .map((w) => `${w.translit} — ${w.gloss}`)
+          .join('; ');
+        lines.push(`Key original words in this verse: ${emphasis}.`);
+      }
+      lines.push(
+        opts.isNT
+          ? 'Read together, the Greek shapes what the English is saying: word order, verb choices, and the surrounding verses show how this line fits the larger passage.'
+          : 'Read together, the Hebrew shapes what the English is saying. The Greek panel shows the Septuagint (ancient Greek translation) for word-level Greek study of Old Testament passages.'
+      );
+      return lines.join('\n\n');
+    }
+
+    function buildGreekExplanation(opts) {
+      const lines = [];
+      lines.push(`${opts.greekLabel}:`);
+      lines.push(opts.greekText || '[Greek text unavailable offline for this verse]');
+      lines.push('');
+      if (opts.lexWords.length) {
+        lines.push('Major Greek words:');
+        opts.lexWords.forEach((w) => {
+          lines.push(`• ${w.token} (${w.translit}) — ${w.gloss}. ${w.note}`.trim());
+        });
+      } else {
+        lines.push('No lexicon entries matched this verse. The full Greek text above is from the offline cache.');
+      }
+      lines.push('');
+      lines.push(`These Greek word meanings deepen the English: "${opts.english}"`);
+      if (!opts.isNT) {
+        lines.push('(Old Testament: shown in Septuagint Greek, the ancient Greek translation of the Hebrew Scriptures.)');
+      }
+      return lines.join('\n');
+    }
+
+    async function showVerseStudyPanel(verseEl, block, panelType, book, chapterNum, payload) {
+      const expand = verseEl.querySelector('.library-verse-expand');
+      if (!expand) return;
+
+      const btn = verseEl.querySelector(`.verse-study-btn[data-panel="${panelType}"]`);
+      const isOpen = !expand.hidden && expand.dataset.panel === panelType;
+
+      verseEl.querySelectorAll('.verse-study-btn').forEach((b) => b.classList.remove('active'));
+      if (isOpen) {
+        expand.hidden = true;
+        expand.dataset.panel = '';
+        return;
+      }
+
+      expand.hidden = false;
+      expand.dataset.panel = panelType;
+      if (btn) btn.classList.add('active');
+      expand.innerHTML = '<div class="library-expand-label">Loading…</div><div class="library-expand-body">Preparing offline study notes…</div>';
+
+      try {
+        await loadStudyLexicon();
+        const isNT = NT_BOOK_CODES.has(book.code);
+        const ref = `${payload.bookName} ${chapterNum}:${block.number}`;
+        const originals = await fetchOriginalVerseTexts(book.code, chapterNum, block.number, isNT);
+        const heading = findSectionHeading(libraryChapterVerses, block.number);
+        const { prev, next } = getNeighborVerses(libraryChapterVerses, block.number, payload.bookName, chapterNum);
+
+        let body = '';
+        if (panelType === 'context') {
+          const lexWords = lookupLexiconWords(
+            originals.contextText,
+            isNT ? 'greek' : 'hebrew'
+          );
+          body = buildContextExplanation({
+            ref,
+            english: block.text,
+            originalText: originals.contextText,
+            originalLabel: originals.contextLabel,
+            heading,
+            prev,
+            next,
+            lexWords,
+            isNT
+          });
+        } else {
+          const lexWords = lookupLexiconWords(originals.greekText, 'greek');
+          body = buildGreekExplanation({
+            greekText: originals.greekText,
+            greekLabel: originals.greekLabel,
+            lexWords,
+            english: block.text,
+            isNT
+          });
+        }
+
+        expand.innerHTML =
+          `<div class="library-expand-label">${panelType === 'context' ? 'Context' : 'Greek'}</div>` +
+          `<div class="library-expand-body">${body.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+      } catch (err) {
+        expand.innerHTML =
+          `<div class="library-expand-label">Error</div>` +
+          `<div class="library-expand-body">Could not load offline study data. Open Library once while online to cache Bible and lexicon files.\n\n${err.message || err}</div>`;
+      }
+    }
+
+    function askJohnAboutVerse(ref, englishText) {
+      if (!navigator.onLine) {
+        alert('Ask John needs an internet connection.');
+        return;
+      }
+      switchMainView('chat');
+      const prompt = `Please discuss ${ref} (BSB): "${englishText}". Explain the surrounding context and the key Greek or Hebrew words and how they deepen our understanding of the English translation.`;
+      userInput.value = prompt;
+      userInput.focus();
+      sendToGrok(prompt);
     }
 
     async function loadOfflineBibleComplete() {
@@ -2206,6 +2539,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       try {
         const payload = await fetchLibraryChapter(book.code, chapterNum);
         const blocks = parseChapterContent(payload.chapter.content);
+        libraryChapterVerses = blocks.slice();
         if (!blocks.length) {
           versesView.innerHTML = '<div class="library-error">No verses found in this chapter.</div>';
           return;
@@ -2254,26 +2588,53 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           const actions = document.createElement('div');
           actions.className = 'library-verse-actions';
 
-          const shareBtn = document.createElement('button');
-          shareBtn.type = 'button';
-          shareBtn.className = 'verse-share-btn';
-          shareBtn.textContent = 'Share';
           const source = {
             reference: ref,
             translation: payload.translation,
             text: block.text
           };
-          shareBtn.addEventListener('click', () => copyVerseCitation(source, shareBtn));
-          actions.appendChild(shareBtn);
 
-          const speakBtn = document.createElement('button');
-          speakBtn.type = 'button';
-          speakBtn.className = 'verse-speak-btn';
-          speakBtn.textContent = '🔊 Speak';
-          speakBtn.addEventListener('click', () => speak(formatVerseCitation(source)));
-          actions.appendChild(speakBtn);
+          const contextBtn = document.createElement('button');
+          contextBtn.type = 'button';
+          contextBtn.className = 'verse-study-btn';
+          contextBtn.dataset.panel = 'context';
+          contextBtn.textContent = 'Context';
+          contextBtn.title = 'Context from the original language (offline)';
+          contextBtn.addEventListener('click', () => {
+            showVerseStudyPanel(verseEl, block, 'context', book, chapterNum, payload);
+          });
+          actions.appendChild(contextBtn);
+
+          const greekBtn = document.createElement('button');
+          greekBtn.type = 'button';
+          greekBtn.className = 'verse-study-btn';
+          greekBtn.dataset.panel = 'greek';
+          greekBtn.textContent = 'Greek';
+          greekBtn.title = NT_BOOK_CODES.has(book.code)
+            ? 'Greek word study from SBL (offline)'
+            : 'Septuagint Greek word study (offline)';
+          greekBtn.addEventListener('click', () => {
+            showVerseStudyPanel(verseEl, block, 'greek', book, chapterNum, payload);
+          });
+          actions.appendChild(greekBtn);
+
+          const askBtn = document.createElement('button');
+          askBtn.type = 'button';
+          askBtn.className = 'verse-study-btn';
+          askBtn.textContent = 'Ask John';
+          askBtn.disabled = !navigator.onLine;
+          askBtn.title = navigator.onLine
+            ? 'Discuss this verse with John in Chat'
+            : 'Ask John needs internet';
+          askBtn.addEventListener('click', () => askJohnAboutVerse(ref, block.text));
+          actions.appendChild(askBtn);
+
+          const expandEl = document.createElement('div');
+          expandEl.className = 'library-verse-expand';
+          expandEl.hidden = true;
 
           verseEl.appendChild(actions);
+          verseEl.appendChild(expandEl);
           wrapper.appendChild(verseEl);
         });
 
@@ -2304,8 +2665,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (backBtn) {
         backBtn.addEventListener('click', libraryNavigateBack);
       }
-      window.addEventListener('online', updateLibraryMeta);
-      window.addEventListener('offline', updateLibraryMeta);
+      window.addEventListener('online', () => {
+        updateLibraryMeta();
+        document.querySelectorAll('.library-verse .verse-study-btn').forEach((btn) => {
+          if (btn.textContent === 'Ask John') {
+            btn.disabled = false;
+            btn.title = 'Discuss this verse with John in Chat';
+          }
+        });
+        const studyHdr = document.querySelector('.library-study-btn');
+        if (studyHdr) studyHdr.disabled = false;
+      });
+      window.addEventListener('offline', () => {
+        updateLibraryMeta();
+        document.querySelectorAll('.library-verse .verse-study-btn').forEach((btn) => {
+          if (btn.textContent === 'Ask John') {
+            btn.disabled = true;
+            btn.title = 'Ask John needs internet';
+          }
+        });
+        const studyHdr = document.querySelector('.library-study-btn');
+        if (studyHdr) studyHdr.disabled = true;
+      });
       updateLibraryMeta();
       preloadOfflineBible();
       renderLibraryBooks('');

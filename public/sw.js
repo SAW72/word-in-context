@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-3';
+const CACHE_VERSION = 'wic-pwa-4';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -19,6 +19,7 @@ const SHELL_URLS = [
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/data/study-lexicon.json',
 ];
 
 function biblePrecacheUrls() {
@@ -26,6 +27,9 @@ function biblePrecacheUrls() {
     '/api/available_translations.json',
     '/api/BSB/books.json',
     '/api/BSB/complete.json',
+    '/api/grc_sbl/complete.json',
+    '/api/hbo_wlc/complete.json',
+    '/api/grc_bre/complete.json',
     '/api/BSB/GEN/1.json',
     '/api/BSB/PSA/23.json',
     '/api/BSB/ROM/8.json',
