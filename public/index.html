@@ -820,6 +820,7 @@
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a> (use after installing Piper or other new voices)
+        <button type="button" id="unlock-ios-voices-btn" onclick="unlockIOSVoices()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer; display:none;">🔊 Unlock iPhone voices</button>
         <button type="button" onclick="testSelectedVoice()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Test selected</button>
       </label>
 
@@ -1173,12 +1174,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voiceId: (localStorage.getItem('voice_id') || localStorage.getItem('voice_name') || '')
         .replace(/\s*\(System\)\s*$/i, '')
         .replace(/\s*\(System Voice\)\s*$/i, '')
+        .replace(/\s*\(iOS\)\s*$/i, '')
         .replace(/\s*\(Piper Neural\)\s*$/i, '')
         .trim(),
       rate: parseFloat(localStorage.getItem('voice_rate')) || 0.95,
       pitch: parseFloat(localStorage.getItem('voice_pitch')) || 1.0
     };
 
+    // Hands-free defaults OFF; only enabled when user explicitly turns it on.
+    if (localStorage.getItem('handsfree_enabled') === null) {
+      localStorage.setItem('handsfree_enabled', 'false');
+    }
     let handsFreeEnabled = localStorage.getItem('handsfree_enabled') === 'true';
     let continuousMode = false;
 
@@ -1275,12 +1281,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const synth = window.speechSynthesis;
 
-    // One-time engine wake helper. Some browsers require at least one synthesis call that
-    // originates from a direct user gesture before non-default voices (or later async calls)
-    // will produce audio. We do a very low-volume inaudible prime + cancel.
+    function isIOSDevice() {
+      return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
+    // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
-    function wakeSpeechEngine() {
-      if (__ttsWoken) return;
+    function wakeSpeechEngine(force) {
+      if (__ttsWoken && !force) return;
       __ttsWoken = true;
       try {
         try { synth.getVoices(); } catch (e) {}
@@ -1295,10 +1305,40 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       } catch (e) {}
     }
 
+    function scheduleVoiceListRefresh() {
+      loadVoices();
+      populateVoicePreviews();
+      setTimeout(() => { loadVoices(); populateVoicePreviews(); }, 300);
+      setTimeout(() => { loadVoices(); populateVoicePreviews(); }, 900);
+      setTimeout(() => { loadVoices(); populateVoicePreviews(); }, 1800);
+    }
+
+    function unlockIOSVoices() {
+      wakeSpeechEngine(true);
+      try { synth.getVoices(); } catch (e) {}
+      const voices = synth.getVoices();
+      const pick = (selectedVoice || findLocalVoiceById(voiceSettings.voiceId))
+        || (voices && voices.length ? voices[0] : null);
+      const utterance = new SpeechSynthesisUtterance('Voice check.');
+      if (pick) utterance.voice = pick;
+      if (pick && pick.lang) utterance.lang = pick.lang;
+      utterance.volume = 1.0;
+      utterance.rate = voiceSettings.rate || 0.95;
+      utterance.onend = scheduleVoiceListRefresh;
+      utterance.onerror = scheduleVoiceListRefresh;
+      if (synth.speaking) synth.cancel();
+      setTimeout(() => {
+        try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
+      }, 60);
+    }
+
     // Automatic first-gesture wake on any click/touch in the app. This helps ensure the speech
     // engine is activated early so later (including async) speaks work reliably.
     function setupGlobalTTSWake() {
-      const handler = () => wakeSpeechEngine();
+      const handler = () => {
+        wakeSpeechEngine();
+        if (isIOSDevice()) scheduleVoiceListRefresh();
+      };
       document.addEventListener('click', handler, { once: true });
       document.addEventListener('touchstart', handler, { once: true });
     }
@@ -1595,30 +1635,43 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     setInterval(updateStopButton, 400);
 
     // ====================== VOICE SETTINGS (unchanged, excellent) ======================
-    function formatVoiceName(fullName) {
+    function formatVoiceName(fullName, voiceObj) {
       // Sanitize in case we ever get a previously-labeled string (from old buggy saves or direct calls)
       fullName = fullName
         .replace(/\s*\(System\)\s*$/i, '')
         .replace(/\s*\(System Voice\)\s*$/i, '')
+        .replace(/\s*\(iOS\)\s*$/i, '')
         .replace(/\s*\(Piper Neural\)\s*$/i, '')
         .replace(/\s*\(Siri\)\s*$/i, '')
         .trim();
 
       const lower = fullName.toLowerCase();
+      const uri = ((voiceObj && voiceObj.voiceURI) || '').toLowerCase();
 
-      // Piper voices (user-installed via the Piper Neural TTS app)
-      // Even if the system only reports the base name like "Alba", we label it clearly as a better neural voice.
-      const piperVoices = ['alba', 'amy', 'aria', 'danny', 'emily', 'jane', 'josh', 'karen', 'kevin', 'laura', 'lily', 'matthew', 'mike', 'nicole', 'oliver', 'rachel', 'ryan', 'sarah', 'thomas'];
-      for (const pv of piperVoices) {
-        if (lower.includes(pv) && !lower.includes('google') && !lower.includes('siri')) {
-          return fullName + ' (Piper Neural)';
-        }
-      }
-      if (lower.includes('piper')) {
+      // Piper only when the OS/browser actually identifies it as Piper.
+      // Do NOT guess from short names like Karen/Samantha — those are often built-in iOS voices.
+      if (lower.includes('piper') || uri.includes('piper')) {
         return fullName + ' (Piper Neural)';
       }
 
-      // Siri voices — give them nicer labels
+      // Apple/iOS system voices (Safari reports voiceURI like com.apple.voice...)
+      if (uri.includes('com.apple') || uri.includes('apple.voice')) {
+        if (fullName.includes('Siri Voice')) {
+          const match = fullName.match(/Siri Voice \d+/);
+          if (match) {
+            let label = match[0];
+            if (lower.includes('female') || lower.includes('us')) label += ' (US Female)';
+            else if (lower.includes('male')) label += ' (US Male)';
+            else label += ' (Siri)';
+            return label;
+          }
+          return fullName;
+        }
+        if (fullName.includes('(Enhanced)') || fullName.includes('Premium')) return fullName;
+        return fullName + ' (iOS)';
+      }
+
+      // Siri voices — give them nicer labels (non-URI fallback)
       if (fullName.includes("Siri Voice")) {
         const match = fullName.match(/Siri Voice \d+/);
         if (match) {
@@ -1656,6 +1709,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         .replace(/\s*\(Enhanced\)/gi, '')
         .replace(/\s*\(System Voice\)/gi, '')
         .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
+        .replace(/\s*\(Piper Neural\)/gi, '')
+        .replace(/\s*\(iOS\)/gi, '')
         .replace(/\s*\(System\)/gi, '')
         .trim();
     }
@@ -1710,8 +1765,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       setTimeout(populateVoicePreviews, 800);
     }
 
-    // unlockiOSVoices removed (reverted to pre-premium-voice-attempt state)
-
     // --- Custom voice labels (user can rename any voice, including numbered internal ones) ---
     function getCustomVoiceLabels() {
       try {
@@ -1727,10 +1780,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       localStorage.setItem('custom_voice_labels', JSON.stringify(labels));
     }
-    function getDisplayVoiceName(rawName) {
+    function getDisplayVoiceName(rawName, voiceObj) {
       const labels = getCustomVoiceLabels();
       if (labels[rawName]) return labels[rawName];
-      return formatVoiceName(rawName);
+      return formatVoiceName(rawName, voiceObj);
     }
 
     function testSelectedVoice() {
@@ -1799,7 +1852,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         row.onmouseout = () => row.style.background = '';
 
         const label = document.createElement('span');
-        label.textContent = getDisplayVoiceName(voice.name);
+        label.textContent = getDisplayVoiceName(voice.name, voice);
         label.style.flex = '1';
         label.style.fontSize = '12px';
 
@@ -1824,7 +1877,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         editBtn.title = 'Rename this voice';
         editBtn.onclick = (e) => {
           e.stopImmediatePropagation();
-          const currentLabel = getDisplayVoiceName(voice.name);
+          const currentLabel = getDisplayVoiceName(voice.name, voice);
           const input = document.createElement('input');
           input.type = 'text';
           input.value = currentLabel;
@@ -1901,7 +1954,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       voices.forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = getDisplayVoiceName(voice.name);
+        option.textContent = getDisplayVoiceName(voice.name, voice);
         voiceSelect.appendChild(option);
       });
 
@@ -1965,12 +2018,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       voiceModal.style.display = 'flex';
 
+      const unlockBtn = document.getElementById('unlock-ios-voices-btn');
+      if (unlockBtn) unlockBtn.style.display = isIOSDevice() ? 'inline-block' : 'none';
+
       loadVoices();
       setTimeout(loadVoices, 400);
       setTimeout(applySavedVoiceSelection, 100);
       setTimeout(applySavedVoiceSelection, 800);
       setTimeout(populateVoicePreviews, 100);
       setTimeout(populateVoicePreviews, 800);
+      if (isIOSDevice()) {
+        setTimeout(scheduleVoiceListRefresh, 1200);
+      }
 
       // No legacy premium key input (11Labs fully removed).
 
@@ -4194,10 +4253,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         }
       }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
 
-      synth.onvoiceschanged = loadVoices;
-      setTimeout(loadVoices, 300);
-      setTimeout(loadVoices, 900);
-      setTimeout(loadVoices, 1800); // extra attempts for voices installed while the app is open (e.g. Piper)
+      synth.onvoiceschanged = scheduleVoiceListRefresh;
+      scheduleVoiceListRefresh();
 
       // On startup ensure we are on local browser voices (the only supported path).
       if (localStorage.getItem('use_premium_voices') !== 'false') {
