@@ -459,7 +459,9 @@
       gap: 6px;
       flex-wrap: wrap;
     }
-    .verse-study-btn {
+    .verse-study-btn,
+    .verse-share-btn,
+    .verse-speak-btn {
       font-size: 11px;
       padding: 4px 10px;
       border-radius: 6px;
@@ -469,7 +471,9 @@
       cursor: pointer;
       font-weight: 600;
     }
-    .verse-study-btn:hover {
+    .verse-study-btn:hover,
+    .verse-share-btn:hover,
+    .verse-speak-btn:hover {
       border-color: #c9a227;
       color: var(--text-primary);
     }
@@ -557,16 +561,6 @@
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
-    }
-    .verse-share-btn,
-    .verse-speak-btn {
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      border: 1px solid #c9a227;
-      background: var(--bg-input);
-      color: var(--text-muted);
-      cursor: pointer;
     }
     .verse-share-btn.copied {
       border-color: #4caf50;
