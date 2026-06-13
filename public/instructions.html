@@ -178,6 +178,30 @@
     .back-link a {
       color: #c9a227;
     }
+    .btn-talk-john-help {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 0 0 20px;
+      padding: 14px 28px;
+      font-size: 17px;
+      font-weight: 700;
+      background: #c9a227;
+      color: #1a252f;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(201, 162, 39, 0.35);
+    }
+    .btn-talk-john-help:hover {
+      background: #d8b44f;
+      transform: translateY(-1px);
+    }
+    .help-talk-row {
+      text-align: center;
+      margin-bottom: 8px;
+    }
     footer {
       background: #1a252f;
       color: #eee;
@@ -310,7 +334,7 @@
     }
   </style>
 </head>
-<body>
+<body data-john-popup-mode="help">
   <header class="help-header">
     <div class="help-header-left">
       <a href="/app?demo=1" style="color:#f5e8d3; font-size:11px; text-decoration:none; padding:2px 6px;">← App</a>
@@ -329,6 +353,14 @@
   </header>
 
   <main class="help-main">
+    <div class="help-talk-row">
+      <button type="button" class="btn-talk-john-help" data-john-popup data-john-popup-mode="help" aria-label="Talk to John for help">
+        <span aria-hidden="true">🎙️</span>
+        Talk to John
+      </button>
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Ask John how to use the app — type or use your microphone without leaving this page.</p>
+    </div>
+
     <h2>Hands-Free Mode (Wake Word "John")</h2>
     <ul>
       <li>Toggle the HF switch in the input bar to enable hands-free.</li>
@@ -564,6 +596,7 @@
     initDarkMode();
     addPasswordToggles();
   </script>
+  <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>

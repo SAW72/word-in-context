@@ -764,10 +764,10 @@
   <div class="hero">
     <div class="container">
       <h1>Understand the Bible the way it was meant to be read.</h1>
-      <a href="/app?demo=1" class="btn btn-talk-john" aria-label="Talk to John — try the demo chat">
+      <button type="button" class="btn btn-talk-john" data-john-popup data-john-popup-mode="demo" aria-label="Talk to John — open chat pop-out">
         <span class="mic-icon" aria-hidden="true">🎙️</span>
         Talk to John
-      </a>
+      </button>
       <p class="hero-sub">Discover what Jesus really taught and what the disciples actually meant — in their original context.</p>
       <p class="hero-sub">No more relying on someone else’s interpretation.</p>
       <p class="motto">Read Scripture in context. Listen to His voice. Live free.</p>
@@ -1218,6 +1218,7 @@
     }
     addPasswordToggles();
   </script>
+  <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>
