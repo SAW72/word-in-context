@@ -2517,6 +2517,32 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
     }
 
+    const GREEK_FORM_ALIASES = {
+      'ηγαπησεν': 'αγαπαω', 'ηγαπησαν': 'αγαπαω', 'ηγαπηκασι': 'αγαπαω', 'ηγαπημεν': 'αγαπαω',
+      'ηγαπησα': 'αγαπαω', 'αγαπησεν': 'αγαπαω', 'αγαπησαν': 'αγαπαω', 'αγαπησει': 'αγαπαω',
+      'εδωκεν': 'διδωμι', 'εδωκαν': 'διδωμι', 'εδωκα': 'διδωμι', 'δωσει': 'διδωμι', 'δωσω': 'διδωμι',
+      'εχη': 'εχω', 'εχει': 'εχω', 'εχουσιν': 'εχω', 'εχετε': 'εχω', 'εχομεν': 'εχω', 'εσχον': 'εχω',
+      'υιον': 'υιος', 'υιου': 'υιος', 'υιοι': 'υιος', 'υιω': 'υιος',
+      'κοσμον': 'κοσμος', 'κοσμου': 'κοσμος', 'κοσμω': 'κοσμος',
+      'πιστευων': 'πιστευω', 'πιστευουσιν': 'πιστευω', 'πιστευετε': 'πιστευω', 'πιστευσαν': 'πιστευω',
+      'πιστευση': 'πιστευω', 'επιστευσαν': 'πιστευω',
+      'αποληται': 'απολλυμι', 'απολωνται': 'απολλυμι', 'απολεσθαι': 'απολλυμι',
+      'ζωην': 'ζωη', 'ζωης': 'ζωη', 'ζωη': 'ζωη',
+      'αιωνιον': 'αιωνιος', 'αιωνιος': 'αιωνιος', 'αιωνιου': 'αιωνιος',
+      'μονογενη': 'μονογενης', 'μονογενους': 'μονογενης',
+      'αυτον': 'αυτος', 'αυτου': 'αυτος', 'αυτοις': 'αυτος', 'αυτοι': 'αυτος', 'αυτην': 'αυτος',
+      'λογον': 'λογος', 'λογου': 'λογος', 'λογω': 'λογος',
+      'θεον': 'θεος', 'θεου': 'θεος', 'θεω': 'θεος',
+      'ουρανον': 'ουρανος', 'ουρανου': 'ουρανος',
+      'γην': 'γη', 'γης': 'γη',
+      'φωτος': 'φως', 'φωτι': 'φως',
+      'αρχην': 'αρχη', 'αρχης': 'αρχη',
+      'σωθη': 'σωζω', 'σωθηναι': 'σωζω', 'εσωθη': 'σωζω', 'σωζει': 'σωζω',
+      'ειπεν': 'λεγω', 'λεγει': 'λεγω', 'ειπαν': 'λεγω', 'λεγουσιν': 'λεγω',
+      'εποιησεν': 'ποιεω', 'εποιησαν': 'ποιεω', 'ποιει': 'ποιεω',
+      'ην': 'ειμι', 'εστιν': 'ειμι', 'εστε': 'ειμι', 'εσμεν': 'ειμι'
+    };
+
     function normalizeGreekToken(token) {
       return token
         .replace(/[⸀⸁⸂⸃.,;:!?'"""''()[\]{}«»—–·]/g, '')
@@ -2526,26 +2552,108 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function normalizeHebrewToken(token) {
-      return token.replace(/[.,;:!?'"""''()[\]{}—–·]/g, '').trim();
+      return token
+        .replace(/[.,;:!?'"""''()[\]{}—–·׃]/g, '')
+        .normalize('NFD')
+        .replace(/[\u0591-\u05C7]/g, '')
+        .replace(/[^\u05D0-\u05EA]/g, '')
+        .trim();
+    }
+
+    function greekStemCandidates(norm) {
+      const candidates = [norm];
+      const endings = [
+        'ησεν', 'ησαν', 'ηκασι', 'ημεν', 'ησα', 'ησαι', 'ηται', 'ησθε',
+        'σεν', 'σαν', 'σαι', 'σει', 'ται', 'μαι', 'ονται', 'ομαι', 'εται',
+        'ειν', 'ει', 'ην', 'η', 'ων', 'ος', 'ον', 'ους', 'ου', 'ας', 'ης',
+        'αν', 'ατε', 'ομεν', 'ετε', 'ουσι', 'υσι', 'υς', 'ες', 'εις'
+      ];
+      for (const end of endings) {
+        if (norm.endsWith(end) && norm.length - end.length >= 3) {
+          candidates.push(norm.slice(0, -end.length));
+        }
+      }
+      const augmented = [...candidates];
+      for (const c of augmented) {
+        if (c.startsWith('η') && c.length > 4) candidates.push(c.slice(1));
+        if (c.startsWith('ε') && c.length > 4) candidates.push(c.slice(1));
+      }
+      return [...new Set(candidates)];
+    }
+
+    function hebrewStemCandidates(norm) {
+      const candidates = [norm];
+      const prefixes = ['ו', 'ה', 'ב', 'כ', 'ל', 'מ', 'ש'];
+      for (const p of prefixes) {
+        if (norm.startsWith(p) && norm.length > 2) candidates.push(norm.slice(1));
+      }
+      return [...new Set(candidates)];
+    }
+
+    function findLexiconEntry(raw, lang) {
+      if (!studyLexicon || !raw) return null;
+      const dict = lang === 'hebrew' ? studyLexicon.hebrew : studyLexicon.greek;
+      if (!dict) return null;
+
+      const norm = lang === 'hebrew' ? normalizeHebrewToken(raw) : normalizeGreekToken(raw);
+      if (!norm || norm.length < 2) return null;
+
+      const aliasLemma = lang === 'greek' ? GREEK_FORM_ALIASES[norm] : null;
+      if (aliasLemma && dict[aliasLemma]) {
+        return { token: raw, lemma: aliasLemma, ...dict[aliasLemma] };
+      }
+      if (dict[norm]) {
+        return { token: raw, lemma: norm, ...dict[norm] };
+      }
+
+      const candidates = lang === 'greek' ? greekStemCandidates(norm) : hebrewStemCandidates(norm);
+      let best = null;
+      let bestScore = 0;
+
+      for (const cand of candidates) {
+        const alias = lang === 'greek' ? GREEK_FORM_ALIASES[cand] : null;
+        const lemmaKey = alias || cand;
+        if (dict[lemmaKey]) {
+          const score = lemmaKey.length + 120;
+          if (score > bestScore) {
+            best = { token: raw, lemma: lemmaKey, ...dict[lemmaKey] };
+            bestScore = score;
+          }
+        }
+        for (const key of Object.keys(dict)) {
+          if (key.length < 3) continue;
+          const stemLen = Math.min(5, key.length);
+          const stem = key.slice(0, stemLen);
+          if (stem.length < 4) continue;
+          const containsStem = cand.includes(stem);
+          const keyStartsCand = key.startsWith(cand) && cand.length >= 4;
+          const candStartsKey = cand.startsWith(key) && key.length >= 3;
+          if (!containsStem && !keyStartsCand && !candStartsKey) continue;
+          const score = stem.length + (cand === key ? 40 : 0) + (containsStem ? 10 : 0);
+          if (cand.length < 3 && key !== cand) continue;
+          if (score > bestScore) {
+            best = { token: raw, lemma: key, ...dict[key] };
+            bestScore = score;
+          }
+        }
+      }
+      return best;
     }
 
     function lookupLexiconWords(text, lang, max = 8) {
       if (!studyLexicon || !text) return [];
-      const dict = lang === 'hebrew' ? studyLexicon.hebrew : studyLexicon.greek;
-      if (!dict) return [];
-
       const rawTokens = text.split(/\s+/).filter(Boolean);
       const seen = new Set();
       const matches = [];
 
       for (const raw of rawTokens) {
-        const key = lang === 'hebrew' ? normalizeHebrewToken(raw) : normalizeGreekToken(raw);
-        if (!key || key.length < 2 || seen.has(key)) continue;
-        const entry = dict[key];
+        const entry = findLexiconEntry(raw, lang);
         if (!entry) continue;
-        seen.add(key);
+        const dedupeKey = entry.lemma || entry.translit;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
         matches.push({
-          token: raw,
+          token: entry.token,
           translit: entry.translit,
           gloss: entry.gloss,
           note: entry.note || ''
@@ -2576,50 +2684,88 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return { prev, next };
     }
 
-    function buildContextExplanation(opts) {
-      const lines = [];
-      if (opts.heading) lines.push(`Setting: ${opts.heading}`);
-      lines.push(`${opts.ref} (${opts.translationShort || 'BSB'}): "${opts.english}"`);
-      if (opts.originalText) {
-        lines.push(`Original (${opts.originalLabel}): ${opts.originalText}`);
-      }
+    function formatLexWordLine(w) {
+      const note = w.note ? ` ${w.note}` : '';
+      return `• ${w.translit} — ${w.gloss}.${note}`.trim();
+    }
+
+    function buildContextNarrative(opts) {
+      const langName = opts.isNT ? 'Greek' : 'Hebrew';
+      const parts = [];
+      parts.push(`"${opts.english}"`);
       if (opts.prev) {
-        lines.push(`Leading in from ${opts.prev.ref}: "${opts.prev.text}"`);
+        parts.push(`follows ${opts.prev.ref} ("${opts.prev.text}")`);
       }
       if (opts.next) {
-        lines.push(`Flowing into ${opts.next.ref}: "${opts.next.text}"`);
+        parts.push(`and leads into ${opts.next.ref} ("${opts.next.text}")`);
+      }
+      let narrative = `${opts.ref} in context: ${parts.join(', ')}.`;
+      if (opts.lexWords.length) {
+        const terms = opts.lexWords
+          .slice(0, 6)
+          .map((w) => `${w.translit} ("${w.gloss}")`)
+          .join(', ');
+        narrative += ` In ${langName}, the major words are ${terms}.`;
+        const lead = opts.lexWords.slice(0, 3).map((w) => {
+          const detail = w.note ? ` ${w.note}` : '';
+          return `${w.translit} means "${w.gloss}"${detail ? ' —' + detail : ''}`;
+        }).join('; ');
+        narrative += ` So in English: ${lead}.`;
+        narrative += ` Together these ${langName} terms show what this verse is saying within its immediate passage — not an outside interpretation, but the sense carried by the original words in their literary setting.`;
+      } else if (opts.originalText) {
+        narrative += ` The original ${langName} text is shown above; surrounding verses help place this line in the flow of the chapter.`;
+      }
+      return narrative;
+    }
+
+    function buildContextExplanation(opts) {
+      const langName = opts.isNT ? 'Greek' : 'Hebrew';
+      const lines = [];
+      if (opts.heading) lines.push(`Setting: ${opts.heading}`);
+      lines.push(`${opts.ref} (${opts.translationShort || 'BSB'})`);
+      lines.push(`English: "${opts.english}"`);
+      if (opts.originalText) {
+        lines.push(`${langName} (${opts.originalLabel}): ${opts.originalText}`);
+      }
+      if (opts.prev) {
+        lines.push(`Before: ${opts.prev.ref} — "${opts.prev.text}"`);
+      }
+      if (opts.next) {
+        lines.push(`After: ${opts.next.ref} — "${opts.next.text}"`);
       }
       if (opts.lexWords.length) {
-        const emphasis = opts.lexWords
-          .slice(0, 5)
-          .map((w) => `${w.translit} — ${w.gloss}`)
-          .join('; ');
-        lines.push(`Key original words in this verse: ${emphasis}.`);
+        lines.push('');
+        lines.push(`Major ${langName} words (Roman spelling):`);
+        opts.lexWords.forEach((w) => lines.push(formatLexWordLine(w)));
+        lines.push('');
+        lines.push('Context in English:');
+        lines.push(buildContextNarrative(opts));
+      } else {
+        lines.push('');
+        lines.push(`Context in English: ${buildContextNarrative(opts)}`);
       }
-      lines.push(
-        opts.isNT
-          ? 'Read together, the Greek shapes what the English is saying: word order, verb choices, and the surrounding verses show how this line fits the larger passage.'
-          : 'Read together, the Hebrew shapes what the English is saying: word order, verb choices, and the surrounding verses show how this line fits the larger passage.'
-      );
-      return lines.join('\n\n');
+      return lines.join('\n');
     }
 
     function buildOriginalWordsExplanation(opts) {
       const langName = opts.lang === 'hebrew' ? 'Hebrew' : 'Greek';
       const lines = [];
-      lines.push(`${opts.originalLabel}:`);
+      lines.push(`${opts.originalLabel}`);
       lines.push(opts.originalText || `[${langName} text unavailable offline for this verse]`);
       lines.push('');
       if (opts.lexWords.length) {
-        lines.push(`Major ${langName} words:`);
+        lines.push(`Major ${langName} words that shape this verse (Roman spelling):`);
         opts.lexWords.forEach((w) => {
-          lines.push(`• ${w.token} (${w.translit}) — ${w.gloss}. ${w.note}`.trim());
+          lines.push(formatLexWordLine(w));
         });
+        lines.push('');
+        const glosses = opts.lexWords
+          .map((w) => `${w.translit} ("${w.gloss}")`)
+          .join(', ');
+        lines.push(`How these words build the verse: the English "${opts.english}" rests on ${langName} terms such as ${glosses}. Each word above carries part of the verse's meaning in its original language.`);
       } else {
-        lines.push(`No lexicon entries matched this verse. The full ${langName} text above is from the offline cache.`);
+        lines.push(`No major ${langName} lexicon matches were found for this verse yet. The full ${langName} text above is from the offline Bible cache.`);
       }
-      lines.push('');
-      lines.push(`These ${langName} word meanings deepen the English: "${opts.english}"`);
       return lines.join('\n');
     }
 
