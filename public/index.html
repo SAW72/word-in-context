@@ -412,6 +412,24 @@
       cursor: pointer;
       vertical-align: middle;
     }
+    .wake-preset-btn {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg-input);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .wake-preset-btn:hover {
+      border-color: #c9a227;
+    }
+    .wake-preset-btn.active {
+      border-color: #c9a227;
+      background: rgba(201, 162, 39, 0.15);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
     .header {
       background: linear-gradient(135deg, #2c3e50, #1a252f);
       color: white; padding: 12px 16px; display: flex; align-items: center; gap: 8px; position: relative;
@@ -1156,16 +1174,23 @@
 
       <hr style="margin: 12px 0; border-color: #ddd;">
 
-      <!-- Wake word customization -->
+      <!-- Wake word customization (default John; user can choose any name) -->
       <div style="margin-bottom:12px;">
         <label for="wake-enabled" class="voice-setting-checkbox" style="margin-bottom:8px;">
           <input type="checkbox" id="wake-enabled" checked>
           <span>Require wake word for hands-free (recommended to reduce noise)</span>
         </label>
-        <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Custom wake word (e.g. "hey assistant" or "computer")
+        <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Wake word
+          <span style="display:block; font-size:11px; color:#666; font-weight:400; margin:2px 0 4px;">Default is <strong>John</strong>. Pick a preset or type your own — your choice is saved on this device.</span>
+          <div id="wake-word-presets" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+            <button type="button" class="wake-preset-btn" data-wake="John">John (default)</button>
+            <button type="button" class="wake-preset-btn" data-wake="assistant">assistant</button>
+            <button type="button" class="wake-preset-btn" data-wake="computer">computer</button>
+            <button type="button" class="wake-preset-btn" data-wake="hey bible">hey bible</button>
+          </div>
           <input type="text" id="wake-word-input" value="John" placeholder="John" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
         </label>
-        <p style="font-size:10px; color:#888; margin:0;">Turn off to always listen in hands-free (may be more sensitive to noise). Change the name if you prefer something else. Default is "John". Save settings to apply. Pause commands like "[name] pause" will use your custom name too.</p>
+        <p style="font-size:10px; color:#888; margin:0;">Turn off the checkbox above to always listen without a wake word. Pause commands like "[name] pause" use whatever name you set here. Save settings to apply.</p>
       </div>
 
       <!-- Default English translation for Bible grounding -->
@@ -1696,11 +1721,47 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Wake word customization (default "John", can turn off or change name)
     let wakeWordEnabled = localStorage.getItem('wake_word_enabled') !== 'false';
-    let wakeWord = (localStorage.getItem('wake_word') || 'John').toLowerCase().trim();
+    let wakeWord = (localStorage.getItem('wake_word') || 'John').trim();
+    if (!wakeWord) wakeWord = 'John';
     // Migration: force old "holy grok" (from early versions) to the neutral "John" default
-    if (wakeWord === 'holy grok' || wakeWord === 'holy-grok' || wakeWord === 'holy_grok') {
-      wakeWord = 'john';
+    if (wakeWord.toLowerCase() === 'holy grok' || wakeWord.toLowerCase() === 'holy-grok' || wakeWord.toLowerCase() === 'holy_grok') {
+      wakeWord = 'John';
       localStorage.setItem('wake_word', 'John');
+    }
+
+    function getWakeWordDisplay() {
+      const w = (wakeWord || 'John').trim();
+      if (!w) return 'John';
+      return w;
+    }
+
+    function syncWakeWordPresetButtons() {
+      const current = wakeWord.trim().toLowerCase();
+      document.querySelectorAll('.wake-preset-btn').forEach((btn) => {
+        const preset = (btn.getAttribute('data-wake') || '').trim().toLowerCase();
+        btn.classList.toggle('active', preset === current);
+      });
+    }
+
+    function initWakeWordPresets() {
+      document.querySelectorAll('.wake-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const preset = btn.getAttribute('data-wake') || 'John';
+          wakeWord = preset;
+          const wakeInput = document.getElementById('wake-word-input');
+          if (wakeInput) wakeInput.value = preset;
+          syncWakeWordPresetButtons();
+          if (typeof updateHandsFreeLabel === 'function') updateHandsFreeLabel();
+        });
+      });
+    }
+
+    function syncWakeWordSettingsUI() {
+      const wakeEnabledToggle = document.getElementById('wake-enabled');
+      if (wakeEnabledToggle) wakeEnabledToggle.checked = !!wakeWordEnabled;
+      const wakeInput = document.getElementById('wake-word-input');
+      if (wakeInput) wakeInput.value = getWakeWordDisplay();
+      syncWakeWordPresetButtons();
     }
     let serverHasManagedTTS = false; // legacy flag only (voices are purely client window.speechSynthesis; server TTS path is disabled for voices)
     let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
@@ -2754,11 +2815,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       const wakeInput = document.getElementById('wake-word-input');
       if (wakeInput) {
-        wakeInput.value = wakeWord || 'John';
-        wakeInput.onchange = () => {
-          // live update? but we'll save on button
+        wakeInput.value = getWakeWordDisplay();
+        wakeInput.oninput = () => {
+          wakeWord = (wakeInput.value || 'John').trim() || 'John';
+          syncWakeWordPresetButtons();
+          if (typeof updateHandsFreeLabel === 'function') updateHandsFreeLabel();
         };
       }
+      syncWakeWordPresetButtons();
 
       const transSelect = document.getElementById('default-trans-select');
       if (transSelect) {
@@ -2833,10 +2897,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       const wakeInput = document.getElementById('wake-word-input');
       if (wakeInput) {
-        const newWake = (wakeInput.value || 'John').trim().toLowerCase();
-        wakeWord = newWake || 'John';
+        wakeWord = (wakeInput.value || 'John').trim() || 'John';
         localStorage.setItem('wake_word', wakeWord);
       }
+      syncWakeWordPresetButtons();
 
       const transSelect = document.getElementById('default-trans-select');
       if (transSelect) {
@@ -3641,7 +3705,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Also allows saying the name while the AI is speaking to interrupt ("barge in").
     function getCurrentWakePhrases() {
       if (!wakeWordEnabled) return [];
-      const base = (wakeWord || 'John').toLowerCase().trim();
+      const base = (wakeWord || 'John').trim().toLowerCase();
       if (!base) return [];
       return [
         base,
@@ -4353,7 +4417,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const label = document.querySelector('label[for="handsfree-toggle"]');
       if (label) {
         let extra = '';
-        const ww = (wakeWord || 'John').trim();
+        const ww = getWakeWordDisplay();
         if (handsFreeEnabled && wakeWordEnabled && ww) {
           extra = `(wakeword ${ww})`;
         } else if (handsFreeEnabled && !wakeWordEnabled) {
@@ -4898,6 +4962,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       initDarkMode();
       initMainTabs();
       initLibrary();
+      initWakeWordPresets();
+      syncWakeWordSettingsUI();
       addPasswordToggles();
       // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
       setTimeout(addPasswordToggles, 100);
