@@ -79,7 +79,8 @@
     if (document.getElementById('pwa-offline-badge')) return;
     const badge = document.createElement('div');
     badge.id = 'pwa-offline-badge';
-    badge.textContent = 'Offline — cached Bible text available; AI study needs internet';
+    badge.textContent = 'Offline Mode';
+    badge.setAttribute('aria-label', 'Offline Mode — cached Bible text available; AI study needs internet');
     document.body.appendChild(badge);
 
     function update() {

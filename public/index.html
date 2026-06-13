@@ -13,7 +13,57 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/pwa.css">
   <title>The Word in Context</title>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('dark_mode') === 'true') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <style>
+    :root {
+      --bg-body: #f5e8d3;
+      --bg-sidebar: #1a252f;
+      --bg-chat: #ffffff;
+      --bg-messages: #fdfaf3;
+      --bg-user-msg: #2c3e50;
+      --bg-ai-msg: #e8e0d5;
+      --text-primary: #333333;
+      --text-muted: #5c4630;
+      --text-inverse: #eeeeee;
+      --border-soft: #e8d9c2;
+      --bg-policy: #f8f1e3;
+      --bg-input-area: #ffffff;
+      --bg-input: #ffffff;
+      --border-input: #d8d0c0;
+      --bg-sources-detail: #f8f1e3;
+      --bg-library: #fdfaf3;
+      --bg-library-card: #ffffff;
+      --shadow-chat: rgba(0, 0, 0, 0.1);
+    }
+    html[data-theme="dark"] {
+      --bg-body: #0f1419;
+      --bg-sidebar: #0a0e12;
+      --bg-chat: #1a222c;
+      --bg-messages: #141b24;
+      --bg-user-msg: #3d5266;
+      --bg-ai-msg: #243040;
+      --text-primary: #e8e4dc;
+      --text-muted: #b8a88e;
+      --text-inverse: #f0ebe3;
+      --border-soft: #2c3e50;
+      --bg-policy: #1a222c;
+      --bg-input-area: #1a222c;
+      --bg-input: #243040;
+      --border-input: #3d5266;
+      --bg-sources-detail: #243040;
+      --bg-library: #141b24;
+      --bg-library-card: #1a222c;
+      --shadow-chat: rgba(0, 0, 0, 0.35);
+      color-scheme: dark;
+    }
     *, *::before, *::after {
       box-sizing: border-box;
     }
@@ -25,12 +75,14 @@
       -webkit-overflow-scrolling: touch;
     }
     body {
-      background: #f5e8d3;
+      background: var(--bg-body);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: flex;
       height: 100vh; /* fallback */
       min-height: 100dvh; /* better for iOS Safari dynamic bars */
       overflow: hidden;
+      color: var(--text-primary);
+      transition: background 0.2s ease;
     }
     .sidebar {
       width: 260px;
@@ -158,12 +210,207 @@
       max-width: 820px;
       flex: 1;
       min-height: 0;   /* allows the container to shrink and the inner .messages to scroll */
-      background: white;
+      background: var(--bg-chat);
       border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      box-shadow: 0 10px 30px var(--shadow-chat);
       display: flex;
       flex-direction: column;
       overflow: hidden;
+    }
+    .main-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg-policy);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 0 12px;
+    }
+    .main-tab {
+      flex: 1;
+      max-width: 160px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .main-tab:hover {
+      color: var(--text-primary);
+    }
+    .main-tab.active {
+      color: #c9a227;
+      border-bottom-color: #c9a227;
+    }
+    .chat-panel,
+    .library-panel {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .library-panel {
+      display: none;
+      background: var(--bg-library);
+    }
+    .library-panel.active {
+      display: flex;
+    }
+    .chat-panel.hidden {
+      display: none;
+    }
+    .library-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-soft);
+      background: var(--bg-policy);
+      flex-shrink: 0;
+    }
+    .library-back-btn {
+      background: none;
+      border: 1px solid var(--border-soft);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .library-back-btn:hover {
+      border-color: #c9a227;
+      color: #c9a227;
+    }
+    .library-title {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .library-search {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-input);
+      border-radius: 8px;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+    }
+    .library-search:focus {
+      border-color: #c9a227;
+    }
+    .library-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+    }
+    .library-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 12px 0 8px;
+    }
+    .library-section-title:first-child {
+      margin-top: 0;
+    }
+    .library-books-grid,
+    .library-chapters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+      gap: 8px;
+    }
+    .library-book-btn,
+    .library-chapter-btn {
+      background: var(--bg-library-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 10px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.3;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .library-book-btn:hover,
+    .library-chapter-btn:hover {
+      border-color: #c9a227;
+      background: rgba(201, 162, 39, 0.08);
+    }
+    .library-chapter-btn {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dark-mode-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      font-size: 16px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .dark-mode-btn:hover {
+      background: rgba(255,255,255,0.25);
+    }
+    .verse-block {
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .verse-block:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .verse-ref {
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .verse-text {
+      white-space: pre-wrap;
+      margin-bottom: 6px;
+    }
+    .verse-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .verse-share-btn,
+    .verse-speak-btn {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid #c9a227;
+      background: var(--bg-input);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .verse-share-btn.copied {
+      border-color: #4caf50;
+      color: #2e7d32;
+    }
+    .ref-share-btn {
+      font-size: 10px;
+      padding: 0 4px;
+      margin-left: 2px;
+      border: none;
+      background: transparent;
+      color: #c9a227;
+      cursor: pointer;
+      vertical-align: middle;
     }
     .header {
       background: linear-gradient(135deg, #2c3e50, #1a252f);
@@ -192,10 +439,10 @@
       text-align: center;
       margin: 4px 0 8px;
       font-size: 11px;
-      color: #5c4630;
+      color: var(--text-muted);
     }
     .current-chat-wrapper #current-chat-title {
-      color: #2c3e50;
+      color: var(--text-primary);
       font-weight: 500;
     }
     .chats-btn {
@@ -205,23 +452,23 @@
     }
     .chats-btn:hover { background: rgba(255,255,255,0.25); }
     .policy-note {
-      background: #f8f1e3; color: #5c4630; font-size: 12px;
-      padding: 6px 14px; text-align: center; border-bottom: 1px solid #e8d9c2;
+      background: var(--bg-policy); color: var(--text-muted); font-size: 12px;
+      padding: 6px 14px; text-align: center; border-bottom: 1px solid var(--border-soft);
     }
     .messages {
       flex: 1; padding: 24px; overflow-y: auto;
-      background: #fdfaf3; display: flex; flex-direction: column; gap: 14px;
+      background: var(--bg-messages); display: flex; flex-direction: column; gap: 14px;
     }
     .message {
       max-width: 82%; padding: 14px 18px; border-radius: 18px;
       line-height: 1.5; font-size: 15.5px; position: relative;
     }
     .user {
-      background: #2c3e50; color: white;
+      background: var(--bg-user-msg); color: white;
       align-self: flex-end; border-bottom-right-radius: 6px;
     }
     .ai {
-      background: #e8e0d5; color: #333;
+      background: var(--bg-ai-msg); color: var(--text-primary);
       align-self: flex-start; border-bottom-left-radius: 6px;
     }
     .scripture-sources {
@@ -262,12 +509,14 @@
       color: #666;
     }
     .input-area {
-      display: flex; padding: 14px 16px; background: white;
-      border-top: 1px solid #eee; gap: 10px; align-items: center;
+      display: flex; padding: 14px 16px; background: var(--bg-input-area);
+      border-top: 1px solid var(--border-soft); gap: 10px; align-items: center;
     }
     #user-input {
-      flex: 1; padding: 14px 20px; border: 2px solid #d8d0c0;
+      flex: 1; padding: 14px 20px; border: 2px solid var(--border-input);
       border-radius: 30px; font-size: 16px; outline: none;
+      background: var(--bg-input);
+      color: var(--text-primary);
     }
     #user-input:focus { border-color: #c9a227; }
     #send-btn {
@@ -352,7 +601,7 @@
       box-sizing: border-box;
     }
     .modal-content {
-      background: white; padding: 24px; border-radius: 16px;
+      background: var(--bg-chat); color: var(--text-primary); padding: 24px; border-radius: 16px;
       width: 90%; max-width: 420px;
       max-height: 85vh;
       overflow-y: auto;
@@ -386,10 +635,23 @@
     }
     .status {
       font-size: 11px;
-      color: #8b5e3c;
+      color: var(--text-muted);
       text-align: center;
       padding: 4px;
       opacity: 0.7;
+    }
+    html[data-theme="dark"] .modal-content input,
+    html[data-theme="dark"] .modal-content select {
+      background: var(--bg-input);
+      color: var(--text-primary);
+      border-color: var(--border-input);
+    }
+    html[data-theme="dark"] #live-transcript-container {
+      background: var(--bg-sources-detail) !important;
+      border-color: #c9a227 !important;
+    }
+    html[data-theme="dark"] #live-transcript {
+      color: var(--text-primary) !important;
     }
 
     /* Mobile responsiveness improvements */
@@ -763,57 +1025,77 @@
           <div class="subtitle">Hebrew • Aramaic • Greek Scriptures • Literal Translations</div>
         </div>
         <div class="header-right">
+          <button class="dark-mode-btn" id="dark-mode-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
           <button class="voice-btn" id="voice-btn" aria-label="Open voice settings" style="position:static; top:auto; right:auto;">🔊 Voice</button>
           <button class="sources-btn" id="sources-btn" aria-label="View sources and data attribution" style="position:static; top:auto; right:auto; background:#5c4630; color:#f5e8d3;">📚 Sources</button>
           <button class="upgrade-btn" id="upgrade-btn" style="position:static; top:auto; right:auto; background:#c9a227; color:#1a252f; font-size:11px; padding:3px 7px; border-radius:6px; border:none; cursor:pointer;">Account</button>
           <a href="/instructions.html" style="color:#f5e8d3; font-size:11px; text-decoration:none; padding:2px 6px; opacity:0.85;">Help</a>
         </div>
       </div>
-      
-      <div class="policy-note">
-        Literal English from bible.helloao.org (BSB default, ASV, YLT, WEB). Original languages: SBL Greek NT + Westminster Leningrad Codex Hebrew OT.
-        <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
-        <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
+
+      <div class="main-tabs" role="tablist" aria-label="App sections">
+        <button type="button" class="main-tab active" id="tab-chat" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
+        <button type="button" class="main-tab" id="tab-library" role="tab" aria-selected="false" aria-controls="library-panel">Library</button>
       </div>
 
-      <!-- Current chat title moved under policy note on mobile, with label, centered. -->
-      <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
-        <span style="font-size: 10px; color: #5c4630; font-weight: 600;">chat title </span>
-        <span id="current-chat-title" style="font-size: 11px; color: #2c3e50; font-weight: 500;"></span>
+      <div class="chat-panel" id="chat-panel" role="tabpanel">
+        <div class="policy-note">
+          Literal English from bible.helloao.org (BSB default, ASV, YLT, WEB). Original languages: SBL Greek NT + Westminster Leningrad Codex Hebrew OT.
+          <span style="margin-left:8px; opacity:0.7;">• <a href="#" id="policy-sources-link" style="color:inherit; text-decoration:underline;">Sources &amp; live citations</a></span>
+          <span id="demo-status" style="margin-left:8px; opacity:0.7; font-size:11px; color:#c9a227; display:none;"></span>
+        </div>
+
+        <!-- Current chat title moved under policy note on mobile, with label, centered. -->
+        <div class="current-chat-wrapper" style="text-align: center; margin: 2px 0 4px;">
+          <span style="font-size: 10px; color: var(--text-muted); font-weight: 600;">chat title </span>
+          <span id="current-chat-title" style="font-size: 11px; font-weight: 500;"></span>
+        </div>
+
+        <!-- Demo mode banner (shown only when no valid login token). -->
+        <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
+          <strong>Demo mode</strong> — limited responses for trying the app.
+          If you already signed up for the 7-day trial or 14-day tester access, click the <strong>Log in</strong> button in the header above (or go to the landing page) and use the email + password you chose during signup.
+        </div>
+
+        <div class="messages" id="messages"></div>
+
+        <!-- Live transcription from server STT (with Bible keyterm boosting for accuracy).
+             Shown during hands-free listening so user can see the improved text as they speak
+             and correct if needed (e.g. by speaking clearly or rephrasing). -->
+        <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
+          <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
+          <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
+        </div>
+
+        <div class="input-area">
+          <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
+          <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
+          <button id="send-btn" aria-label="Send message">
+            <span class="send-label">Send</span>
+            <span class="send-arrow">➤</span>
+          </button>
+
+          <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
+            <input type="checkbox" id="handsfree-toggle">
+            <span class="hf-text"></span>
+          </label>
+
+          <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
+        </div>
+        <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
       </div>
 
-      <!-- Demo mode banner (shown only when no valid login token). -->
-      <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
-        <strong>Demo mode</strong> — limited responses for trying the app.
-        If you already signed up for the 7-day trial or 14-day tester access, click the <strong>Log in</strong> button in the header above (or go to the landing page) and use the email + password you chose during signup.
+      <div class="library-panel" id="library-panel" role="tabpanel" aria-hidden="true">
+        <div class="library-toolbar">
+          <button type="button" class="library-back-btn" id="library-back-btn" style="display:none;">← Books</button>
+          <div class="library-title" id="library-view-title">Bible Library</div>
+        </div>
+        <div class="library-scroll" id="library-scroll">
+          <input type="search" class="library-search" id="library-search" placeholder="Search books..." aria-label="Search Bible books" style="margin-bottom:12px;">
+          <div id="library-books-view"></div>
+          <div id="library-chapters-view" style="display:none;"></div>
+        </div>
       </div>
-
-      <div class="messages" id="messages"></div>
-
-      <!-- Live transcription from server STT (with Bible keyterm boosting for accuracy).
-           Shown during hands-free listening so user can see the improved text as they speak
-           and correct if needed (e.g. by speaking clearly or rephrasing). -->
-      <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
-        <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
-        <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
-      </div>
-
-      <div class="input-area">
-        <input type="text" id="user-input" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" aria-label="Type your question or Bible reference">
-        <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
-        <button id="send-btn" aria-label="Send message">
-          <span class="send-label">Send</span>
-          <span class="send-arrow">➤</span>
-        </button>
-
-        <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
-          <input type="checkbox" id="handsfree-toggle">
-          <span class="hf-text"></span>
-        </label>
-
-        <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
-      </div>
-      <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
     </div>
   </div>
 
@@ -918,6 +1200,11 @@
         <strong>Future:</strong> Realtime conversational voice (full-duplex, very low latency, like talking naturally).
         We may offer this as a higher-priced tier later once the app is stable with more users.
       </div>
+
+      <label for="dark-mode-toggle" class="voice-setting-checkbox" style="margin-top:8px;">
+        <input type="checkbox" id="dark-mode-toggle">
+        <span>Dark mode (saved on this device)</span>
+      </label>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
         <button id="save-voice-btn" aria-label="Save voice settings">Save Settings</button>
@@ -1420,6 +1707,270 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
 
+    const BIBLE_LIBRARY = {
+      ot: [
+        { name: 'Genesis', code: 'GEN', chapters: 50 },
+        { name: 'Exodus', code: 'EXO', chapters: 40 },
+        { name: 'Leviticus', code: 'LEV', chapters: 27 },
+        { name: 'Numbers', code: 'NUM', chapters: 36 },
+        { name: 'Deuteronomy', code: 'DEU', chapters: 34 },
+        { name: 'Joshua', code: 'JOS', chapters: 24 },
+        { name: 'Judges', code: 'JDG', chapters: 21 },
+        { name: 'Ruth', code: 'RUT', chapters: 4 },
+        { name: '1 Samuel', code: '1SA', chapters: 31 },
+        { name: '2 Samuel', code: '2SA', chapters: 24 },
+        { name: '1 Kings', code: '1KI', chapters: 22 },
+        { name: '2 Kings', code: '2KI', chapters: 25 },
+        { name: '1 Chronicles', code: '1CH', chapters: 29 },
+        { name: '2 Chronicles', code: '2CH', chapters: 36 },
+        { name: 'Ezra', code: 'EZR', chapters: 10 },
+        { name: 'Nehemiah', code: 'NEH', chapters: 13 },
+        { name: 'Esther', code: 'EST', chapters: 10 },
+        { name: 'Job', code: 'JOB', chapters: 42 },
+        { name: 'Psalms', code: 'PSA', chapters: 150 },
+        { name: 'Proverbs', code: 'PRO', chapters: 31 },
+        { name: 'Ecclesiastes', code: 'ECC', chapters: 12 },
+        { name: 'Song of Solomon', code: 'SNG', chapters: 8 },
+        { name: 'Isaiah', code: 'ISA', chapters: 66 },
+        { name: 'Jeremiah', code: 'JER', chapters: 52 },
+        { name: 'Lamentations', code: 'LAM', chapters: 5 },
+        { name: 'Ezekiel', code: 'EZE', chapters: 48 },
+        { name: 'Daniel', code: 'DAN', chapters: 12 },
+        { name: 'Hosea', code: 'HOS', chapters: 14 },
+        { name: 'Joel', code: 'JOL', chapters: 3 },
+        { name: 'Amos', code: 'AMO', chapters: 9 },
+        { name: 'Obadiah', code: 'OBA', chapters: 1 },
+        { name: 'Jonah', code: 'JON', chapters: 4 },
+        { name: 'Micah', code: 'MIC', chapters: 7 },
+        { name: 'Nahum', code: 'NAM', chapters: 3 },
+        { name: 'Habakkuk', code: 'HAB', chapters: 3 },
+        { name: 'Zephaniah', code: 'ZEP', chapters: 3 },
+        { name: 'Haggai', code: 'HAG', chapters: 2 },
+        { name: 'Zechariah', code: 'ZEC', chapters: 14 },
+        { name: 'Malachi', code: 'MAL', chapters: 4 }
+      ],
+      nt: [
+        { name: 'Matthew', code: 'MAT', chapters: 28 },
+        { name: 'Mark', code: 'MRK', chapters: 16 },
+        { name: 'Luke', code: 'LUK', chapters: 24 },
+        { name: 'John', code: 'JHN', chapters: 21 },
+        { name: 'Acts', code: 'ACT', chapters: 28 },
+        { name: 'Romans', code: 'ROM', chapters: 16 },
+        { name: '1 Corinthians', code: '1CO', chapters: 16 },
+        { name: '2 Corinthians', code: '2CO', chapters: 13 },
+        { name: 'Galatians', code: 'GAL', chapters: 6 },
+        { name: 'Ephesians', code: 'EPH', chapters: 6 },
+        { name: 'Philippians', code: 'PHP', chapters: 4 },
+        { name: 'Colossians', code: 'COL', chapters: 4 },
+        { name: '1 Thessalonians', code: '1TH', chapters: 5 },
+        { name: '2 Thessalonians', code: '2TH', chapters: 3 },
+        { name: '1 Timothy', code: '1TI', chapters: 6 },
+        { name: '2 Timothy', code: '2TI', chapters: 4 },
+        { name: 'Titus', code: 'TIT', chapters: 3 },
+        { name: 'Philemon', code: 'PHM', chapters: 1 },
+        { name: 'Hebrews', code: 'HEB', chapters: 13 },
+        { name: 'James', code: 'JAS', chapters: 5 },
+        { name: '1 Peter', code: '1PE', chapters: 5 },
+        { name: '2 Peter', code: '2PE', chapters: 3 },
+        { name: '1 John', code: '1JN', chapters: 5 },
+        { name: '2 John', code: '2JN', chapters: 1 },
+        { name: '3 John', code: '3JN', chapters: 1 },
+        { name: 'Jude', code: 'JUD', chapters: 1 },
+        { name: 'Revelation', code: 'REV', chapters: 22 }
+      ]
+    };
+
+    let librarySelectedBook = null;
+
+    function isDarkMode() {
+      return localStorage.getItem('dark_mode') === 'true';
+    }
+
+    function applyDarkMode(enabled) {
+      document.documentElement.setAttribute('data-theme', enabled ? 'dark' : 'light');
+      localStorage.setItem('dark_mode', enabled ? 'true' : 'false');
+      const btn = document.getElementById('dark-mode-btn');
+      if (btn) btn.textContent = enabled ? '☀️' : '🌙';
+      const toggle = document.getElementById('dark-mode-toggle');
+      if (toggle) toggle.checked = enabled;
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) metaTheme.setAttribute('content', enabled ? '#0f1419' : '#2c3e50');
+    }
+
+    function initDarkMode() {
+      applyDarkMode(isDarkMode());
+      const btn = document.getElementById('dark-mode-btn');
+      if (btn) {
+        btn.addEventListener('click', () => applyDarkMode(!isDarkMode()));
+      }
+      const toggle = document.getElementById('dark-mode-toggle');
+      if (toggle) {
+        toggle.checked = isDarkMode();
+        toggle.addEventListener('change', () => applyDarkMode(toggle.checked));
+      }
+    }
+
+    function switchMainView(view) {
+      const chatPanel = document.getElementById('chat-panel');
+      const libraryPanel = document.getElementById('library-panel');
+      const tabChat = document.getElementById('tab-chat');
+      const tabLibrary = document.getElementById('tab-library');
+      const isChat = view === 'chat';
+
+      if (chatPanel) chatPanel.classList.toggle('hidden', !isChat);
+      if (libraryPanel) {
+        libraryPanel.classList.toggle('active', !isChat);
+        libraryPanel.setAttribute('aria-hidden', isChat ? 'true' : 'false');
+      }
+      if (tabChat) {
+        tabChat.classList.toggle('active', isChat);
+        tabChat.setAttribute('aria-selected', isChat ? 'true' : 'false');
+      }
+      if (tabLibrary) {
+        tabLibrary.classList.toggle('active', !isChat);
+        tabLibrary.setAttribute('aria-selected', !isChat ? 'true' : 'false');
+      }
+    }
+
+    function initMainTabs() {
+      const tabChat = document.getElementById('tab-chat');
+      const tabLibrary = document.getElementById('tab-library');
+      if (tabChat) tabChat.addEventListener('click', () => switchMainView('chat'));
+      if (tabLibrary) tabLibrary.addEventListener('click', () => {
+        switchMainView('library');
+        renderLibraryBooks(document.getElementById('library-search')?.value || '');
+      });
+    }
+
+    function renderLibrarySection(title, books, filter) {
+      const q = (filter || '').trim().toLowerCase();
+      const filtered = q
+        ? books.filter((b) => b.name.toLowerCase().includes(q))
+        : books;
+      if (!filtered.length) return '';
+
+      const buttons = filtered.map((book) =>
+        `<button type="button" class="library-book-btn" data-book-code="${book.code}">${book.name}</button>`
+      ).join('');
+
+      return `<div class="library-section-title">${title}</div><div class="library-books-grid">${buttons}</div>`;
+    }
+
+    function renderLibraryBooks(filter) {
+      const container = document.getElementById('library-books-view');
+      const chaptersView = document.getElementById('library-chapters-view');
+      const backBtn = document.getElementById('library-back-btn');
+      const titleEl = document.getElementById('library-view-title');
+      if (!container) return;
+
+      librarySelectedBook = null;
+      if (chaptersView) chaptersView.style.display = 'none';
+      container.style.display = 'block';
+      if (backBtn) backBtn.style.display = 'none';
+      if (titleEl) titleEl.textContent = 'Bible Library';
+
+      container.innerHTML =
+        renderLibrarySection('Old Testament', BIBLE_LIBRARY.ot, filter) +
+        renderLibrarySection('New Testament', BIBLE_LIBRARY.nt, filter);
+
+      container.querySelectorAll('.library-book-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const code = btn.getAttribute('data-book-code');
+          const book = [...BIBLE_LIBRARY.ot, ...BIBLE_LIBRARY.nt].find((b) => b.code === code);
+          if (book) renderLibraryChapters(book);
+        });
+      });
+    }
+
+    function renderLibraryChapters(book) {
+      const container = document.getElementById('library-books-view');
+      const chaptersView = document.getElementById('library-chapters-view');
+      const backBtn = document.getElementById('library-back-btn');
+      const titleEl = document.getElementById('library-view-title');
+      if (!chaptersView || !container) return;
+
+      librarySelectedBook = book;
+      container.style.display = 'none';
+      chaptersView.style.display = 'block';
+      if (backBtn) backBtn.style.display = 'inline-block';
+      if (titleEl) titleEl.textContent = book.name;
+
+      const chapterButtons = Array.from({ length: book.chapters }, (_, i) => {
+        const ch = i + 1;
+        return `<button type="button" class="library-chapter-btn" data-chapter="${ch}">${ch}</button>`;
+      }).join('');
+
+      chaptersView.innerHTML = `<div class="library-chapters-grid">${chapterButtons}</div>`;
+      chaptersView.querySelectorAll('.library-chapter-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const chapter = parseInt(btn.getAttribute('data-chapter'), 10);
+          studyFromLibrary(book.name, chapter);
+        });
+      });
+    }
+
+    function studyFromLibrary(bookName, chapter) {
+      switchMainView('chat');
+      const prompt = `Please walk me through ${bookName} chapter ${chapter}.`;
+      userInput.value = prompt;
+      userInput.focus();
+      sendToGrok(prompt);
+    }
+
+    function initLibrary() {
+      const search = document.getElementById('library-search');
+      const backBtn = document.getElementById('library-back-btn');
+      if (search) {
+        search.addEventListener('input', () => renderLibraryBooks(search.value));
+      }
+      if (backBtn) {
+        backBtn.addEventListener('click', () => renderLibraryBooks(search?.value || ''));
+      }
+      renderLibraryBooks('');
+    }
+
+    function formatVerseCitation(source) {
+      const ref = (source.reference || '').trim();
+      const trans = (source.translation || '').trim();
+      const text = (source.text || '').trim();
+      if (!text) return `${ref} (${trans})`;
+      return `"${text}" — ${ref} (${trans})`;
+    }
+
+    async function copyVerseCitation(source, btn) {
+      const text = formatVerseCitation(source);
+      let copied = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        }
+      } catch (e) {}
+
+      if (!copied) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          copied = document.execCommand('copy');
+        } catch (e) {}
+        ta.remove();
+      }
+
+      if (btn) {
+        const original = btn.textContent;
+        btn.textContent = copied ? 'Copied!' : 'Copy failed';
+        btn.classList.toggle('copied', copied);
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.classList.remove('copied');
+        }, 1600);
+      }
+    }
+
     function getDefaultEnglishTrans() {
       let saved = localStorage.getItem('default_english_trans') || 'BSB';
       if (saved === 'eng_lsv' || !ALLOWED_ENGLISH_TRANS.has(saved)) {
@@ -1447,25 +1998,47 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     // Attach a clickable "Sources (live...)" line under AI messages.
-    // Shows the references; click reveals the exact live-fetched verse text + a speak button for the verses.
+    // Shows the references; click reveals the exact live-fetched verse text + share/speak per verse.
     function attachSourcesUI(msgEl, sources, fullReplyForSpeak) {
       if (!sources || !sources.length) return;
 
       const wrap = document.createElement('div');
       wrap.className = 'scripture-sources';
-      wrap.innerHTML = `<span class="label">Sources (live from bible.helloao.org):</span> ` +
-        sources.map(s => {
-          const ref = (s.reference || '').trim();
-          const trans = (s.translation || '').trim();
-          return `<span class="ref">${ref} (${trans})</span>`;
-        }).join(' · ');
+
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = 'Sources (live from bible.helloao.org): ';
+      wrap.appendChild(label);
+
+      sources.forEach((s, idx) => {
+        if (idx > 0) wrap.appendChild(document.createTextNode(' · '));
+
+        const refSpan = document.createElement('span');
+        refSpan.className = 'ref';
+        const ref = (s.reference || '').trim();
+        const trans = (s.translation || '').trim();
+        refSpan.textContent = `${ref} (${trans})`;
+        wrap.appendChild(refSpan);
+
+        const shareInline = document.createElement('button');
+        shareInline.type = 'button';
+        shareInline.className = 'ref-share-btn';
+        shareInline.title = 'Copy verse with citation';
+        shareInline.setAttribute('aria-label', `Share ${ref}`);
+        shareInline.textContent = 'Share';
+        shareInline.addEventListener('click', (ev) => {
+          ev.stopImmediatePropagation();
+          copyVerseCitation(s, shareInline);
+        });
+        wrap.appendChild(shareInline);
+      });
 
       wrap.title = 'Click to view exact verse text fetched live for this answer';
 
       wrap.addEventListener('click', (e) => {
+        if (e.target.closest('.ref-share-btn')) return;
         e.stopImmediatePropagation();
 
-        // Toggle a detail box with the exact sourced text
         let box = msgEl.querySelector('.sources-detail');
         if (box) {
           box.remove();
@@ -1474,24 +2047,60 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         box = document.createElement('div');
         box.className = 'sources-detail';
-        box.style.cssText = 'margin-top:6px; font-size:11.5px; line-height:1.4; background:#f8f1e3; padding:8px; border-radius:6px; white-space:pre-wrap; border:1px solid #e8d9c2;';
+        box.style.cssText = 'margin-top:6px; font-size:11.5px; line-height:1.4; background:var(--bg-sources-detail); padding:8px; border-radius:6px; border:1px solid var(--border-soft);';
 
-        const detailText = sources.map(s =>
-          `${s.reference} (${s.translation}):\n${s.text}`
-        ).join('\n\n');
+        sources.forEach((s) => {
+          const block = document.createElement('div');
+          block.className = 'verse-block';
 
-        box.textContent = detailText;
+          const refLine = document.createElement('div');
+          refLine.className = 'verse-ref';
+          refLine.textContent = `${s.reference} (${s.translation})`;
+          block.appendChild(refLine);
 
-        // Speak the exact verses button (useful for study / memorization)
-        const spk = document.createElement('button');
-        spk.textContent = '🔊 Speak these verses';
-        spk.style.cssText = 'margin-top:6px; font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #c9a227; background:#fff; color:#5c4630; cursor:pointer;';
-        spk.onclick = (ev) => {
+          const textLine = document.createElement('div');
+          textLine.className = 'verse-text';
+          textLine.textContent = s.text || '';
+          block.appendChild(textLine);
+
+          const actions = document.createElement('div');
+          actions.className = 'verse-actions';
+
+          const shareBtn = document.createElement('button');
+          shareBtn.type = 'button';
+          shareBtn.className = 'verse-share-btn';
+          shareBtn.textContent = 'Share';
+          shareBtn.title = 'Copy verse with citation';
+          shareBtn.addEventListener('click', (ev) => {
+            ev.stopImmediatePropagation();
+            copyVerseCitation(s, shareBtn);
+          });
+          actions.appendChild(shareBtn);
+
+          const speakBtn = document.createElement('button');
+          speakBtn.type = 'button';
+          speakBtn.className = 'verse-speak-btn';
+          speakBtn.textContent = '🔊 Speak';
+          speakBtn.addEventListener('click', (ev) => {
+            ev.stopImmediatePropagation();
+            speak(formatVerseCitation(s));
+          });
+          actions.appendChild(speakBtn);
+
+          block.appendChild(actions);
+          box.appendChild(block);
+        });
+
+        const speakAll = document.createElement('button');
+        speakAll.type = 'button';
+        speakAll.textContent = '🔊 Speak all verses';
+        speakAll.className = 'verse-speak-btn';
+        speakAll.style.marginTop = '8px';
+        speakAll.addEventListener('click', (ev) => {
           ev.stopImmediatePropagation();
-          speak(detailText);
-        };
-        box.appendChild(document.createElement('br'));
-        box.appendChild(spk);
+          speak(sources.map((s) => formatVerseCitation(s)).join('\n\n'));
+        });
+        box.appendChild(speakAll);
 
         wrap.after(box);
       });
@@ -2159,6 +2768,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
+      const darkToggle = document.getElementById('dark-mode-toggle');
+      if (darkToggle) {
+        darkToggle.checked = isDarkMode();
+      }
+
       rateSlider.value = voiceSettings.rate;
       pitchSlider.value = voiceSettings.pitch;
       rateValue.textContent = voiceSettings.rate;
@@ -2227,6 +2841,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const transSelect = document.getElementById('default-trans-select');
       if (transSelect) {
         localStorage.setItem('default_english_trans', transSelect.value || 'BSB');
+      }
+
+      const darkToggle = document.getElementById('dark-mode-toggle');
+      if (darkToggle) {
+        applyDarkMode(!!darkToggle.checked);
       }
 
       if (typeof updateHandsFreeLabel === 'function') {
@@ -4276,6 +4895,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       updateHeaderForCurrentChat();
       renderSidebarChats(''); // render Grok-like sidebar on init
       initSidebarCollapse();
+      initDarkMode();
+      initMainTabs();
+      initLibrary();
       addPasswordToggles();
       // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
       setTimeout(addPasswordToggles, 100);
