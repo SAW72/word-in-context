@@ -566,6 +566,56 @@
       border-color: #4caf50;
       color: #2e7d32;
     }
+    .verse-share-menu {
+      position: fixed;
+      z-index: 2500;
+      min-width: 168px;
+      background: var(--bg-chat);
+      color: var(--text-primary);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .verse-share-menu-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 4px 8px 6px;
+    }
+    .verse-share-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      text-align: left;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-primary);
+      cursor: pointer;
+    }
+    .verse-share-menu-item:hover {
+      background: rgba(201, 162, 39, 0.12);
+    }
+    .verse-share-menu-item .share-icon {
+      width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .verse-share-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 2499;
+      background: transparent;
+    }
     .ref-share-btn {
       font-size: 10px;
       padding: 0 4px;
@@ -3093,7 +3143,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           shareBtn.type = 'button';
           shareBtn.className = 'verse-share-btn';
           shareBtn.textContent = 'Share';
-          shareBtn.addEventListener('click', () => copyVerseCitation(source, shareBtn));
+          shareBtn.title = 'Share verse to social apps';
+          shareBtn.addEventListener('click', () => shareVerseCitation(source, shareBtn));
           actions.appendChild(shareBtn);
 
           const isNT = NT_BOOK_CODES.has(book.code);
@@ -3207,8 +3258,43 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return `"${text}" — ${ref} (${trans})`;
     }
 
-    async function copyVerseCitation(source, btn) {
-      const text = formatVerseCitation(source);
+    let verseShareMenuCloseHandler = null;
+
+    function closeVerseShareMenu() {
+      const menu = document.getElementById('verse-share-menu');
+      const backdrop = document.getElementById('verse-share-backdrop');
+      if (menu) menu.remove();
+      if (backdrop) backdrop.remove();
+      if (verseShareMenuCloseHandler) {
+        document.removeEventListener('keydown', verseShareMenuCloseHandler);
+        verseShareMenuCloseHandler = null;
+      }
+    }
+
+    function positionVerseShareMenu(menu, anchorEl) {
+      const rect = anchorEl.getBoundingClientRect();
+      const margin = 8;
+      menu.style.visibility = 'hidden';
+      menu.style.left = '0';
+      menu.style.top = '0';
+      document.body.appendChild(menu);
+      const menuRect = menu.getBoundingClientRect();
+      let left = rect.left;
+      let top = rect.bottom + margin;
+      if (left + menuRect.width > window.innerWidth - margin) {
+        left = window.innerWidth - menuRect.width - margin;
+      }
+      if (left < margin) left = margin;
+      if (top + menuRect.height > window.innerHeight - margin) {
+        top = rect.top - menuRect.height - margin;
+      }
+      if (top < margin) top = margin;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.style.visibility = 'visible';
+    }
+
+    async function copyVerseCitationText(text, btn) {
       let copied = false;
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3239,6 +3325,91 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           btn.classList.remove('copied');
         }, 1600);
       }
+      return copied;
+    }
+
+    async function copyVerseCitation(source, btn) {
+      return copyVerseCitationText(formatVerseCitation(source), btn);
+    }
+
+    function openExternalShare(url) {
+      window.open(url, '_blank', 'noopener,noreferrer,width=600,height=520');
+    }
+
+    function shareVerseCitation(source, anchorEl) {
+      closeVerseShareMenu();
+      const text = formatVerseCitation(source);
+      const ref = (source.reference || '').trim() || 'Scripture';
+      const pageUrl = window.location.href;
+
+      const backdrop = document.createElement('div');
+      backdrop.id = 'verse-share-backdrop';
+      backdrop.className = 'verse-share-backdrop';
+      backdrop.addEventListener('click', closeVerseShareMenu);
+
+      const menu = document.createElement('div');
+      menu.id = 'verse-share-menu';
+      menu.className = 'verse-share-menu';
+      menu.setAttribute('role', 'menu');
+      menu.innerHTML = `<div class="verse-share-menu-title">Share verse</div>`;
+
+      const addItem = (label, icon, onClick) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'verse-share-menu-item';
+        btn.setAttribute('role', 'menuitem');
+        btn.innerHTML = `<span class="share-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          closeVerseShareMenu();
+          await onClick();
+        });
+        menu.appendChild(btn);
+      };
+
+      if (navigator.share) {
+        addItem('Apps on this device…', '📤', async () => {
+          try {
+            await navigator.share({ title: ref, text, url: pageUrl });
+          } catch (e) {
+            if (e && e.name !== 'AbortError') {
+              await copyVerseCitationText(text, anchorEl);
+            }
+          }
+        });
+      }
+
+      addItem('Facebook', 'f', () => {
+        const shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}&quote=${encodeURIComponent(text)}`;
+        openExternalShare(shareUrl);
+      });
+
+      addItem('X (Twitter)', '𝕏', () => {
+        const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+        openExternalShare(shareUrl);
+      });
+
+      addItem('WhatsApp', '💬', () => {
+        const shareUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        openExternalShare(shareUrl);
+      });
+
+      addItem('Email', '✉️', () => {
+        const shareUrl = `mailto:?subject=${encodeURIComponent(ref)}&body=${encodeURIComponent(text + '\n\n' + pageUrl)}`;
+        window.location.href = shareUrl;
+      });
+
+      addItem('Copy text', '📋', async () => {
+        await copyVerseCitationText(text, anchorEl);
+      });
+
+      document.body.appendChild(backdrop);
+      positionVerseShareMenu(menu, anchorEl);
+
+      verseShareMenuCloseHandler = (e) => {
+        if (e.key === 'Escape') closeVerseShareMenu();
+      };
+      document.addEventListener('keydown', verseShareMenuCloseHandler);
     }
 
     function getDefaultEnglishTrans() {
@@ -3298,7 +3469,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         shareInline.textContent = 'Share';
         shareInline.addEventListener('click', (ev) => {
           ev.stopImmediatePropagation();
-          copyVerseCitation(s, shareInline);
+          shareVerseCitation(s, shareInline);
         });
         wrap.appendChild(shareInline);
       });
@@ -3340,10 +3511,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           shareBtn.type = 'button';
           shareBtn.className = 'verse-share-btn';
           shareBtn.textContent = 'Share';
-          shareBtn.title = 'Copy verse with citation';
+          shareBtn.title = 'Share verse to social apps';
           shareBtn.addEventListener('click', (ev) => {
             ev.stopImmediatePropagation();
-            copyVerseCitation(s, shareBtn);
+            shareVerseCitation(s, shareBtn);
           });
           actions.appendChild(shareBtn);
 
