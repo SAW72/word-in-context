@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Voice-first offline Bible study with John">
+  <meta name="description" content="How to use The Word in Context — voice-first Bible study">
   <meta name="theme-color" content="#2c3e50">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="The Word">
@@ -11,74 +11,559 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/pwa.css">
-  <title>Instructions - The Word in Context</title>
+  <title>Help - The Word in Context</title>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('dark_mode') === 'true') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <style>
-    body { font-family: system-ui, sans-serif; background: #f5e8d3; color: #3c2f2f; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; }
-    h1, h2 { color: #5c4630; }
-    ul { padding-left: 20px; }
-    .note { background: #f8f1e3; padding: 10px; border-radius: 6px; border: 1px solid #c9a227; }
+    :root {
+      --bg-body: #f5e8d3;
+      --bg-content: #fdfaf3;
+      --text-primary: #333333;
+      --text-muted: #5c4630;
+      --border-soft: #e8d9c2;
+      --bg-note: #f8f1e3;
+    }
+    html[data-theme="dark"] {
+      --bg-body: #0f1419;
+      --bg-content: #141b24;
+      --text-primary: #e8e4dc;
+      --text-muted: #b8a88e;
+      --border-soft: #2c3e50;
+      --bg-note: #1a222c;
+      color-scheme: dark;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-body);
+      color: var(--text-primary);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+    }
+    .help-header {
+      background: linear-gradient(135deg, #2c3e50, #1a252f);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .help-header-left,
+    .help-header-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .help-header .center {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+    }
+    .help-header h1 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .help-header .subtitle {
+      font-size: 10px;
+      opacity: 0.75;
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+    .dark-mode-btn,
+    .settings-btn,
+    .sources-btn,
+    .login-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: white;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .dark-mode-btn {
+      font-size: 16px;
+      padding: 4px 8px;
+    }
+    .dark-mode-btn:hover,
+    .settings-btn:hover,
+    .sources-btn:hover,
+    .login-btn:hover {
+      background: rgba(255,255,255,0.25);
+    }
+    .sources-btn {
+      background: #5c4630;
+      color: #f5e8d3;
+    }
+    .sources-btn:hover {
+      background: #6d5340;
+    }
+    .login-btn {
+      background: #c9a227;
+      color: #1a252f;
+      font-weight: 600;
+    }
+    .login-btn:hover {
+      background: #d8b44f;
+    }
+    .help-nav-link {
+      color: #f5e8d3;
+      font-size: 11px;
+      text-decoration: none;
+      padding: 2px 6px;
+      opacity: 0.85;
+      white-space: nowrap;
+    }
+    .help-nav-link.active {
+      opacity: 1;
+      font-weight: 600;
+      border-bottom: 1px solid #c9a227;
+    }
+    .help-main {
+      flex: 1;
+      max-width: 700px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+      background: var(--bg-content);
+    }
+    .help-main h2 {
+      color: var(--text-muted);
+      font-size: 17px;
+      margin: 24px 0 8px;
+    }
+    .help-main h2:first-of-type {
+      margin-top: 0;
+    }
+    .help-main ul {
+      padding-left: 20px;
+      margin: 0 0 12px;
+    }
+    .help-main li {
+      margin-bottom: 6px;
+    }
+    .note {
+      background: var(--bg-note);
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #c9a227;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+    .back-link {
+      display: block;
+      margin-top: 32px;
+      text-align: center;
+      font-size: 13px;
+    }
+    .back-link a {
+      color: #c9a227;
+    }
+    footer {
+      background: #1a252f;
+      color: #eee;
+      text-align: center;
+      padding: 36px 20px;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    footer a {
+      color: #c9a227;
+    }
+    footer small {
+      color: #f5e8d3;
+    }
+    .cross {
+      display: inline-block;
+      position: relative;
+      width: 0.85em;
+      height: 1.05em;
+      vertical-align: middle;
+      margin: 0 0.15em;
+    }
+    .cross::before,
+    .cross::after {
+      content: '';
+      position: absolute;
+      background: #c9a227;
+      opacity: 0.85;
+    }
+    .cross::before {
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+      width: 1.5px;
+      height: 100%;
+    }
+    .cross::after {
+      top: 38%;
+      left: 0;
+      width: 100%;
+      height: 1.5px;
+    }
+    #login-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #login-modal .modal-content {
+      background: var(--bg-content, #fff);
+      color: var(--text-primary, #333);
+      padding: 26px 22px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 340px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      position: relative;
+      border: 1px solid var(--border-soft, #f0e6d2);
+    }
+    #login-modal h3 {
+      margin: 0 0 14px;
+      text-align: center;
+      font-size: 19px;
+      color: var(--text-primary);
+    }
+    .auth-form input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      border: 1px solid var(--border-soft, #d8d0c0);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      background: var(--bg-body, #fff);
+      color: var(--text-primary);
+    }
+    .auth-form button {
+      width: 100%;
+      margin-top: 4px;
+      background: #c9a227;
+      color: #1a252f;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 15px;
+    }
+    .password-wrapper {
+      position: relative;
+      display: block;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 16px;
+      opacity: 0.7;
+      user-select: none;
+    }
+    @media (max-width: 768px) {
+      .help-header {
+        flex-wrap: wrap;
+        padding: 8px 10px;
+      }
+      .help-header .center {
+        order: -1;
+        flex: 1 1 100%;
+        margin-bottom: 4px;
+      }
+      .help-header h1 { font-size: 16px; }
+      .help-header .subtitle { font-size: 9px; }
+      .help-header-right {
+        flex: 1;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 3px;
+      }
+      .dark-mode-btn, .settings-btn, .sources-btn, .login-btn, .help-nav-link {
+        font-size: 10px;
+        padding: 3px 6px;
+      }
+      .help-main { padding: 20px 14px 32px; }
+      footer { padding: 28px 14px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
-  <h1>📖 The Word in Context - How to Use</h1>
-  
-  <h2>Hands-Free Mode (Wake Word "John")</h2>
-  <ul>
-    <li>Toggle the HF switch in the input bar to enable hands-free.</li>
-    <li>Say "John" (or your custom wake word) followed by your question, e.g. "John tell me about John 3:16".</li>
-    <li>It listens continuously, uses wake word to start, and you can say the wake word again to barge-in while it's speaking.</li>
-    <li>For long pauses, say "[John] pause" or "hold".</li>
-    <li>The live transcript shows improved Bible reference recognition.</li>
-  </ul>
-  
-  <h2>Voices (Text-to-Speech)</h2>
-  <ul>
-    <li>Click 🔊 Voice to open settings.</li>
-    <li>Choose from voices your browser exposes (no app filter).</li>
-    <li><strong>iPhone:</strong> basic system voices only (Safari, Chrome, or Edge — same list); try Daniel or Karen.</li>
-    <li><strong>Mac:</strong> use Chrome; Enhanced voices from Spoken Content settings.</li>
-    <li>Use 🔊 test buttons to preview any voice with John 3:16.</li>
-    <li>Speed and pitch sliders adjust the voice.</li>
-    <li>Reload system voices after downloading new voices in system settings.</li>
-    <li>Auto-speak can be toggled for AI replies.</li>
-  </ul>
-  <div class="note">
-    <strong>Tip:</strong> Numbered internal voices on Mac are real - use the 🔊 buttons to discover if they sound male or female.
-  </div>
-  
-  <h2>Sources & Citations</h2>
-  <ul>
-    <li>Click 📚 Sources to see live citations from bible.helloao.org.</li>
-    <li>Every scripture reference in replies is grounded with exact text from original languages (Greek SBL, Hebrew WLC) and literal English translations.</li>
-    <li>Click sources in replies to expand details and speak the verses.</li>
-  </ul>
-  
-  <h2>Sidebar & Chats</h2>
-  <ul>
-    <li>Click the book icon or hamburger to open sidebar with chat history (Grok-like multi-conversation).</li>
-    <li>Search chats, create new, or switch between conversations.</li>
-    <li>Chats are saved in your browser only.</li>
-  </ul>
-  
-  <h2>Install as an App (PWA)</h2>
-  <ul>
-    <li><strong>Android / Chrome desktop:</strong> tap <strong>Install</strong> when prompted, or use the browser menu → Install app.</li>
-    <li><strong>iPhone:</strong> open in Safari or Chrome, tap Share → <strong>Add to Home Screen</strong>.</li>
-    <li>Installed app opens full-screen with offline access to cached Bible text (AI study still needs internet).</li>
-  </ul>
+  <header class="help-header">
+    <div class="help-header-left">
+      <a href="/app?demo=1" style="color:#f5e8d3; font-size:11px; text-decoration:none; padding:2px 6px;">← App</a>
+    </div>
+    <div class="center">
+      <h1>📖 The Word in Context</h1>
+      <div class="subtitle">Help &amp; Instructions</div>
+    </div>
+    <div class="help-header-right">
+      <button class="dark-mode-btn" id="dark-mode-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
+      <a href="/app?demo=1#settings" class="settings-btn" aria-label="Open settings">⚙️ Settings</a>
+      <a href="/app?demo=1#sources" class="sources-btn" aria-label="View sources">📚 Sources</a>
+      <button type="button" class="login-btn" id="login-btn" aria-label="Log in">Log in</button>
+      <span class="help-nav-link active" aria-current="page">Help</span>
+    </div>
+  </header>
 
-  <h2>Mobile Tips</h2>
-  <ul>
-    <li>Input bar stays fixed just above the keyboard on focus.</li>
-    <li>HF toggle is visible compact next to send button.</li>
-    <li>Larger tappable speak buttons on replies.</li>
-    <li>Full scrolling, no cutoff, thumb-friendly 44px targets.</li>
-  </ul>
-  
-  <p style="margin-top: 40px; font-size: 12px; color: #8b5e3c; text-align: center;">
-    The Word in Context • Read Scripture in context. Listen to His voice. Live free.<br>
-    <a href="/" style="color: #c9a227;">Back to the app</a>
-  </p>
+  <main class="help-main">
+    <h2>Hands-Free Mode (Wake Word "John")</h2>
+    <ul>
+      <li>Toggle the HF switch in the input bar to enable hands-free.</li>
+      <li>Say "John" (or your custom wake word) followed by your question, e.g. "John tell me about John 3:16".</li>
+      <li>It listens continuously, uses wake word to start, and you can say the wake word again to barge-in while it's speaking.</li>
+      <li>For long pauses, say "[John] pause" or "hold".</li>
+      <li>The live transcript shows improved Bible reference recognition.</li>
+    </ul>
+
+    <h2>Voices (Text-to-Speech)</h2>
+    <ul>
+      <li>Click <strong>Settings</strong> in the header to open voice and app preferences.</li>
+      <li>Choose from voices your browser exposes (no app filter).</li>
+      <li><strong>iPhone:</strong> basic system voices only (Safari, Chrome, or Edge — same list); try Daniel or Karen.</li>
+      <li><strong>Mac:</strong> use Chrome; Enhanced voices from Spoken Content settings.</li>
+      <li>Use 🔊 test buttons to preview any voice with John 3:16.</li>
+      <li>Speed and pitch sliders adjust the voice.</li>
+      <li>Reload system voices after downloading new voices in system settings.</li>
+      <li>Auto-speak can be toggled for AI replies.</li>
+    </ul>
+    <div class="note">
+      <strong>Tip:</strong> Numbered internal voices on Mac are real — use the 🔊 buttons to discover if they sound male or female.
+    </div>
+
+    <h2>Sources &amp; Citations</h2>
+    <ul>
+      <li>Click <strong>Sources</strong> in the header to see live citations from bible.helloao.org.</li>
+      <li>Every scripture reference in replies is grounded with exact text from original languages (Greek SBL, Hebrew WLC) and literal English translations.</li>
+      <li>Click sources in replies to expand details and speak the verses.</li>
+    </ul>
+
+    <h2>Sidebar &amp; Chats</h2>
+    <ul>
+      <li>Click the book icon or hamburger to open sidebar with chat history (Grok-like multi-conversation).</li>
+      <li>Search chats, create new, or switch between conversations.</li>
+      <li>Chats are saved in your browser only.</li>
+    </ul>
+
+    <h2>Install as an App (PWA)</h2>
+    <ul>
+      <li><strong>Android / Chrome desktop:</strong> tap <strong>Install</strong> when prompted, or use the browser menu → Install app.</li>
+      <li><strong>iPhone:</strong> open in Safari or Chrome, tap Share → <strong>Add to Home Screen</strong>.</li>
+      <li>Installed app opens full-screen with offline access to cached Bible text (AI study still needs internet).</li>
+    </ul>
+
+    <h2>Mobile Tips</h2>
+    <ul>
+      <li>Input bar stays fixed just above the keyboard on focus.</li>
+      <li>HF toggle is visible compact next to send button.</li>
+      <li>Larger tappable speak buttons on replies.</li>
+      <li>Full scrolling, no cutoff, thumb-friendly 44px targets.</li>
+    </ul>
+
+    <p class="back-link">
+      <a href="/app?demo=1">Open the app</a> · <a href="/">Landing page</a>
+    </p>
+  </main>
+
+  <footer>
+    <div class="container">
+      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org">Live Bible data</a> • <a href="/app?demo=1">Try the app (demo)</a> • <a href="mailto:hello@stewardoftheking.com">Contact Us</a><br>
+      <small>© 2026 • Steward of the King LLC • No ads • Your data stays yours</small><br>
+      <small style="opacity:0.85;">
+        Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.
+      </small><br>
+      <a href="https://www.facebook.com/profile.php?id=61560749516343" target="_blank" rel="noopener" style="font-size:13px; text-decoration:underline; display:inline-block; margin-top:6px;">Follow us on Facebook</a>
+      <span class="cross" aria-hidden="true" style="margin-left:8px; opacity:0.7; font-size:1.1em; vertical-align:middle;"></span>
+    </div>
+  </footer>
+
+  <!-- Login Modal -->
+  <div id="login-modal">
+    <div class="modal-content">
+      <button type="button" onclick="closeLoginModal()" style="position:absolute; top:8px; right:12px; background:none; border:none; font-size:24px; cursor:pointer; line-height:1; color:var(--text-muted); padding:4px;">&times;</button>
+      <div style="text-align:center; margin-bottom:14px;">
+        <span style="font-size:22px; color:#c9a227;">📖</span>
+        <span class="cross" aria-hidden="true" style="margin-left:4px;"></span>
+      </div>
+      <h3>Log in to your account</h3>
+      <form id="modal-login-form" class="auth-form">
+        <input type="email" id="modal-login-email" placeholder="Your email" required autocomplete="username">
+        <input type="password" id="modal-login-password" placeholder="Your password" required autocomplete="current-password">
+        <button type="submit">Log in with password</button>
+      </form>
+      <div id="modal-login-error" style="display:none; margin-top:10px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
+      <div id="modal-login-success" style="display:none; margin-top:10px; color:var(--text-primary); font-size:13px; text-align:center;"></div>
+      <p style="text-align:center; font-size:12.5px; margin-top:13px; opacity:0.75;">
+        Forgot password? <a href="#" id="modal-magic-link" style="color:#c9a227; text-decoration:underline;">Send magic link</a>
+      </p>
+      <p style="text-align:center; font-size:11px; margin-top:6px; opacity:0.55; color:var(--text-muted);">
+        Works for trial &amp; tester accounts
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function isDarkMode() {
+      return localStorage.getItem('dark_mode') === 'true';
+    }
+
+    function applyDarkMode(enabled) {
+      document.documentElement.setAttribute('data-theme', enabled ? 'dark' : 'light');
+      localStorage.setItem('dark_mode', enabled ? 'true' : 'false');
+      const btn = document.getElementById('dark-mode-btn');
+      if (btn) btn.textContent = enabled ? '☀️' : '🌙';
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) metaTheme.setAttribute('content', enabled ? '#0f1419' : '#2c3e50');
+    }
+
+    function initDarkMode() {
+      applyDarkMode(isDarkMode());
+      const btn = document.getElementById('dark-mode-btn');
+      if (btn) btn.addEventListener('click', () => applyDarkMode(!isDarkMode()));
+    }
+
+    function showLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        const emailInput = document.getElementById('modal-login-email');
+        if (emailInput) setTimeout(() => emailInput.focus(), 50);
+        setTimeout(addPasswordToggles, 50);
+      }
+    }
+
+    function closeLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) modal.style.display = 'none';
+      const err = document.getElementById('modal-login-error');
+      const suc = document.getElementById('modal-login-success');
+      if (err) err.style.display = 'none';
+      if (suc) suc.style.display = 'none';
+    }
+
+    function addPasswordToggles() {
+      document.querySelectorAll('input[type="password"]').forEach(input => {
+        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
+        const wrapper = document.createElement('span');
+        wrapper.className = 'password-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+        const toggle = document.createElement('span');
+        toggle.className = 'password-toggle';
+        toggle.textContent = '🙈';
+        toggle.setAttribute('aria-label', 'Show password');
+        wrapper.appendChild(toggle);
+        toggle.addEventListener('click', () => {
+          if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '👁';
+          } else {
+            input.type = 'password';
+            toggle.textContent = '🙈';
+          }
+        });
+      });
+    }
+
+    document.getElementById('login-btn')?.addEventListener('click', showLoginModal);
+
+    document.getElementById('modal-login-form')?.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const email = document.getElementById('modal-login-email').value;
+      const password = document.getElementById('modal-login-password').value;
+      const errDiv = document.getElementById('modal-login-error');
+      const successDiv = document.getElementById('modal-login-success');
+      if (errDiv) errDiv.style.display = 'none';
+      if (successDiv) successDiv.style.display = 'none';
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('user_email', data.email || email);
+          if (successDiv) {
+            successDiv.textContent = 'Logged in! Redirecting to the app...';
+            successDiv.style.display = 'block';
+          }
+          setTimeout(() => { window.location.href = '/app'; }, 550);
+        } else {
+          const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
+          if (errDiv) {
+            errDiv.textContent = errText;
+            errDiv.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        if (errDiv) {
+          errDiv.textContent = 'Network error. Please try again later.';
+          errDiv.style.display = 'block';
+        }
+      }
+    });
+
+    document.getElementById('modal-magic-link')?.addEventListener('click', async function(e) {
+      e.preventDefault();
+      const email = document.getElementById('modal-login-email')?.value.trim();
+      const errDiv = document.getElementById('modal-login-error');
+      const successDiv = document.getElementById('modal-login-success');
+      if (errDiv) errDiv.style.display = 'none';
+      if (successDiv) successDiv.style.display = 'none';
+      if (!email) { alert('Enter your email first.'); return; }
+      try {
+        const res = await fetch('/api/request-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok && successDiv) {
+          successDiv.textContent = data.message || 'Check your email for the magic login link.';
+          successDiv.style.display = 'block';
+        } else if (errDiv) {
+          errDiv.textContent = (data && data.error) || 'Could not send link.';
+          errDiv.style.display = 'block';
+        }
+      } catch (err) {
+        if (errDiv) {
+          errDiv.textContent = 'Network error.';
+          errDiv.style.display = 'block';
+        }
+      }
+    });
+
+    document.getElementById('login-modal')?.addEventListener('click', function(e) {
+      if (e.target === this) closeLoginModal();
+    });
+
+    initDarkMode();
+    addPasswordToggles();
+  </script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>

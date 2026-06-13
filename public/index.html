@@ -926,6 +926,57 @@
       color: var(--settings-muted);
       margin: 0;
     }
+    .sources-modal-body {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--text-primary);
+    }
+    .sources-modal-body p {
+      margin: 0 0 10px;
+      color: var(--text-primary);
+    }
+    .sources-modal-muted {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0 0 8px;
+    }
+    .sources-modal-dim {
+      font-size: 12px;
+      color: var(--settings-dim);
+      margin: 0 0 8px;
+    }
+    .sources-modal-body h4 {
+      margin: 12px 0 4px;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+    .sources-modal-body ul,
+    .sources-modal-body ol {
+      margin: 0 0 10px 16px;
+      padding: 0;
+      color: var(--text-primary);
+    }
+    .sources-modal-body li {
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .sources-quote-box {
+      margin: 0 0 8px;
+      font-style: italic;
+      background: var(--bg-policy);
+      padding: 6px 8px;
+      border-radius: 4px;
+      color: var(--text-primary);
+      border: 1px solid var(--border-soft);
+    }
+    .sources-modal-fine {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .sources-modal-body a {
+      color: #c9a227;
+    }
     .sources-btn {
       background: rgba(255,255,255,0.12); border: none;
       color: #f5e8d3; font-size: 12px; padding: 4px 8px; border-radius: 6px;
@@ -1608,24 +1659,24 @@
     <div class="modal-content" style="max-width: 520px; text-align: left; max-height: 80vh; overflow-y: auto;">
       <h3 style="margin:0 0 8px;">📚 Sources &amp; Data Attribution</h3>
 
-      <div style="font-size:13px; line-height:1.45; color:#333;">
-        <p style="margin:0 0 10px;"><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
-        <p style="font-size:12px; color:#666; margin:0 0 8px;">In demo mode (no login) limited to a few responses (default 10, configurable via DEMO_LIMIT env) before sign-up prompt for full trial.</p>
+      <div class="sources-modal-body">
+        <p><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
+        <p class="sources-modal-muted">In demo mode (no login) limited to a few responses (default 10, configurable via DEMO_LIMIT env) before sign-up prompt for full trial.</p>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">Bible Scripture Text (English + Original Languages)</h4>
-        <ul style="margin:0 0 10px 16px; padding:0;">
+        <h4>Bible Scripture Text (English + Original Languages)</h4>
+        <ul>
           <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
-          <li><strong>English grounding</strong>: Berean Standard Bible (BSB) is the default. User-selectable in Voice Settings: BSB, ASV, YLT, or WEB — all fetched live from bible.helloao.org only.</li>
+          <li><strong>English grounding</strong>: Berean Standard Bible (BSB) is the default. User-selectable in Settings: BSB, ASV, YLT, or WEB — all fetched live from bible.helloao.org only.</li>
           <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
           <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
           <li>The model is instructed to quote or reference the original Greek/Hebrew text (with transliteration when helpful) when discussing specific words, grammar, or key terms, and to cite the exact source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").</li>
         </ul>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">What "Context" Means in This App</h4>
+        <h4>What "Context" Means in This App</h4>
         <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word — examining a passage within its proper literary, grammatical, and canonical setting rather than in isolation. It includes:</p>
-        <ul style="margin:0 0 10px 16px; padding:0;">
+        <ul>
           <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
           <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
           <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, or in the broader literature of the period.</li>
@@ -1633,8 +1684,8 @@
           <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story.</li>
         </ul>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">How to Understand Greek &amp; Hebrew in Context (the Process)</h4>
-        <ol style="margin:0 0 10px 16px; padding:0; font-size:13px;">
+        <h4>How to Understand Greek &amp; Hebrew in Context (the Process)</h4>
+        <ol>
           <li>Begin with the literal text supplied by the app (SBL Greek New Testament for the NT; Westminster Leningrad Codex for the Hebrew OT).</li>
           <li>Read the surrounding verses and chapters to grasp the author's immediate purpose.</li>
           <li>Identify significant words or constructions and study their usage in the original language (the app surfaces these when you ask about a specific term).</li>
@@ -1643,32 +1694,32 @@
           <li>Compare the same words, themes, or constructions elsewhere in the author's writings and the wider canon.</li>
           <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew guide us.</li>
         </ol>
-        <p style="margin:0 0 8px; font-size:12px; color:#555;">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
+        <p class="sources-modal-dim">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">Citations You Hear When It Speaks</h4>
+        <h4>Citations You Hear When It Speaks</h4>
         <p style="margin:0 0 8px;">The system prompt requires the model to include explicit, natural-sounding citations — including original languages — in every response that discusses scripture:</p>
-        <p style="margin:0 0 8px; font-style:italic; background:#f8f1e3; padding:6px 8px; border-radius:4px;">
+        <p class="sources-quote-box">
           “John 1:1 (SBL Greek New Testament) reads: ‘Ἐν ἀρχῇ ἦν ὁ λόγος...’ (En archē ēn ho logos...)”<br>
           “The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) is: ‘בְּרֵאשִׁית בָּרָא אֱלֹהִים’ (Bereshit bara Elohim...)”
         </p>
         <p style="margin:0 0 10px;">Because the spoken text contains the citations, you hear the English translation source and the original Greek/Hebrew every time the voice reads the answer.</p>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">AI Model</h4>
-        <ul style="margin:0 0 10px 16px; padding:0;">
+        <h4>AI Model</h4>
+        <ul>
           <li>Responses generated by <strong>Grok 4.3</strong> (model: grok-4.3).</li>
           <li>Calls go through a secure server-side proxy — your xAI API key never leaves the server and is never exposed to the browser.</li>
         </ul>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
-        <ul style="margin:0 0 10px 16px; padding:0;">
+        <h4>Voice (Text-to-Speech)</h4>
+        <ul>
           <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> basic system voices only (any browser) — try Daniel or Karen. <strong>Mac:</strong> Chrome for Enhanced voices from Spoken Content. No app filter.</li>
           <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
         </ul>
 
-        <h4 style="margin:12px 0 4px; font-size:13px;">Conversation History</h4>
+        <h4>Conversation History</h4>
         <p style="margin:0 0 10px;">Your chats are stored only in your browser’s localStorage (they survive refresh but stay on this device).</p>
 
-        <p style="margin:8px 0 0; font-size:11px; color:#666;">
+        <p class="sources-modal-fine">
           This design lets you verify every reference to The Word against the actual source. The Bible data comes from the open public API at bible.helloao.org.
         </p>
       </div>
@@ -6122,6 +6173,20 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       // Initial call (config fetch above will also call, this covers sync path)
       updateDemoStatus();
       enforceDemoLimit();
+      handleAppDeepLinkHash();
+    }
+
+    function handleAppDeepLinkHash() {
+      const hash = (location.hash || '').replace('#', '').toLowerCase();
+      if (!hash) return;
+      if (hash === 'settings') {
+        setTimeout(() => openVoiceSettings(), 150);
+      } else if (hash === 'sources') {
+        setTimeout(() => {
+          const modal = document.getElementById('sources-modal');
+          if (modal) modal.style.display = 'flex';
+        }, 150);
+      }
     }
 
     function updateDemoStatus() {
