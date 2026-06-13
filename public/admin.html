@@ -92,7 +92,7 @@
       <div id="bulk-status" class="status"></div>
     </div>
 
-    <p class="small" style="margin-top:16px;">Tip: Use "Make free forever" (manual_free=1) for testers you want to keep forever. "Revoke" sets access_granted=0 immediately. Changes take effect on next /api/chat or /api/me. For The Word in Context Special (discounted $3/mo retention) offers, use the per-user button (uses price_1TgRtD9Hq4iefeFs0WbyW9AD). Main monthly: price_1TgQpW9Hq4iefeFs9jsFfcI6. Yearly: price_1TgRqX9Hq4iefeFsCRXz5ES3.</p>
+    <p class="small" style="margin-top:16px;">Tip: Use <strong>Delete</strong> to remove test accounts so you can sign up again with the same email. "Make free forever" (manual_free=1) for testers you want to keep. "Revoke" sets access_granted=0 immediately. For The Word in Context Special (discounted $3/mo retention) offers, use the per-user button (uses price_1TgRtD9Hq4iefeFs0WbyW9AD). Main monthly: price_1TgQpW9Hq4iefeFs9jsFfcI6. Yearly: price_1TgRqX9Hq4iefeFsCRXz5ES3.</p>
   </div>
 </div>
 
@@ -179,12 +179,35 @@
         mkBtn('Make free forever', 'btn', () => setAccess(u.email, u.access_granted ? 1 : 0, 1));
         mkBtn('Remove free', 'btn gray', () => setAccess(u.email, u.access_granted ? 1 : 0, 0));
         mkBtn('The Word in Context Special offer', 'btn', () => { if (window.sendRetention) window.sendRetention(u.email); });
+        mkBtn('Delete', 'btn danger', () => deleteUser(u.email));
 
         tbody.appendChild(tr);
       });
     } catch (e) {
       status.textContent = 'Failed to load (bad or expired admin token?)';
       logoutAdmin();
+    }
+  }
+
+  async function deleteUser(email) {
+    if (!confirm('Permanently delete ' + email + '?\n\nThey can sign up again with the same email. Magic login links for this address will stop working.')) return;
+    const status = document.getElementById('admin-status');
+    status.textContent = 'Deleting ' + email + '...';
+    try {
+      const r = await fetch(base + '/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ email })
+      });
+      const data = await r.json();
+      if (r.ok) {
+        status.textContent = 'Deleted ' + email;
+        loadUsers();
+      } else {
+        status.textContent = data.error || 'Delete failed';
+      }
+    } catch (e) {
+      status.textContent = 'Error deleting user';
     }
   }
 

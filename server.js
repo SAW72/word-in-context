@@ -698,23 +698,42 @@ app.post('/api/admin/login', (req, res) => {
   res.json({ token: adminToken });
 });
 
-app.get('/api/admin/users', (req, res) => {
+function requireAdmin(req, res) {
   const adminToken = req.headers.authorization?.split(' ')[1];
   try {
     const payload = jwt.verify(adminToken, JWT_SECRET);
     if (payload.role !== 'admin') throw new Error();
-  } catch { return res.status(401).json({ error: 'Admin required' }); }
+    return true;
+  } catch {
+    res.status(401).json({ error: 'Admin required' });
+    return false;
+  }
+}
 
-  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, created_at FROM users ORDER BY created_at DESC').all();
+app.get('/api/admin/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const users = db.prepare('SELECT id, email, status, trial_end, access_granted, manual_free, group_name, created_at FROM users ORDER BY created_at DESC').all();
   res.json(users);
 });
 
+app.post('/api/admin/delete-user', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const email = (req.body.email || '').toLowerCase().trim();
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const user = db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  db.prepare('DELETE FROM magic_tokens WHERE email = ?').run(email);
+  db.prepare('DELETE FROM users WHERE email = ?').run(email);
+  console.log(`[admin] deleted user ${email}`);
+  res.json({ success: true, deleted: email });
+});
+
 app.post('/api/admin/set-access', (req, res) => {
-  const adminToken = req.headers.authorization?.split(' ')[1];
-  try {
-    const payload = jwt.verify(adminToken, JWT_SECRET);
-    if (payload.role !== 'admin') throw new Error();
-  } catch { return res.status(401).json({ error: 'Admin required' }); }
+  if (!requireAdmin(req, res)) return;
 
   const { email, access_granted, manual_free } = req.body;
   db.prepare(`
