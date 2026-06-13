@@ -314,6 +314,33 @@
       border-color: #c9a227;
       color: #c9a227;
     }
+    .library-ask-john {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .library-ask-john-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+    .library-ask-john-btn {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .library-ask-john-btn:hover {
+      border-color: #c9a227;
+      color: var(--text-primary);
+    }
     .library-title {
       flex: 1;
       display: flex;
@@ -1554,6 +1581,10 @@
 
       <div class="library-panel" id="library-panel" role="tabpanel" aria-hidden="true">
         <div class="library-toolbar">
+          <div class="library-ask-john">
+            <span class="library-ask-john-label">Need help? Ask John</span>
+            <button type="button" class="library-ask-john-btn" data-john-popup data-john-popup-mode="help" aria-label="Ask John for help using the Library">Ask John</button>
+          </div>
           <button type="button" class="library-back-btn" id="library-back-btn" style="display:none;">← Books</button>
           <div class="library-title" id="library-view-title">Bible Library</div>
         </div>
