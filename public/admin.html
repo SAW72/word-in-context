@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2c3e50">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/pwa.css">
 <title>Admin • The Word in Context</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -307,4 +311,5 @@
     } catch (e) { status.textContent = 'Error sending offer'; }
   };
 </script>
+<script src="/pwa.js" defer></script>
 </body></html>

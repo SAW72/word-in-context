@@ -3,6 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Voice-first Bible study with offline access">
+  <meta name="theme-color" content="#2c3e50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Word">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/pwa.css">
   <title>The Word in Context</title>
   <style>
     *, *::before, *::after {
@@ -4423,5 +4432,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
     init();
   </script>
+  <script src="/pwa.js" defer></script>
 </body>
 </html>

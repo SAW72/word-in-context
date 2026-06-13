@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Voice-first Bible study with offline access">
+  <meta name="theme-color" content="#2c3e50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Word">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/pwa.css">
   <title>Instructions - The Word in Context</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #f5e8d3; color: #3c2f2f; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; }
@@ -52,6 +60,13 @@
     <li>Chats are saved in your browser only.</li>
   </ul>
   
+  <h2>Install as an App (PWA)</h2>
+  <ul>
+    <li><strong>Android / Chrome desktop:</strong> tap <strong>Install</strong> when prompted, or use the browser menu → Install app.</li>
+    <li><strong>iPhone:</strong> open in Safari or Chrome, tap Share → <strong>Add to Home Screen</strong>.</li>
+    <li>Installed app opens full-screen with offline access to cached Bible text (AI study still needs internet).</li>
+  </ul>
+
   <h2>Mobile Tips</h2>
   <ul>
     <li>Input bar stays fixed just above the keyboard on focus.</li>
@@ -64,5 +79,6 @@
     The Word in Context • Read Scripture in context. Listen to His voice. Live free.<br>
     <a href="/" style="color: #c9a227;">Back to the app</a>
   </p>
+  <script src="/pwa.js" defer></script>
 </body>
 </html>

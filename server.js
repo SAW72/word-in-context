@@ -379,9 +379,17 @@ function requireAuth(req, res, next) {
 // In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
 // specific hosts, no unsafe-eval, etc.).
 app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  // Service worker must revalidate on each visit so updates apply; shell assets are cached by SW.
+  if (req.path === '/sw.js') {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Service-Worker-Allowed', '/');
+  } else if (req.path === '/manifest.webmanifest' || req.path.startsWith('/icons/')) {
+    res.set('Cache-Control', 'public, max-age=86400');
+  } else {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
 
   // Permissive for localhost dev only. Prevents our own code + common extension noise from
   // triggering CSP violations in the console.
@@ -418,8 +426,9 @@ app.get('/admin', (req, res) => {
 // Static assets (for any future images/css if split)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Silence favicon 404 spam (harmless but noisy in console)
-app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-192.png'));
+});
 
 // === Simple beta tester signup (stores emails for launch) ===
 // For production: replace with real email service (Mailchimp, ConvertKit, or Supabase)
