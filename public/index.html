@@ -2503,20 +2503,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (isNT) {
         const greek = await fetchOriginalVerseFromApi('grc_sbl', bookCode, chapterNum, verseNum);
         return {
-          contextText: greek,
-          contextLabel: 'SBL Greek NT',
-          greekText: greek,
-          greekLabel: 'SBL Greek NT'
+          originalText: greek,
+          originalLabel: 'SBL Greek NT',
+          lang: 'greek'
         };
       }
 
       const hebrew = await fetchOriginalVerseFromApi('hbo_wlc', bookCode, chapterNum, verseNum);
-      const lxx = await fetchOriginalVerseFromApi('grc_bre', bookCode, chapterNum, verseNum);
       return {
-        contextText: hebrew,
-        contextLabel: 'Westminster Leningrad Codex (Hebrew)',
-        greekText: lxx,
-        greekLabel: 'Brenton Septuagint (Greek OT)'
+        originalText: hebrew,
+        originalLabel: 'Westminster Leningrad Codex (Hebrew)',
+        lang: 'hebrew'
       };
     }
 
@@ -2602,29 +2599,27 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       lines.push(
         opts.isNT
           ? 'Read together, the Greek shapes what the English is saying: word order, verb choices, and the surrounding verses show how this line fits the larger passage.'
-          : 'Read together, the Hebrew shapes what the English is saying. The Greek panel shows the Septuagint (ancient Greek translation) for word-level Greek study of Old Testament passages.'
+          : 'Read together, the Hebrew shapes what the English is saying: word order, verb choices, and the surrounding verses show how this line fits the larger passage.'
       );
       return lines.join('\n\n');
     }
 
-    function buildGreekExplanation(opts) {
+    function buildOriginalWordsExplanation(opts) {
+      const langName = opts.lang === 'hebrew' ? 'Hebrew' : 'Greek';
       const lines = [];
-      lines.push(`${opts.greekLabel}:`);
-      lines.push(opts.greekText || '[Greek text unavailable offline for this verse]');
+      lines.push(`${opts.originalLabel}:`);
+      lines.push(opts.originalText || `[${langName} text unavailable offline for this verse]`);
       lines.push('');
       if (opts.lexWords.length) {
-        lines.push('Major Greek words:');
+        lines.push(`Major ${langName} words:`);
         opts.lexWords.forEach((w) => {
           lines.push(`• ${w.token} (${w.translit}) — ${w.gloss}. ${w.note}`.trim());
         });
       } else {
-        lines.push('No lexicon entries matched this verse. The full Greek text above is from the offline cache.');
+        lines.push(`No lexicon entries matched this verse. The full ${langName} text above is from the offline cache.`);
       }
       lines.push('');
-      lines.push(`These Greek word meanings deepen the English: "${opts.english}"`);
-      if (!opts.isNT) {
-        lines.push('(Old Testament: shown in Septuagint Greek, the ancient Greek translation of the Hebrew Scriptures.)');
-      }
+      lines.push(`These ${langName} word meanings deepen the English: "${opts.english}"`);
       return lines.join('\n');
     }
 
@@ -2655,18 +2650,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const heading = findSectionHeading(libraryChapterVerses, block.number);
         const { prev, next } = getNeighborVerses(libraryChapterVerses, block.number, payload.bookName, chapterNum);
 
+        const lang = isNT ? 'greek' : 'hebrew';
+        const langLabel = isNT ? 'Greek' : 'Hebrew';
         let body = '';
         if (panelType === 'context') {
-          const lexWords = lookupLexiconWords(
-            originals.contextText,
-            isNT ? 'greek' : 'hebrew'
-          );
+          const lexWords = lookupLexiconWords(originals.originalText, lang);
           body = buildContextExplanation({
             ref,
             english: block.text,
             translationShort: getLibraryTranslationInfo().short,
-            originalText: originals.contextText,
-            originalLabel: originals.contextLabel,
+            originalText: originals.originalText,
+            originalLabel: originals.originalLabel,
             heading,
             prev,
             next,
@@ -2674,18 +2668,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             isNT
           });
         } else {
-          const lexWords = lookupLexiconWords(originals.greekText, 'greek');
-          body = buildGreekExplanation({
-            greekText: originals.greekText,
-            greekLabel: originals.greekLabel,
+          const lexWords = lookupLexiconWords(originals.originalText, lang);
+          body = buildOriginalWordsExplanation({
+            originalText: originals.originalText,
+            originalLabel: originals.originalLabel,
+            lang,
             lexWords,
-            english: block.text,
-            isNT
+            english: block.text
           });
         }
 
         expand.innerHTML =
-          `<div class="library-expand-label">${panelType === 'context' ? 'Context' : 'Greek'}</div>` +
+          `<div class="library-expand-label">${panelType === 'context' ? 'Context' : langLabel}</div>` +
           `<div class="library-expand-body">${body.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
       } catch (err) {
         expand.innerHTML =
@@ -2962,29 +2956,33 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           shareBtn.addEventListener('click', () => copyVerseCitation(source, shareBtn));
           actions.appendChild(shareBtn);
 
+          const isNT = NT_BOOK_CODES.has(book.code);
+          const langPanel = isNT ? 'greek' : 'hebrew';
+          const langName = isNT ? 'Greek' : 'Hebrew';
+
           const contextBtn = document.createElement('button');
           contextBtn.type = 'button';
           contextBtn.className = 'verse-study-btn';
           contextBtn.dataset.panel = 'context';
           contextBtn.textContent = 'Context';
-          contextBtn.title = 'Context from the original language (offline)';
+          contextBtn.title = `Context from the original ${langName} (offline)`;
           contextBtn.addEventListener('click', () => {
             showVerseStudyPanel(verseEl, block, 'context', book, chapterNum, payload);
           });
           actions.appendChild(contextBtn);
 
-          const greekBtn = document.createElement('button');
-          greekBtn.type = 'button';
-          greekBtn.className = 'verse-study-btn';
-          greekBtn.dataset.panel = 'greek';
-          greekBtn.textContent = 'Greek';
-          greekBtn.title = NT_BOOK_CODES.has(book.code)
+          const langBtn = document.createElement('button');
+          langBtn.type = 'button';
+          langBtn.className = 'verse-study-btn';
+          langBtn.dataset.panel = langPanel;
+          langBtn.textContent = langName;
+          langBtn.title = isNT
             ? 'Greek word study from SBL (offline)'
-            : 'Septuagint Greek word study (offline)';
-          greekBtn.addEventListener('click', () => {
-            showVerseStudyPanel(verseEl, block, 'greek', book, chapterNum, payload);
+            : 'Hebrew word study from Westminster Leningrad Codex (offline)';
+          langBtn.addEventListener('click', () => {
+            showVerseStudyPanel(verseEl, block, langPanel, book, chapterNum, payload);
           });
-          actions.appendChild(greekBtn);
+          actions.appendChild(langBtn);
 
           const askBtn = document.createElement('button');
           askBtn.type = 'button';
