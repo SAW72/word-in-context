@@ -350,6 +350,23 @@
       box-sizing: border-box;
     }
     .modal-content h3 { margin: 0 0 12px; }
+    .voice-setting-checkbox {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      cursor: pointer;
+    }
+    .voice-setting-checkbox input[type="checkbox"] {
+      margin-top: 2px;
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      accent-color: #c9a227;
+      cursor: pointer;
+    }
     .modal-content input {
       width: 100%; padding: 12px; font-size: 15px;
       border: 2px solid #ccc; border-radius: 8px; margin-bottom: 14px;
@@ -808,16 +825,15 @@
         </p>
       </div>
 
-      <p style="font-size:12px; color:#666; margin:0 0 8px;">
-        All voices come from your device (macOS Spoken Content + apps like Piper).
-        <strong>No filters</strong> — every available system voice on Mac and iPhone is listed here, including every premium and enhanced voice you have installed.
-        Some voices only appear with numbers (e.g. "925") because macOS gives the browser internal IDs instead of nice names/genders.
-        Use the 🔊 buttons in the preview list below to hear what they sound like.
-        After installing Piper (or any new) voices, click <strong>"Reload system voices"</strong>.
-        Reload system voices after installing new ones (e.g. Piper). Tap 🔊 buttons in the list below to test any voice.
+      <p style="font-size:12px; color:#666; margin:0 0 8px; line-height:1.4;">
+        Voices come from your <strong>browser</strong> only (no app filter). Use the 🔊 buttons below to test any voice before saving.
       </p>
-      
+
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
+        <span style="display:block; font-size:11px; color:#5c4630; margin:4px 0 4px; line-height:1.35;">
+          <strong>iPhone:</strong> open this app in <strong>Chrome</strong> or <strong>Edge</strong>, tap Unlock all voices, then try <strong>Daniel</strong> (male) or <strong>Karen</strong> (female).<br>
+          <strong>Mac:</strong> use <strong>Chrome</strong> for the best voice list (Enhanced voices from Spoken Content settings).
+        </span>
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a>
         <button type="button" id="unlock-all-voices-btn" onclick="unlockAllVoices()" style="margin-left:8px; font-size:11px; padding:2px 8px; border:1px solid #c9a227; background:#fff; color:#5c4630; border-radius:4px; cursor:pointer;">🔊 Unlock all voices</button>
@@ -842,18 +858,18 @@
         <input type="range" id="pitch-slider" min="0.8" max="1.3" step="0.05" value="1.0" style="width:100%;margin-top:4px;margin-bottom:10px;">
       </label>
 
-      <label for="auto-speak-toggle" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
-        <input type="checkbox" id="auto-speak-toggle" style="accent-color:#c9a227;">
-        Auto-speak AI replies (uses your selected local voice). The two checkboxes are independent.
+      <label for="auto-speak-toggle" class="voice-setting-checkbox">
+        <input type="checkbox" id="auto-speak-toggle">
+        <span>Auto-speak AI replies (uses your selected local voice). Independent of the hands-free toggle in the chat bar.</span>
       </label>
 
       <hr style="margin: 12px 0; border-color: #ddd;">
 
       <!-- Wake word customization -->
       <div style="margin-bottom:12px;">
-        <label for="wake-enabled" style="font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-          <input type="checkbox" id="wake-enabled" style="accent-color:#c9a227;" checked>
-          Require wake word for hands-free (recommended to reduce noise)
+        <label for="wake-enabled" class="voice-setting-checkbox" style="margin-bottom:8px;">
+          <input type="checkbox" id="wake-enabled" checked>
+          <span>Require wake word for hands-free (recommended to reduce noise)</span>
         </label>
         <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Custom wake word (e.g. "hey assistant" or "computer")
           <input type="text" id="wake-word-input" value="John" placeholder="John" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
@@ -871,46 +887,21 @@
         </select>
       </label>
 
-      <!-- Better Voices: Local high-quality neural TTS (recommended for best experience) -->
+      <!-- What actually works in web browsers -->
       <hr style="margin: 12px 0; border-color: #ddd;">
       <div style="background:#f5f0e6; border:1px solid #c9a227; border-radius:6px; padding:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600; color:#5c4630; margin-bottom:4px;">Better Voices</div>
-        <p style="font-size:12px; color:#333; margin:0 0 8px; line-height:1.35;">
-          Get much more natural-sounding voices for scripture. These free apps provide high-quality neural voices that work across your entire device.
+        <div style="font-size:13px; font-weight:600; color:#5c4630; margin-bottom:6px;">What works in this web app</div>
+
+        <p style="font-size:11px; margin:0 0 8px; line-height:1.4;">
+          <strong>iPhone — use Chrome or Edge</strong><br>
+          Safari often shows few or no voices. Chrome and Edge populate the iOS voice list reliably. Tap <strong>Unlock all voices</strong>, then pick <strong>Daniel</strong> (British male) or <strong>Karen</strong> (Australian female) — both read scripture clearly.
         </p>
-
-        <div style="margin-bottom:8px;">
-          <strong style="font-size:12px; color:#5c4630;">iPhone &amp; Mac — Apple Enhanced / Premium voices (work in this web app)</strong>
-          <p style="font-size:11px; margin:2px 0 8px; line-height:1.3;">
-            Settings → Accessibility → <strong>Spoken Content</strong> → Voices → download <strong>Enhanced</strong> or <strong>Premium</strong> voices (e.g. Samantha, Zoe, Lee). Then open Voice Settings here and tap <strong>Unlock all voices</strong>.
-          </p>
-          <strong style="font-size:12px; color:#5c4630;">Piper app (VoiceOver only — usually NOT in web browsers)</strong>
-          <p style="font-size:11px; margin:2px 0 4px; line-height:1.3;">
-            The Piper Neural TTS app integrates with <strong>VoiceOver</strong>, not Safari/Chrome Web Speech. Piper voices often will <em>not</em> appear in this dropdown — that is an Apple/browser limitation, not a setting in this app. Use Apple's Enhanced/Premium voices above for natural speech inside the web app.
-          </p>
-        </div>
-
-        <div style="margin-bottom:8px;">
-          <strong style="font-size:12px; color:#5c4630;">Android</strong>
-          <p style="font-size:11px; margin:2px 0 4px; line-height:1.3;">
-            Download VoxSherpa TTS:<br>
-            <a href="https://play.google.com/store/apps/details?id=com.CodeBySonu.VoxSherpa" target="_blank" style="color:#c9a227; text-decoration:underline; word-break:break-all;">https://play.google.com/store/apps/details?id=com.CodeBySonu.VoxSherpa</a><br>
-            Download a voice model and set it as your default TTS engine in Android settings.
-          </p>
-        </div>
-
-        <div>
-          <strong style="font-size:12px; color:#5c4630;">Windows</strong>
-          <p style="font-size:11px; margin:2px 0 0; line-height:1.3;">
-            No extra app needed. Go to Settings → Accessibility → Narrator → Add natural voices and download Microsoft Guy (Natural).
-          </p>
-        </div>
-
-        <p style="font-size:10px; color:#666; margin:8px 0 0; line-height:1.3;">
-          After installing a new voice (e.g. from Piper), click <strong>"Reload system voices"</strong> or restart the browser.
-          Tap <strong>Unlock all voices</strong> after downloading new Enhanced/Premium voices — Safari requires a user tap + audible speech before the full list appears. Check the diagnostics line above the preview list to see exactly how many voices your browser reports.
-          The preview list below has a speaker for every voice so you can test them easily.
-          Numbered voices (e.g. 925) are real macOS internal voices — tap the 🔊 to discover if they sound male or female.
+        <p style="font-size:11px; margin:0 0 8px; line-height:1.4;">
+          <strong>Mac — use Chrome</strong><br>
+          Chrome exposes the fullest Apple voice list. Download <strong>Enhanced</strong> voices in System Settings → Accessibility → Spoken Content → Voices, then <strong>Reload system voices</strong> here.
+        </p>
+        <p style="font-size:10px; color:#666; margin:0; line-height:1.35;">
+          Third-party TTS apps do not appear in web browsers. Only voices listed in the dropdown above are available to this app.
         </p>
       </div>
 
@@ -987,7 +978,7 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>100% browser built-in system voices</strong> (window.speechSynthesis). Every voice your Mac or iPhone reports via getVoices() is shown with <strong>no filters</strong> — including every premium/enhanced/Siri/Piper voice you have installed. Numbered internal voices, non-English, everything appears in the dropdown and the test list. Use the 🔊 buttons to audition any of them. Fresh voice objects are resolved immediately before speaking to avoid stale Mac/iOS references.</li>
+          <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> use Chrome or Edge; try Daniel or Karen. <strong>Mac:</strong> use Chrome for the best list and Enhanced voices from Spoken Content. No app filter — every voice your browser reports appears in the dropdown.</li>
           <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
         </ul>
 
@@ -1289,6 +1280,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     }
 
+    function isSafariBrowser() {
+      const ua = navigator.userAgent;
+      return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg|EdgiOS|Firefox|FxiOS|OPR/i.test(ua);
+    }
+
     // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
     // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
@@ -1312,25 +1308,46 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       try { return synth.getVoices() || []; } catch (e) { return []; }
     }
 
+    function sortVoicesForDisplay(voices) {
+      const list = voices.slice();
+      if (isIOSDevice()) {
+        const preferred = ['daniel', 'karen', 'samantha', 'moira', 'alex'];
+        list.sort((a, b) => {
+          const an = (a.name || '').toLowerCase();
+          const bn = (b.name || '').toLowerCase();
+          const ar = preferred.findIndex(p => an.includes(p));
+          const br = preferred.findIndex(p => bn.includes(p));
+          const aRank = ar === -1 ? 999 : ar;
+          const bRank = br === -1 ? 999 : br;
+          if (aRank !== bRank) return aRank - bRank;
+          return an.localeCompare(bn);
+        });
+      } else {
+        list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+      return list;
+    }
+
     function updateVoiceDiagnostics() {
       const el = document.getElementById('voice-diagnostics');
       if (!el) return;
       const voices = getBrowserVoices();
       const english = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
       const enhanced = voices.filter(v => /enhanced|premium|personal/i.test(v.name || ''));
-      const piper = voices.filter(v => /piper/i.test((v.name || '') + (v.voiceURI || '')));
-      let html = `<strong>${voices.length}</strong> voice(s) reported by your browser`;
+      let html = `<strong>${voices.length}</strong> voice(s) from your browser`;
       if (english.length) html += ` · <strong>${english.length}</strong> English`;
-      if (enhanced.length) html += ` · <strong>${enhanced.length}</strong> Enhanced/Premium`;
-      if (piper.length) html += ` · <strong>${piper.length}</strong> Piper`;
-      html += '. <span style="color:#2e7d32;">No app filter — we show every voice the browser exposes.</span>';
+      if (enhanced.length) html += ` · <strong>${enhanced.length}</strong> Enhanced`;
       if (voices.length === 0) {
-        html += ' <span style="color:#c0392b;">Tap <strong>Unlock all voices</strong> (Safari needs a tap + speech first).</span>';
-      } else if (voices.length < 8 && (isIOSDevice() || /Safari/i.test(navigator.userAgent))) {
-        html += ' <span style="color:#b35c00;">List may be incomplete — tap Unlock all voices, then Reload.</span>';
+        html += '. <span style="color:#c0392b;">Tap <strong>Unlock all voices</strong>.</span>';
+      } else if (voices.length < 8 && isIOSDevice()) {
+        html += '. <span style="color:#b35c00;">Few voices — try <strong>Chrome</strong> or <strong>Edge</strong> on iPhone.</span>';
       }
-      if (piper.length === 0) {
-        html += '<br><span style="color:#666;">Piper app voices usually do not appear in web browsers (VoiceOver only). Use Apple Enhanced/Premium voices from Spoken Content settings.</span>';
+      if (isIOSDevice()) {
+        html += '<br><span style="color:#5c4630;"><strong>iPhone:</strong> Chrome or Edge recommended. Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
+      } else if (isSafariBrowser()) {
+        html += '<br><span style="color:#b35c00;"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
+      } else {
+        html += '<br><span style="color:#5c4630;"><strong>Mac:</strong> <strong>Chrome</strong> recommended for Enhanced voices.</span>';
       }
       el.innerHTML = html;
     }
@@ -1684,12 +1701,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const lower = fullName.toLowerCase();
       const uri = ((voiceObj && voiceObj.voiceURI) || '').toLowerCase();
 
-      // Piper only when the OS/browser actually identifies it as Piper.
-      // Do NOT guess from short names like Karen/Samantha — those are often built-in iOS voices.
-      if (lower.includes('piper') || uri.includes('piper')) {
-        return fullName + ' (Piper Neural)';
-      }
-
       // Apple/iOS system voices (Safari reports voiceURI like com.apple.voice...)
       if (uri.includes('com.apple') || uri.includes('apple.voice')) {
         if (fullName.includes('Siri Voice')) {
@@ -1883,10 +1894,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      // Show EVERY system voice with zero filters. This includes all Mac voices,
-      // all iPhone voices (basic + every premium/enhanced the user has installed),
-      // non-English, numbered internal voices, Piper, etc. User asked for the complete raw list.
-      let voicesToShow = voices;
+      const voicesToShow = sortVoicesForDisplay(voices);
 
       voicesToShow.forEach(voice => {
         const row = document.createElement('div');
@@ -1895,7 +1903,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         row.onmouseout = () => row.style.background = '';
 
         const label = document.createElement('span');
-        label.textContent = getDisplayVoiceName(voice.name, voice);
+        const display = getDisplayVoiceName(voice.name, voice);
+        const isRecommendedIOS = isIOSDevice() && /daniel|karen/i.test(voice.name || '');
+        label.textContent = isRecommendedIOS ? `★ ${display}` : display;
         label.style.flex = '1';
         label.style.fontSize = '12px';
 
@@ -2000,10 +2010,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       voiceSelect.innerHTML = '';
 
-      voices.forEach(voice => {
+      sortVoicesForDisplay(voices).forEach(voice => {
         const option = document.createElement('option');
         option.value = `local:${voice.name}`;
-        option.textContent = getDisplayVoiceName(voice.name, voice);
+        const display = getDisplayVoiceName(voice.name, voice);
+        const isRecommendedIOS = isIOSDevice() && /daniel|karen/i.test(voice.name || '');
+        option.textContent = isRecommendedIOS ? `★ ${display}` : display;
         voiceSelect.appendChild(option);
       });
 
@@ -2084,9 +2096,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       // No more XAI/cloud voice toggle (we use only excellent local system voices).
-      // The "Better Voices" section below explains how to install even higher-quality neural voices
-      // (Piper on Mac/iOS, VoxSherpa on Android, etc.) that then appear in the dropdown above.
-
       // Live update when user clicks a different voice in the main dropdown.
       // This makes selection take effect immediately (updates voiceSettings + selectedVoice for local)
       // so speak() uses the new voice without requiring the Save button.
