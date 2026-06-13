@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-2';
+const CACHE_VERSION = 'wic-pwa-3';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -22,24 +22,17 @@ const SHELL_URLS = [
 ];
 
 function biblePrecacheUrls() {
-  const urls = ['/api/available_translations.json'];
-
-  for (let ch = 1; ch <= 21; ch += 1) {
-    urls.push(`/api/BSB/JHN/${ch}.json`);
-    urls.push(`/api/grc_sbl/JHN/${ch}.json`);
-  }
-
-  urls.push(
+  return [
+    '/api/available_translations.json',
+    '/api/BSB/books.json',
+    '/api/BSB/complete.json',
     '/api/BSB/GEN/1.json',
     '/api/BSB/PSA/23.json',
     '/api/BSB/ROM/8.json',
+    '/api/BSB/JHN/3.json',
+    '/api/grc_sbl/JHN/3.json',
     '/api/hbo_wlc/GEN/1.json',
-    '/api/eng_asv/JHN/3.json',
-    '/api/eng_ylt/JHN/3.json',
-    '/api/ENGWEBP/JHN/3.json'
-  );
-
-  return urls;
+  ];
 }
 
 const BIBLE_PRECACHE = biblePrecacheUrls();

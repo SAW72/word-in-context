@@ -286,6 +286,10 @@
     }
     .library-title {
       flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
       font-size: 14px;
       font-weight: 600;
       color: var(--text-primary);
@@ -349,6 +353,68 @@
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    .library-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .library-meta.offline {
+      color: #c9a227;
+    }
+    .library-loading,
+    .library-error {
+      text-align: center;
+      padding: 24px 12px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .library-verses {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .library-heading {
+      font-size: 13px;
+      font-weight: 700;
+      color: #c9a227;
+      margin: 8px 0 4px;
+      letter-spacing: 0.02em;
+    }
+    .library-verse {
+      background: var(--bg-library-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 10px 12px;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .library-verse-num {
+      font-weight: 700;
+      color: #c9a227;
+      margin-right: 6px;
+      font-size: 12px;
+    }
+    .library-verse-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .library-study-btn {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #c9a227;
+      background: rgba(201, 162, 39, 0.12);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .library-study-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
     .dark-mode-btn {
       background: rgba(255,255,255,0.15);
@@ -1109,9 +1175,11 @@
           <div class="library-title" id="library-view-title">Bible Library</div>
         </div>
         <div class="library-scroll" id="library-scroll">
+          <div class="library-meta" id="library-meta">Berean Standard Bible — cached for offline reading</div>
           <input type="search" class="library-search" id="library-search" placeholder="Search books..." aria-label="Search Bible books" style="margin-bottom:12px;">
           <div id="library-books-view"></div>
           <div id="library-chapters-view" style="display:none;"></div>
+          <div id="library-verses-view" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -1841,7 +1909,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       ]
     };
 
+    const BIBLE_API_ORIGIN = 'https://bible.helloao.org';
+    const LIBRARY_TRANSLATION_ID = 'BSB';
+    const LIBRARY_TRANSLATION_NAME = 'Berean Standard Bible';
+
     let librarySelectedBook = null;
+    let librarySelectedChapter = null;
+    let libraryView = 'books';
+    let offlineBibleComplete = null;
+    let offlineBibleLoadPromise = null;
 
     function isDarkMode() {
       return localStorage.getItem('dark_mode') === 'true';
@@ -1899,8 +1975,135 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (tabChat) tabChat.addEventListener('click', () => switchMainView('chat'));
       if (tabLibrary) tabLibrary.addEventListener('click', () => {
         switchMainView('library');
+        updateLibraryMeta();
+        preloadOfflineBible();
         renderLibraryBooks(document.getElementById('library-search')?.value || '');
       });
+    }
+
+    function updateLibraryMeta() {
+      const meta = document.getElementById('library-meta');
+      if (!meta) return;
+      const offline = !navigator.onLine;
+      meta.classList.toggle('offline', offline);
+      meta.textContent = offline
+        ? `${LIBRARY_TRANSLATION_NAME} — reading from offline cache`
+        : `${LIBRARY_TRANSLATION_NAME} — cached for offline reading`;
+    }
+
+    function bibleContentPartText(part) {
+      if (typeof part === 'string') return part;
+      if (part && typeof part.text === 'string') return part.text;
+      return '';
+    }
+
+    function parseChapterContent(content) {
+      const blocks = [];
+      if (!Array.isArray(content)) return blocks;
+
+      for (const item of content) {
+        if (item.type === 'heading' && Array.isArray(item.content)) {
+          blocks.push({
+            type: 'heading',
+            text: item.content.map(bibleContentPartText).join(' ').trim()
+          });
+        } else if (item.type === 'verse' && typeof item.number === 'number') {
+          const text = (item.content || [])
+            .map(bibleContentPartText)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (text) {
+            blocks.push({ type: 'verse', number: item.number, text });
+          }
+        }
+      }
+      return blocks;
+    }
+
+    async function preloadOfflineBible() {
+      try {
+        await loadOfflineBibleComplete();
+      } catch (e) {
+        console.warn('[Library] offline Bible preload failed:', e);
+      }
+    }
+
+    async function loadOfflineBibleComplete() {
+      if (offlineBibleComplete) return offlineBibleComplete;
+      if (offlineBibleLoadPromise) return offlineBibleLoadPromise;
+
+      offlineBibleLoadPromise = (async () => {
+        const url = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/complete.json`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Bible data unavailable (${res.status})`);
+        const data = await res.json();
+        if (!data || !Array.isArray(data.books)) throw new Error('Invalid Bible data');
+        offlineBibleComplete = data;
+        return data;
+      })();
+
+      try {
+        return await offlineBibleLoadPromise;
+      } catch (err) {
+        offlineBibleLoadPromise = null;
+        throw err;
+      }
+    }
+
+    async function fetchLibraryChapter(bookCode, chapterNum) {
+      try {
+        const complete = await loadOfflineBibleComplete();
+        const book = complete.books.find((b) => b.id === bookCode);
+        if (book && Array.isArray(book.chapters)) {
+          const entry = book.chapters.find((c) => c.chapter && c.chapter.number === chapterNum);
+          if (entry && entry.chapter) {
+            return {
+              bookName: book.commonName || book.name || bookCode,
+              translation: complete.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+              chapter: entry.chapter
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('[Library] complete.json lookup failed, trying chapter file:', e);
+      }
+
+      const chapterUrl = `${BIBLE_API_ORIGIN}/api/${LIBRARY_TRANSLATION_ID}/${bookCode}/${chapterNum}.json`;
+      const res = await fetch(chapterUrl);
+      if (!res.ok) throw new Error(`Chapter unavailable offline (${res.status})`);
+      const data = await res.json();
+      if (!data || !data.chapter) throw new Error('Invalid chapter data');
+      return {
+        bookName: data.book?.commonName || data.book?.name || bookCode,
+        translation: data.translation?.englishName || LIBRARY_TRANSLATION_NAME,
+        chapter: data.chapter
+      };
+    }
+
+    function setLibrarySearchVisible(visible) {
+      const search = document.getElementById('library-search');
+      if (search) search.style.display = visible ? 'block' : 'none';
+    }
+
+    function updateLibraryBackButton() {
+      const backBtn = document.getElementById('library-back-btn');
+      if (!backBtn) return;
+      if (libraryView === 'books') {
+        backBtn.style.display = 'none';
+      } else {
+        backBtn.style.display = 'inline-block';
+        backBtn.textContent = libraryView === 'chapters' ? '← Books' : '← Chapters';
+      }
+    }
+
+    function libraryNavigateBack() {
+      const search = document.getElementById('library-search');
+      if (libraryView === 'verses' && librarySelectedBook) {
+        renderLibraryChapters(librarySelectedBook);
+        return;
+      }
+      renderLibraryBooks(search?.value || '');
     }
 
     function renderLibrarySection(title, books, filter) {
@@ -1920,15 +2123,20 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function renderLibraryBooks(filter) {
       const container = document.getElementById('library-books-view');
       const chaptersView = document.getElementById('library-chapters-view');
-      const backBtn = document.getElementById('library-back-btn');
+      const versesView = document.getElementById('library-verses-view');
       const titleEl = document.getElementById('library-view-title');
       if (!container) return;
 
+      libraryView = 'books';
       librarySelectedBook = null;
+      librarySelectedChapter = null;
       if (chaptersView) chaptersView.style.display = 'none';
+      if (versesView) versesView.style.display = 'none';
       container.style.display = 'block';
-      if (backBtn) backBtn.style.display = 'none';
+      setLibrarySearchVisible(true);
+      updateLibraryBackButton();
       if (titleEl) titleEl.textContent = 'Bible Library';
+      updateLibraryMeta();
 
       container.innerHTML =
         renderLibrarySection('Old Testament', BIBLE_LIBRARY.ot, filter) +
@@ -1946,14 +2154,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function renderLibraryChapters(book) {
       const container = document.getElementById('library-books-view');
       const chaptersView = document.getElementById('library-chapters-view');
-      const backBtn = document.getElementById('library-back-btn');
+      const versesView = document.getElementById('library-verses-view');
       const titleEl = document.getElementById('library-view-title');
       if (!chaptersView || !container) return;
 
+      libraryView = 'chapters';
       librarySelectedBook = book;
+      librarySelectedChapter = null;
       container.style.display = 'none';
+      if (versesView) versesView.style.display = 'none';
       chaptersView.style.display = 'block';
-      if (backBtn) backBtn.style.display = 'inline-block';
+      setLibrarySearchVisible(false);
+      updateLibraryBackButton();
       if (titleEl) titleEl.textContent = book.name;
 
       const chapterButtons = Array.from({ length: book.chapters }, (_, i) => {
@@ -1965,12 +2177,115 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       chaptersView.querySelectorAll('.library-chapter-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const chapter = parseInt(btn.getAttribute('data-chapter'), 10);
-          studyFromLibrary(book.name, chapter);
+          renderLibraryVerses(book, chapter);
         });
       });
     }
 
+    async function renderLibraryVerses(book, chapterNum) {
+      const container = document.getElementById('library-books-view');
+      const chaptersView = document.getElementById('library-chapters-view');
+      const versesView = document.getElementById('library-verses-view');
+      const titleEl = document.getElementById('library-view-title');
+      if (!versesView || !container || !chaptersView) return;
+
+      libraryView = 'verses';
+      librarySelectedBook = book;
+      librarySelectedChapter = chapterNum;
+      container.style.display = 'none';
+      chaptersView.style.display = 'none';
+      versesView.style.display = 'block';
+      setLibrarySearchVisible(false);
+      updateLibraryBackButton();
+      if (titleEl) {
+        titleEl.textContent = `${book.name} ${chapterNum}`;
+      }
+
+      versesView.innerHTML = '<div class="library-loading">Loading chapter…</div>';
+
+      try {
+        const payload = await fetchLibraryChapter(book.code, chapterNum);
+        const blocks = parseChapterContent(payload.chapter.content);
+        if (!blocks.length) {
+          versesView.innerHTML = '<div class="library-error">No verses found in this chapter.</div>';
+          return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'library-verses';
+
+        const studyBtn = document.createElement('button');
+        studyBtn.type = 'button';
+        studyBtn.className = 'library-study-btn';
+        studyBtn.textContent = 'Study with John →';
+        studyBtn.disabled = !navigator.onLine;
+        studyBtn.title = navigator.onLine
+          ? 'Open this chapter in Chat for AI study'
+          : 'AI study needs internet';
+        studyBtn.addEventListener('click', () => studyFromLibrary(book.name, chapterNum));
+        if (titleEl) {
+          titleEl.innerHTML = '';
+          titleEl.appendChild(document.createTextNode(`${book.name} ${chapterNum}`));
+          titleEl.appendChild(studyBtn);
+        }
+
+        blocks.forEach((block) => {
+          if (block.type === 'heading') {
+            const h = document.createElement('div');
+            h.className = 'library-heading';
+            h.textContent = block.text;
+            wrapper.appendChild(h);
+            return;
+          }
+
+          const ref = `${payload.bookName} ${chapterNum}:${block.number}`;
+          const verseEl = document.createElement('div');
+          verseEl.className = 'library-verse';
+
+          const num = document.createElement('span');
+          num.className = 'library-verse-num';
+          num.textContent = block.number;
+          verseEl.appendChild(num);
+
+          const text = document.createElement('span');
+          text.textContent = block.text;
+          verseEl.appendChild(text);
+
+          const actions = document.createElement('div');
+          actions.className = 'library-verse-actions';
+
+          const shareBtn = document.createElement('button');
+          shareBtn.type = 'button';
+          shareBtn.className = 'verse-share-btn';
+          shareBtn.textContent = 'Share';
+          const source = {
+            reference: ref,
+            translation: payload.translation,
+            text: block.text
+          };
+          shareBtn.addEventListener('click', () => copyVerseCitation(source, shareBtn));
+          actions.appendChild(shareBtn);
+
+          const speakBtn = document.createElement('button');
+          speakBtn.type = 'button';
+          speakBtn.className = 'verse-speak-btn';
+          speakBtn.textContent = '🔊 Speak';
+          speakBtn.addEventListener('click', () => speak(formatVerseCitation(source)));
+          actions.appendChild(speakBtn);
+
+          verseEl.appendChild(actions);
+          wrapper.appendChild(verseEl);
+        });
+
+        versesView.innerHTML = '';
+        versesView.appendChild(wrapper);
+      } catch (err) {
+        versesView.innerHTML = `<div class="library-error">Could not load this chapter offline yet. Visit Library once while online so the Bible cache can download.<br><br><small>${err.message || err}</small></div>`;
+      }
+    }
+
     function studyFromLibrary(bookName, chapter) {
+      if (!navigator.onLine) return;
       switchMainView('chat');
       const prompt = `Please walk me through ${bookName} chapter ${chapter}.`;
       userInput.value = prompt;
@@ -1982,11 +2297,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const search = document.getElementById('library-search');
       const backBtn = document.getElementById('library-back-btn');
       if (search) {
-        search.addEventListener('input', () => renderLibraryBooks(search.value));
+        search.addEventListener('input', () => {
+          if (libraryView === 'books') renderLibraryBooks(search.value);
+        });
       }
       if (backBtn) {
-        backBtn.addEventListener('click', () => renderLibraryBooks(search?.value || ''));
+        backBtn.addEventListener('click', libraryNavigateBack);
       }
+      window.addEventListener('online', updateLibraryMeta);
+      window.addEventListener('offline', updateLibraryMeta);
+      updateLibraryMeta();
+      preloadOfflineBible();
       renderLibraryBooks('');
     }
 
