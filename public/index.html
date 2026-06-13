@@ -1767,8 +1767,9 @@
         </p>
       </div>
 
-      <div style="margin-top:14px; text-align:right;">
-        <button onclick="document.getElementById('sources-modal').style.display='none'" style="background:#777">Close</button>
+      <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; align-items:center;">
+        <button type="button" id="sources-ask-john-btn" data-john-popup data-john-popup-mode="sources" data-john-popup-dismiss="#sources-modal" style="background:#c9a227; color:#1a252f; border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer;">Ask John</button>
+        <button type="button" onclick="document.getElementById('sources-modal').style.display='none'" style="background:#777; color:#fff; border:none; padding:10px 18px; border-radius:8px; cursor:pointer;">Close</button>
       </div>
     </div>
   </div>
@@ -6513,6 +6514,7 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
     init();
   </script>
+  <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>

@@ -6,7 +6,14 @@
 
   const WELCOME = {
     demo: `Hi — I'm John. Ask me about any passage, Greek or Hebrew word, or biblical theme. Type your question or tap the microphone to speak. Demo mode includes a limited number of responses.`,
-    help: `Hi — I'm John. Ask me how to use The Word in Context: voices, hands-free mode, the Library, Sources, installing the app, or anything else. Type your question or tap the microphone to speak.`
+    help: `Hi — I'm John. Need help using the app? Ask me about voices, hands-free mode, the Library, Settings, installing the PWA, or anything else. Type or tap the microphone.`,
+    sources: `Hi — I'm John. Ask me anything about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
+  };
+
+  const POPUP_TITLES = {
+    demo: '🎙️ Talk to John',
+    help: '💬 Ask John',
+    sources: '📚 Ask John — Sources'
   };
 
   let demoLimit = 10;
@@ -430,6 +437,21 @@
     if (mic) mic.disabled = !enabled;
   }
 
+  function buildApiUserMessage(displayText) {
+    if (currentMode === 'sources') {
+      return `The user is asking about Sources & Data Attribution in The Word in Context app: ${displayText}\n\nAnswer using your knowledge of bible.helloao.org (live API, not baked-in text), BSB/ASV/YLT/WEB English translations, SBL Greek NT, Westminster Leningrad Codex Hebrew, how refs are detected and fetched, post-reply source scanning, Grok 4.3 via secure server proxy, browser-only TTS, and local chat storage. Be precise and cite source names.`;
+    }
+    if (currentMode === 'help') {
+      return `The user is on the Help page and asks: ${displayText}\n\nAnswer about how to use The Word in Context: voices, hands-free wake word, Library, Settings, Sources, PWA install, chat sidebar, and mobile tips.`;
+    }
+    return displayText;
+  }
+
+  function updatePopupTitle() {
+    const titleEl = document.getElementById('john-popup-title');
+    if (titleEl) titleEl.textContent = POPUP_TITLES[currentMode] || POPUP_TITLES.demo;
+  }
+
   async function submit(userText) {
     if (!userText || isSending) return;
     const token = getAuthToken();
@@ -446,7 +468,7 @@
     stopMic();
 
     appendMessage(userText, 'user');
-    conversation.push({ role: 'user', content: userText });
+    conversation.push({ role: 'user', content: buildApiUserMessage(userText) });
     const loadingEl = appendMessage('Thinking…', 'assistant', 'loading');
 
     if (!token) bumpDemoCounter();
@@ -529,6 +551,7 @@
     syncDemoCounter();
     const overlay = document.getElementById('john-popup-overlay');
     if (!overlay) return;
+    updatePopupTitle();
     if (!conversation.length || modeChanged) resetChat();
     else updateDemoStatus();
     overlay.classList.add('open');
@@ -566,6 +589,11 @@
     document.querySelectorAll('[data-john-popup]').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.preventDefault();
+        const dismissSel = el.getAttribute('data-john-popup-dismiss');
+        if (dismissSel) {
+          const modal = document.querySelector(dismissSel);
+          if (modal) modal.style.display = 'none';
+        }
         const mode = el.getAttribute('data-john-popup-mode') || currentMode;
         open(mode);
       });

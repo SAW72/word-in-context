@@ -178,29 +178,52 @@
     .back-link a {
       color: #c9a227;
     }
-    .btn-talk-john-help {
+    .help-ask-john-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 16px 18px;
+      margin: 0 0 24px;
+      border-radius: 12px;
+      border: 1px solid #c9a227;
+      background: var(--bg-note);
+    }
+    .help-ask-john-text {
+      flex: 1;
+      min-width: 200px;
+    }
+    .help-ask-john-text strong {
+      display: block;
+      font-size: 19px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .help-ask-john-text span {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .btn-ask-john-help {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      margin: 0 0 20px;
-      padding: 14px 28px;
-      font-size: 17px;
+      padding: 12px 24px;
+      font-size: 16px;
       font-weight: 700;
       background: #c9a227;
       color: #1a252f;
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(201, 162, 39, 0.35);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
-    .btn-talk-john-help:hover {
+    .btn-ask-john-help:hover {
       background: #d8b44f;
       transform: translateY(-1px);
-    }
-    .help-talk-row {
-      text-align: center;
-      margin-bottom: 8px;
     }
     footer {
       background: #1a252f;
@@ -330,6 +353,9 @@
         padding: 3px 6px;
       }
       .help-main { padding: 20px 14px 32px; }
+      .help-ask-john-banner { padding: 14px; }
+      .help-ask-john-text strong { font-size: 17px; }
+      .btn-ask-john-help { width: 100%; }
       footer { padding: 28px 14px; font-size: 13px; }
     }
   </style>
@@ -353,12 +379,12 @@
   </header>
 
   <main class="help-main">
-    <div class="help-talk-row">
-      <button type="button" class="btn-talk-john-help" data-john-popup data-john-popup-mode="help" aria-label="Talk to John for help">
-        <span aria-hidden="true">🎙️</span>
-        Talk to John
-      </button>
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Ask John how to use the app — type or use your microphone without leaving this page.</p>
+    <div class="help-ask-john-banner">
+      <div class="help-ask-john-text">
+        <strong>Need help? Ask John.</strong>
+        <span>Questions about voices, hands-free, the Library, or anything in the app — type or use your microphone without leaving this page.</span>
+      </div>
+      <button type="button" class="btn-ask-john-help" data-john-popup data-john-popup-mode="help" aria-label="Ask John for help">Ask John</button>
     </div>
 
     <h2>Hands-Free Mode (Wake Word "John")</h2>
