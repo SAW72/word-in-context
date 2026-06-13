@@ -1582,7 +1582,7 @@
       <div class="library-panel" id="library-panel" role="tabpanel" aria-hidden="true">
         <div class="library-toolbar">
           <div class="library-ask-john">
-            <span class="library-ask-john-label">Need help? Ask John</span>
+            <span class="library-ask-john-label">Need help?</span>
             <button type="button" class="library-ask-john-btn" data-john-popup data-john-popup-mode="help" aria-label="Ask John for help using the Library">Ask John</button>
           </div>
           <button type="button" class="library-back-btn" id="library-back-btn" style="display:none;">← Books</button>
@@ -1592,10 +1592,7 @@
           <div class="library-trans-row" id="library-trans-row">
             <label for="library-trans-select" class="library-trans-label">Translation</label>
             <select id="library-trans-select" class="library-trans-select" aria-label="Bible translation for Library reading">
-              <option value="BSB">BSB — Berean Standard Bible</option>
-              <option value="eng_asv">ASV — American Standard Version</option>
-              <option value="eng_ylt">YLT — Young's Literal Translation</option>
-              <option value="ENGWEBP">WEB — World English Bible</option>
+              <option value="BSB">Loading translations…</option>
             </select>
           </div>
           <div class="library-meta" id="library-meta">Berean Standard Bible — cached for offline reading</div>
@@ -1681,6 +1678,22 @@
           <input type="text" id="wake-word-input" value="John" placeholder="John" style="width:100%;padding:6px;margin-top:4px;margin-bottom:4px;font-size:14px; border:1px solid #ccc; border-radius:4px;">
         </label>
         <p class="settings-fine-print">Turn off the checkbox above to always listen without a wake word. Pause commands like "[name] pause" use whatever name you set here. Save settings to apply.</p>
+      </div>
+
+      <!-- Library language & reading translation -->
+      <hr class="settings-hr">
+      <div class="settings-info-box" style="margin-bottom:12px;">
+        <div class="settings-section-title">Library language &amp; reading</div>
+        <p style="margin:0 0 10px;font-size:12px;color:var(--settings-dim);">
+          Choose the language and Bible translation for reading and listening in the Library. You can also change translation from the Library toolbar. Chat with John still uses the English translation below for live scripture grounding.
+        </p>
+        <label for="library-lang-select" style="font-size:13px;display:block;margin-bottom:8px;">Language
+          <select id="library-lang-select" style="width:100%;padding:8px;margin-top:4px;font-size:14px;" aria-label="Library reading language"></select>
+        </label>
+        <label for="library-reading-trans-select" style="font-size:13px;display:block;margin-bottom:4px;">Bible translation
+          <select id="library-reading-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;" aria-label="Library Bible translation"></select>
+        </label>
+        <p class="settings-fine-print" id="library-lang-hint">Speak uses a browser voice matching this language when one is installed.</p>
       </div>
 
       <!-- Default English translation for Bible grounding -->
@@ -2333,12 +2346,77 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     };
 
     const BIBLE_API_ORIGIN = 'https://bible.helloao.org';
-    const LIBRARY_TRANSLATIONS = [
+    const LIBRARY_ENGLISH_TRANS = [
       { id: 'BSB', name: 'Berean Standard Bible', short: 'BSB' },
       { id: 'eng_asv', name: 'American Standard Version', short: 'ASV' },
       { id: 'eng_ylt', name: "Young's Literal Translation", short: 'YLT' },
       { id: 'ENGWEBP', name: 'World English Bible', short: 'WEB' }
     ];
+    const LIBRARY_LANG_OPTIONS = [
+      { code: 'eng', name: 'English' },
+      { code: 'spa', name: 'Spanish' },
+      { code: 'fra', name: 'French' },
+      { code: 'deu', name: 'German' },
+      { code: 'por', name: 'Portuguese' },
+      { code: 'cmn', name: 'Chinese (Mandarin)' },
+      { code: 'kor', name: 'Korean' },
+      { code: 'jpn', name: 'Japanese' },
+      { code: 'rus', name: 'Russian' },
+      { code: 'ita', name: 'Italian' },
+      { code: 'nld', name: 'Dutch' },
+      { code: 'pol', name: 'Polish' },
+      { code: 'hin', name: 'Hindi' },
+      { code: 'vie', name: 'Vietnamese' },
+      { code: 'ind', name: 'Indonesian' },
+      { code: 'tgl', name: 'Tagalog' },
+      { code: 'ukr', name: 'Ukrainian' },
+      { code: 'heb', name: 'Hebrew' },
+      { code: 'swh', name: 'Swahili' }
+    ];
+    const LIBRARY_LANG_DEFAULT_TRANS = {
+      eng: 'BSB',
+      spa: 'spa_r09',
+      fra: 'fra_lsg',
+      deu: 'deu_l12',
+      por: 'por_blj',
+      cmn: 'cmn_cu1',
+      kor: 'kor_old',
+      jpn: 'jpn_loc',
+      rus: 'rus_syn',
+      ita: 'ita_riv',
+      nld: 'nld_nbg',
+      pol: 'pol_ubg',
+      hin: 'HINIRV',
+      vie: 'vie_vcb',
+      ind: 'ind_ayt',
+      tgl: 'tgl_ulb',
+      ukr: 'ukr_ufb',
+      heb: 'heb_mod',
+      swh: 'swh_bib'
+    };
+    const LIBRARY_SPEAK_LANG = {
+      eng: 'en-US',
+      spa: 'es-ES',
+      fra: 'fr-FR',
+      deu: 'de-DE',
+      por: 'pt-BR',
+      cmn: 'zh-CN',
+      kor: 'ko-KR',
+      jpn: 'ja-JP',
+      rus: 'ru-RU',
+      ita: 'it-IT',
+      nld: 'nl-NL',
+      pol: 'pl-PL',
+      hin: 'hi-IN',
+      vie: 'vi-VN',
+      ind: 'id-ID',
+      tgl: 'fil-PH',
+      ukr: 'uk-UA',
+      heb: 'he-IL',
+      swh: 'sw-KE'
+    };
+    let bibleTranslationsCatalog = null;
+    let bibleTranslationsPromise = null;
 
     const NT_BOOK_CODES = new Set(
       BIBLE_LIBRARY.nt.map((b) => b.code)
@@ -2417,25 +2495,181 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       });
     }
 
+    function migrateLibraryTransStorage() {
+      const legacy = localStorage.getItem('library_english_trans');
+      if (legacy && !localStorage.getItem('library_reading_trans')) {
+        localStorage.setItem('library_reading_trans', legacy);
+        localStorage.setItem('library_reading_lang', 'eng');
+      }
+    }
+
+    async function loadBibleTranslationsCatalog() {
+      if (bibleTranslationsCatalog) return bibleTranslationsCatalog;
+      if (bibleTranslationsPromise) return bibleTranslationsPromise;
+      bibleTranslationsPromise = (async () => {
+        const res = await fetch(`${BIBLE_API_ORIGIN}/api/available_translations.json`);
+        if (!res.ok) throw new Error('Translation list unavailable');
+        const data = await res.json();
+        const list = Array.isArray(data?.translations) ? data.translations : [];
+        bibleTranslationsCatalog = list.filter((t) => t && t.id && (t.numberOfBooks || 0) >= 1);
+        return bibleTranslationsCatalog;
+      })();
+      try {
+        return await bibleTranslationsPromise;
+      } catch (err) {
+        bibleTranslationsPromise = null;
+        throw err;
+      }
+    }
+
+    function getLibraryReadingLang() {
+      migrateLibraryTransStorage();
+      const saved = localStorage.getItem('library_reading_lang');
+      if (saved && LIBRARY_LANG_OPTIONS.some((l) => l.code === saved)) return saved;
+      return 'eng';
+    }
+
+    function setLibraryReadingLang(langCode) {
+      const code = LIBRARY_LANG_OPTIONS.some((l) => l.code === langCode) ? langCode : 'eng';
+      localStorage.setItem('library_reading_lang', code);
+      return code;
+    }
+
+    function getTranslationsForLanguage(langCode) {
+      const code = langCode || getLibraryReadingLang();
+      if (!bibleTranslationsCatalog) {
+        if (code === 'eng') {
+          return LIBRARY_ENGLISH_TRANS.map((t) => ({
+            id: t.id,
+            englishName: t.name,
+            name: t.name,
+            shortName: t.short,
+            language: 'eng',
+            languageEnglishName: 'English',
+            numberOfBooks: 66
+          }));
+        }
+        return [];
+      }
+      return bibleTranslationsCatalog
+        .filter((t) => t.language === code)
+        .sort((a, b) => {
+          const aFull = (a.numberOfBooks || 0) >= 66 ? 0 : 1;
+          const bFull = (b.numberOfBooks || 0) >= 66 ? 0 : 1;
+          if (aFull !== bFull) return aFull - bFull;
+          return (a.englishName || a.name || a.id).localeCompare(b.englishName || b.name || b.id);
+        });
+    }
+
+    function findTranslationMeta(transId) {
+      const id = transId || getLibraryTranslationId();
+      if (bibleTranslationsCatalog) {
+        const hit = bibleTranslationsCatalog.find((t) => t.id === id);
+        if (hit) {
+          return {
+            id: hit.id,
+            name: hit.englishName || hit.name || hit.id,
+            short: hit.shortName || hit.id,
+            language: hit.language || getLibraryReadingLang(),
+            languageName: hit.languageEnglishName || hit.languageName || ''
+          };
+        }
+      }
+      const eng = LIBRARY_ENGLISH_TRANS.find((t) => t.id === id);
+      if (eng) {
+        return { ...eng, language: 'eng', languageName: 'English' };
+      }
+      return {
+        id,
+        name: id,
+        short: id,
+        language: getLibraryReadingLang(),
+        languageName: LIBRARY_LANG_OPTIONS.find((l) => l.code === getLibraryReadingLang())?.name || ''
+      };
+    }
+
+    function formatLibraryTransOptionLabel(trans) {
+      const short = trans.shortName || trans.id;
+      const name = trans.englishName || trans.name || trans.id;
+      const books = trans.numberOfBooks || 0;
+      const suffix = books && books < 66 ? ` (${books} books)` : '';
+      return `${short} — ${name}${suffix}`;
+    }
+
+    function populateLibraryTransSelectElement(selectEl, langCode, selectedId) {
+      if (!selectEl) return selectedId;
+      const lang = langCode || getLibraryReadingLang();
+      const translations = getTranslationsForLanguage(lang);
+      const prev = selectedId || getLibraryTranslationId();
+      let nextId = prev;
+      if (!translations.some((t) => t.id === nextId)) {
+        nextId = LIBRARY_LANG_DEFAULT_TRANS[lang] || translations[0]?.id || 'BSB';
+      }
+      selectEl.innerHTML = translations.length
+        ? translations.map((t) => {
+            const label = formatLibraryTransOptionLabel(t);
+            return `<option value="${t.id}">${label.replace(/</g, '&lt;')}</option>`;
+          }).join('')
+        : '<option value="BSB">English — Berean Standard Bible</option>';
+      selectEl.value = translations.some((t) => t.id === nextId) ? nextId : (translations[0]?.id || 'BSB');
+      return selectEl.value;
+    }
+
+    function syncLibraryTranslationSelectors(selectedId) {
+      const lang = getLibraryReadingLang();
+      const id = populateLibraryTransSelectElement(
+        document.getElementById('library-trans-select'),
+        lang,
+        selectedId
+      );
+      populateLibraryTransSelectElement(
+        document.getElementById('library-reading-trans-select'),
+        lang,
+        id
+      );
+      const langSel = document.getElementById('library-lang-select');
+      if (langSel) langSel.value = lang;
+      return id;
+    }
+
     function getLibraryTranslationId() {
-      let saved = localStorage.getItem('library_english_trans') || getDefaultEnglishTrans();
-      if (!ALLOWED_ENGLISH_TRANS.has(saved)) saved = 'BSB';
-      return saved;
+      migrateLibraryTransStorage();
+      let saved = localStorage.getItem('library_reading_trans');
+      if (!saved) saved = LIBRARY_LANG_DEFAULT_TRANS[getLibraryReadingLang()] || getDefaultEnglishTrans();
+      const lang = getLibraryReadingLang();
+      const options = getTranslationsForLanguage(lang);
+      if (options.length && !options.some((t) => t.id === saved)) {
+        saved = LIBRARY_LANG_DEFAULT_TRANS[lang] || options[0].id;
+      }
+      return saved || 'BSB';
     }
 
     function getLibraryTranslationInfo() {
-      const id = getLibraryTranslationId();
-      return LIBRARY_TRANSLATIONS.find((t) => t.id === id) || LIBRARY_TRANSLATIONS[0];
+      return findTranslationMeta(getLibraryTranslationId());
     }
 
-    function setLibraryTranslationId(transId) {
-      const id = ALLOWED_ENGLISH_TRANS.has(transId) ? transId : 'BSB';
-      localStorage.setItem('library_english_trans', id);
-      delete offlineBibleCompleteByTrans[id];
-      delete offlineBibleLoadPromises[id];
-      const sel = document.getElementById('library-trans-select');
-      if (sel) sel.value = id;
+    function getLibrarySpeakLangBcp47() {
+      const info = getLibraryTranslationInfo();
+      return LIBRARY_SPEAK_LANG[info.language] || LIBRARY_SPEAK_LANG.eng;
+    }
+
+    function setLibraryTranslationId(transId, langCode) {
+      const lang = langCode ? setLibraryReadingLang(langCode) : getLibraryReadingLang();
+      const options = getTranslationsForLanguage(lang);
+      let id = transId;
+      if (!options.some((t) => t.id === id)) {
+        id = LIBRARY_LANG_DEFAULT_TRANS[lang] || options[0]?.id || 'BSB';
+      }
+      const prev = getLibraryTranslationId();
+      localStorage.setItem('library_reading_trans', id);
+      localStorage.setItem('library_reading_lang', lang);
+      if (prev !== id) {
+        delete offlineBibleCompleteByTrans[id];
+        delete offlineBibleLoadPromises[id];
+      }
+      syncLibraryTranslationSelectors(id);
       updateLibraryMeta();
+      return id;
     }
 
     function updateLibraryMeta() {
@@ -2444,26 +2678,72 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const info = getLibraryTranslationInfo();
       const offline = !navigator.onLine;
       meta.classList.toggle('offline', offline);
+      const langPrefix = info.languageName ? `${info.languageName} · ` : '';
       meta.textContent = offline
-        ? `${info.name} — reading from offline cache when available`
-        : `${info.name} — cached for offline reading`;
+        ? `${langPrefix}${info.name} — reading from offline cache when available`
+        : `${langPrefix}${info.name} — cached for offline reading`;
+    }
+
+    async function refreshLibraryLanguageUI(selectedId) {
+      try {
+        await loadBibleTranslationsCatalog();
+      } catch (e) {
+        console.warn('[Library] translation catalog unavailable, using English defaults:', e);
+      }
+      const id = syncLibraryTranslationSelectors(selectedId || getLibraryTranslationId());
+      setLibraryTranslationId(id, getLibraryReadingLang());
+      updateLibraryMeta();
+    }
+
+    function populateLibraryLanguageSelect() {
+      const langSel = document.getElementById('library-lang-select');
+      if (!langSel) return;
+      langSel.innerHTML = LIBRARY_LANG_OPTIONS.map((l) =>
+        `<option value="${l.code}">${l.name}</option>`
+      ).join('');
+      langSel.value = getLibraryReadingLang();
+    }
+
+    async function onLibraryLanguageChanged(langCode) {
+      const lang = setLibraryReadingLang(langCode);
+      const defaultId = LIBRARY_LANG_DEFAULT_TRANS[lang] || getTranslationsForLanguage(lang)[0]?.id || 'BSB';
+      await refreshLibraryLanguageUI(defaultId);
+      preloadOfflineBible();
+      await reloadLibraryAfterTranslationChange();
+    }
+
+    async function onLibraryTranslationChanged(transId) {
+      setLibraryTranslationId(transId);
+      preloadOfflineBible();
+      await reloadLibraryAfterTranslationChange();
+    }
+
+    async function reloadLibraryAfterTranslationChange() {
+      if (libraryView === 'verses' && librarySelectedBook && librarySelectedChapter) {
+        await renderLibraryVerses(librarySelectedBook, librarySelectedChapter);
+      } else if (libraryView === 'chapters' && librarySelectedBook) {
+        renderLibraryChapters(librarySelectedBook);
+      } else {
+        renderLibraryBooks(document.getElementById('library-search')?.value || '');
+      }
+    }
+
+    function initLibraryLanguageSettings() {
+      populateLibraryLanguageSelect();
+      const langSel = document.getElementById('library-lang-select');
+      const settingsTransSel = document.getElementById('library-reading-trans-select');
+      if (langSel) {
+        langSel.addEventListener('change', () => onLibraryLanguageChanged(langSel.value));
+      }
+      if (settingsTransSel) {
+        settingsTransSel.addEventListener('change', () => onLibraryTranslationChanged(settingsTransSel.value));
+      }
     }
 
     function initLibraryTranslationSelector() {
       const sel = document.getElementById('library-trans-select');
       if (!sel) return;
-      sel.value = getLibraryTranslationId();
-      sel.addEventListener('change', async () => {
-        setLibraryTranslationId(sel.value);
-        preloadOfflineBible();
-        if (libraryView === 'verses' && librarySelectedBook && librarySelectedChapter) {
-          await renderLibraryVerses(librarySelectedBook, librarySelectedChapter);
-        } else if (libraryView === 'chapters' && librarySelectedBook) {
-          renderLibraryChapters(librarySelectedBook);
-        } else {
-          renderLibraryBooks(document.getElementById('library-search')?.value || '');
-        }
-      });
+      sel.addEventListener('change', () => onLibraryTranslationChanged(sel.value));
     }
 
     function bibleContentPartText(part) {
@@ -3168,7 +3448,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           speakBtn.type = 'button';
           speakBtn.className = 'verse-speak-btn';
           speakBtn.textContent = '🔊 Speak';
-          speakBtn.addEventListener('click', () => speak(formatVerseCitation(source)));
+          speakBtn.addEventListener('click', () => speak(formatVerseCitation(source), null, getLibrarySpeakLangBcp47()));
           actions.appendChild(speakBtn);
 
           const shareBtn = document.createElement('button');
@@ -3276,10 +3556,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const studyHdr = document.querySelector('.library-study-btn');
         if (studyHdr) studyHdr.disabled = true;
       });
+      initLibraryLanguageSettings();
       initLibraryTranslationSelector();
-      updateLibraryMeta();
-      preloadOfflineBible();
-      renderLibraryBooks('');
+      refreshLibraryLanguageUI().then(() => {
+        preloadOfflineBible();
+        renderLibraryBooks('');
+      });
     }
 
     function formatVerseCitation(source) {
@@ -3581,7 +3863,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       msgEl.appendChild(wrap);
     }
 
-    function speak(text, voiceNoteEl = null) {
+    function speak(text, voiceNoteEl = null, langHint = null) {
       text = cleanTextForSpeech(text);
       wakeSpeechEngine();   // ensure browser TTS is unlocked for this session (first call must be gesture-driven)
       stopSpeaking();
@@ -3666,13 +3948,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
       }
 
-      fallbackToBrowserSpeech(text);  // local voices always get the full original text
+      fallbackToBrowserSpeech(text, langHint);  // local voices always get the full original text
     }
 
     // All speech is 100% local browser system voices via window.speechSynthesis.
     // No xAI / cloud / hosted TTS voices are used. speak() always resolves to fallbackToBrowserSpeech.
 
-    function fallbackToBrowserSpeech(text) {
+    function findVoiceForLangHint(langHint) {
+      if (!langHint) return null;
+      const voices = synth.getVoices();
+      const primary = langHint.toLowerCase();
+      const base = primary.split('-')[0];
+      return voices.find((v) => (v.lang || '').toLowerCase() === primary)
+        || voices.find((v) => (v.lang || '').toLowerCase().startsWith(base + '-'))
+        || voices.find((v) => (v.lang || '').toLowerCase().startsWith(base));
+    }
+
+    function fallbackToBrowserSpeech(text, langHint = null) {
       text = cleanTextForSpeech(text);
       currentUtterance = new SpeechSynthesisUtterance(text);
       lastSpokenText = text;
@@ -3690,7 +3982,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let usedVoice = voiceId ? findLocalVoiceById(voiceId) : null;
       if (!usedVoice && selectedVoice) usedVoice = selectedVoice;
 
-      if (usedVoice) {
+      if (langHint) {
+        const langVoice = findVoiceForLangHint(langHint);
+        if (langVoice) {
+          currentUtterance.voice = langVoice;
+          currentUtterance.lang = langVoice.lang || langHint;
+        } else {
+          currentUtterance.lang = langHint;
+        }
+      } else if (usedVoice) {
         currentUtterance.voice = usedVoice;
         currentUtterance.lang = usedVoice.lang || 'en-US';
         selectedVoice = usedVoice;
@@ -4243,6 +4543,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
+      refreshLibraryLanguageUI().catch((e) => {
+        console.warn('[Settings] library language UI refresh failed:', e);
+      });
+
       const darkToggle = document.getElementById('dark-mode-toggle');
       if (darkToggle) {
         darkToggle.checked = isDarkMode();
@@ -4316,6 +4620,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const transSelect = document.getElementById('default-trans-select');
       if (transSelect) {
         localStorage.setItem('default_english_trans', transSelect.value || 'BSB');
+      }
+
+      const libraryLangSel = document.getElementById('library-lang-select');
+      const libraryReadingSel = document.getElementById('library-reading-trans-select');
+      if (libraryLangSel && libraryReadingSel) {
+        setLibraryTranslationId(libraryReadingSel.value, libraryLangSel.value);
+        preloadOfflineBible();
       }
 
       const darkToggle = document.getElementById('dark-mode-toggle');
