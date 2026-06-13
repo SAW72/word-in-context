@@ -831,8 +831,8 @@
 
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <span style="display:block; font-size:11px; color:#5c4630; margin:4px 0 4px; line-height:1.35;">
-          <strong>iPhone:</strong> open this app in <strong>Chrome</strong> or <strong>Edge</strong>, tap Unlock all voices, then try <strong>Daniel</strong> (male) or <strong>Karen</strong> (female).<br>
-          <strong>Mac:</strong> use <strong>Chrome</strong> for the best voice list (Enhanced voices from Spoken Content settings).
+          <strong>iPhone:</strong> every browser (Safari, Chrome, Edge) only gets the same <strong>basic system voices</strong> — try <strong>Daniel</strong> (male) or <strong>Karen</strong> (female). Enhanced/Premium downloads do not work in web apps.<br>
+          <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices from Spoken Content settings.
         </span>
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a>
@@ -893,15 +893,12 @@
         <div style="font-size:13px; font-weight:600; color:#5c4630; margin-bottom:6px;">What works in this web app</div>
 
         <p style="font-size:11px; margin:0 0 8px; line-height:1.4;">
-          <strong>iPhone — use Chrome or Edge</strong><br>
-          Safari often shows few or no voices. Chrome and Edge populate the iOS voice list reliably. Tap <strong>Unlock all voices</strong>, then pick <strong>Daniel</strong> (British male) or <strong>Karen</strong> (Australian female) — both read scripture clearly.
+          <strong>iPhone — basic voices only</strong><br>
+          Safari, Chrome, and Edge all expose the same compact iOS system voices in web apps — not Enhanced, Premium, or third-party voices. Tap <strong>Unlock all voices</strong> if the list is empty, then pick <strong>Daniel</strong> (British male) or <strong>Karen</strong> (Australian female).
         </p>
-        <p style="font-size:11px; margin:0 0 8px; line-height:1.4;">
+        <p style="font-size:11px; margin:0; line-height:1.4;">
           <strong>Mac — use Chrome</strong><br>
-          Chrome exposes the fullest Apple voice list. Download <strong>Enhanced</strong> voices in System Settings → Accessibility → Spoken Content → Voices, then <strong>Reload system voices</strong> here.
-        </p>
-        <p style="font-size:10px; color:#666; margin:0; line-height:1.35;">
-          Third-party TTS apps do not appear in web browsers. Only voices listed in the dropdown above are available to this app.
+          Chrome exposes Enhanced voices downloaded in System Settings → Accessibility → Spoken Content → Voices. Tap <strong>Reload system voices</strong> after downloading.
         </p>
       </div>
 
@@ -978,7 +975,7 @@
 
         <h4 style="margin:12px 0 4px; font-size:13px;">Voice (Text-to-Speech)</h4>
         <ul style="margin:0 0 10px 16px; padding:0;">
-          <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> use Chrome or Edge; try Daniel or Karen. <strong>Mac:</strong> use Chrome for the best list and Enhanced voices from Spoken Content. No app filter — every voice your browser reports appears in the dropdown.</li>
+          <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> basic system voices only (any browser) — try Daniel or Karen. <strong>Mac:</strong> Chrome for Enhanced voices from Spoken Content. No app filter.</li>
           <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
         </ul>
 
@@ -1339,11 +1336,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (enhanced.length) html += ` · <strong>${enhanced.length}</strong> Enhanced`;
       if (voices.length === 0) {
         html += '. <span style="color:#c0392b;">Tap <strong>Unlock all voices</strong>.</span>';
-      } else if (voices.length < 8 && isIOSDevice()) {
-        html += '. <span style="color:#b35c00;">Few voices — try <strong>Chrome</strong> or <strong>Edge</strong> on iPhone.</span>';
       }
       if (isIOSDevice()) {
-        html += '<br><span style="color:#5c4630;"><strong>iPhone:</strong> Chrome or Edge recommended. Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
+        html += '<br><span style="color:#5c4630;"><strong>iPhone:</strong> basic system voices only (any browser). Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
       } else if (isSafariBrowser()) {
         html += '<br><span style="color:#b35c00;"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
       } else {
