@@ -1,3 +1,25 @@
+/* iPhone / iPad PWA (Add to Home Screen) — prevent "zoomed in" layout and notch overlap */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html.ios.standalone-app {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+html.ios.standalone-app body {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
+html.ios.standalone-app #pwa-offline-badge.visible {
+  padding-top: calc(6px + var(--safe-top));
+}
+
 #pwa-install-banner {
   position: fixed;
   left: 12px;
@@ -104,6 +126,9 @@
 @media (max-width: 480px) {
   #pwa-install-banner {
     flex-wrap: wrap;
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
   }
   #pwa-install-banner .pwa-actions {
     flex-direction: row;

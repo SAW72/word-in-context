@@ -4,6 +4,12 @@
   const INSTALLED_KEY = 'wic_pwa_installed';
   let deferredPrompt = null;
 
+  function applyPlatformClasses() {
+    const root = document.documentElement;
+    if (isIOS()) root.classList.add('ios');
+    if (isStandalone()) root.classList.add('standalone-app');
+  }
+
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches
       || window.navigator.standalone === true;
@@ -111,7 +117,10 @@
     });
   }
 
+  applyPlatformClasses();
+
   window.addEventListener('load', () => {
+    applyPlatformClasses();
     setupOfflineBadge();
     if (isStandalone()) {
       localStorage.setItem(INSTALLED_KEY, 'true');
