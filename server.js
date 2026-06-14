@@ -2,7 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const OpenAI = require('openai');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? require('stripe')(process.env.STRIPE_SECRET_KEY)
+  : null;
 const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
@@ -72,6 +74,39 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
+const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787').replace(/\/$/, '');
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+async function hashPassword(password) {
+  if (!password || String(password).length < 8) return null;
+  return bcrypt.hash(String(password), 10);
+}
+
+function stripeConfigured() {
+  return !!(stripe && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID);
+}
+
+async function ensureStripeCustomer(user, email) {
+  if (user.stripe_customer_id) return user.stripe_customer_id;
+  const customer = await stripe.customers.create({ email });
+  db.prepare('UPDATE users SET stripe_customer_id = ? WHERE id = ?').run(customer.id, user.id);
+  return customer.id;
+}
+
+function issueUserJwt(user, expiresIn = '30d') {
+  return jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn });
+}
+
+function userHasAccess(user) {
+  const now = new Date();
+  const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
+  const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+  const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+  return !!user.access_granted && (effectivelyTrialing || hasPaidOrFree);
+}
 
 // Production note: When deploying (Render, Railway, etc.), set NODE_ENV=production
 // and provide XAI_API_KEY + any future keys via the platform's environment variables.
@@ -471,7 +506,7 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 // Helper: send magic link email (or log in dev)
 // options: { subject?, htmlPrefix?, isTester? }
 async function sendMagicLink(email, token, options = {}) {
-  const loginUrl = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/login?token=${token}`;
+  const loginUrl = `${APP_BASE_URL}/login?token=${token}`;
   const isTester = !!options.isTester;
   const subject = options.subject || (isTester ? 'Your tester access to The Word in Context (14 days)' : 'Log in to The Word in Context');
   const prefix = options.htmlPrefix || (isTester 
@@ -499,28 +534,47 @@ async function sendMagicLink(email, token, options = {}) {
 // Create or get user + start configurable trial via Stripe Checkout
 app.post('/api/create-checkout', async (req, res) => {
   try {
-    const { email, trialDays: requestedTrialDays } = req.body;
+    if (!stripeConfigured()) {
+      return res.status(503).json({ error: 'Stripe is not configured on this server. Add STRIPE_SECRET_KEY and STRIPE_PRICE_ID to your environment.' });
+    }
+
+    const { email: rawEmail, password, trialDays: requestedTrialDays } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
     const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
       ? requestedTrialDays
       : TRIAL_DAYS;
 
+    const passwordHash = await hashPassword(password);
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
     if (!user) {
-      // Create Stripe customer
       const customer = await stripe.customers.create({ email });
       db.prepare(`
-        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted)
-        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1)
-      `).run(email, customer.id);
+        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted, password_hash)
+        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1, ?)
+      `).run(email, customer.id, passwordHash);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    } else {
+      const customerId = await ensureStripeCustomer(user, email);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (passwordHash) {
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+      }
+      if (!user.trial_end) {
+        db.prepare(`UPDATE users SET trial_end = datetime('now', '+${effectiveTrialDays} days') WHERE id = ?`).run(user.id);
+      }
+      if (!user.access_granted) {
+        db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
+      }
+      user.stripe_customer_id = customerId;
     }
 
-    // Create Checkout for subscription with trial
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: user.stripe_customer_id,
+      customer_email: user.stripe_customer_id ? undefined : email,
       line_items: [{
         price: process.env.STRIPE_PRICE_ID,
         quantity: 1,
@@ -528,15 +582,16 @@ app.post('/api/create-checkout', async (req, res) => {
       subscription_data: {
         trial_period_days: effectiveTrialDays,
       },
-      success_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'}/`,
+      success_url: `${APP_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_BASE_URL}/`,
       metadata: { email }
     });
 
     res.json({ url: session.url });
   } catch (err) {
     console.error('create-checkout error:', err);
-    res.status(500).json({ error: 'Could not start checkout' });
+    const message = err?.raw?.message || err?.message || 'Could not start checkout';
+    res.status(500).json({ error: message });
   }
 });
 
@@ -544,37 +599,46 @@ app.post('/api/create-checkout', async (req, res) => {
 // No Stripe involved. Sends magic login link immediately.
 app.post('/api/tester-signup', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email: rawEmail, password } = req.body;
+    const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+    const passwordHash = await hashPassword(password);
+    if (!passwordHash) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     const trialEndExpr = `datetime('now', '+${TESTER_TRIAL_DAYS} days')`;
 
     if (!user) {
       db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted)
-        VALUES (?, 'trialing', ${trialEndExpr}, 1)
-      `).run(email);
+        INSERT INTO users (email, status, trial_end, access_granted, password_hash)
+        VALUES (?, 'trialing', ${trialEndExpr}, 1, ?)
+      `).run(email, passwordHash);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
-      // Re-activate / extend as tester trial if they already exist
       db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1
+        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1, password_hash = ?
         WHERE email = ?
-      `).run(email);
+      `).run(passwordHash, email);
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     }
 
-    // Create short-lived magic token (same as normal login)
     const token = require('crypto').randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
 
-    // Send custom tester magic link email
-    await sendMagicLink(email, token, { isTester: true });
+    try {
+      await sendMagicLink(email, token, { isTester: true });
+    } catch (emailErr) {
+      console.error('tester-signup magic email error (non-fatal):', emailErr);
+    }
 
-    res.json({ 
-      success: true, 
-      message: `Check your email for the secure login link. Your ${TESTER_TRIAL_DAYS}-day tester access (full features, no card) is now active and will end automatically.` 
+    const jwtToken = issueUserJwt(user);
+    res.json({
+      success: true,
+      token: jwtToken,
+      email: user.email,
+      message: `Your ${TESTER_TRIAL_DAYS}-day tester access is active. You can log in with your password or the magic link we emailed.`
     });
   } catch (err) {
     console.error('tester-signup error:', err);
@@ -585,7 +649,7 @@ app.post('/api/tester-signup', async (req, res) => {
 // Magic link login request
 app.post('/api/request-login', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body?.email);
     if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
@@ -607,10 +671,11 @@ app.post('/api/request-login', async (req, res) => {
 // Password login (for accounts that have a password set via admin or future flows)
 app.post('/api/login', express.json({ limit: '10kb' }), async (req, res) => {
   try {
-    const { email, password } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
+    const { password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) return res.status(401).json({ error: 'No account with that email' });
 
     if (!user.password_hash) {
@@ -751,8 +816,85 @@ app.post('/api/admin/set-access', (req, res) => {
   res.json({ success: true });
 });
 
+async function activateStripeCheckoutSession(session, source = 'webhook') {
+  const email = normalizeEmail(session.metadata?.email || session.customer_email);
+  if (!email) {
+    console.warn(`[stripe:${source}] checkout session ${session.id} missing email metadata`);
+    return null;
+  }
+
+  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user && session.customer && stripe) {
+    user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(session.customer);
+  }
+  if (!user) {
+    console.warn(`[stripe:${source}] no local user for checkout session ${session.id} (${email})`);
+    return null;
+  }
+
+  const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+  db.prepare(`
+    UPDATE users
+    SET status = 'trialing',
+        access_granted = 1,
+        stripe_customer_id = COALESCE(?, stripe_customer_id),
+        stripe_subscription_id = COALESCE(?, stripe_subscription_id)
+    WHERE id = ?
+  `).run(session.customer || null, subscriptionId || null, user.id);
+
+  user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+
+  const token = require('crypto').randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+  try {
+    await sendMagicLink(email, token, {
+      subject: 'Your Word in Context trial is ready — log in here',
+      htmlPrefix: `<p>Your Stripe checkout is complete and your <strong>${TRIAL_DAYS}-day trial</strong> is active.</p>`
+    });
+    console.log(`[stripe:${source}] activated ${email} and sent login link`);
+  } catch (emailErr) {
+    console.error(`[stripe:${source}] activated ${email} but login email failed:`, emailErr);
+  }
+
+  return user;
+}
+
+// Backup path when Stripe webhooks are missing/misconfigured: success page can confirm the session directly.
+app.post('/api/complete-checkout', async (req, res) => {
+  try {
+    if (!stripeConfigured()) {
+      return res.status(503).json({ error: 'Stripe is not configured on this server.' });
+    }
+    const { sessionId } = req.body || {};
+    if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+      return res.status(400).json({ error: 'Checkout is not complete yet. Refresh in a moment or use Log in at the top.' });
+    }
+
+    const user = await activateStripeCheckoutSession(session, 'complete-checkout');
+    if (!user) return res.status(404).json({ error: 'Account not found for this checkout session.' });
+
+    res.json({
+      success: true,
+      email: user.email,
+      message: 'Trial activated. Check your email for a secure login link, or use the Log in button with the password you chose.'
+    });
+  } catch (err) {
+    console.error('complete-checkout error:', err);
+    res.status(500).json({ error: err?.message || 'Could not finalize checkout' });
+  }
+});
+
 // Stripe webhook (for subscription updates)
-app.post('/api/stripe-webhook', (req, res) => {
+app.post('/api/stripe-webhook', async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).send('Stripe webhook not configured');
+  }
+
   const sig = req.headers['stripe-signature'];
   let event;
   try {
@@ -762,30 +904,28 @@ app.post('/api/stripe-webhook', (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const email = session.metadata?.email || session.customer_email;
-    if (email) {
-      db.prepare(`
-        UPDATE users SET status = 'trialing', access_granted = 1 WHERE email = ?
-      `).run(email);
+  try {
+    if (event.type === 'checkout.session.completed') {
+      await activateStripeCheckoutSession(event.data.object, 'webhook');
     }
-  }
 
-  if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-    const sub = event.data.object;
-    const customerId = sub.customer;
-    const user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId);
-    if (user) {
-      let newStatus = sub.status;
-      if (sub.status === 'trialing' && sub.trial_end) {
-        db.prepare('UPDATE users SET trial_end = ? WHERE id = ?').run(new Date(sub.trial_end * 1000).toISOString(), user.id);
+    if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+      const sub = event.data.object;
+      const customerId = sub.customer;
+      const user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId);
+      if (user) {
+        if (sub.status === 'trialing' && sub.trial_end) {
+          db.prepare('UPDATE users SET trial_end = ? WHERE id = ?').run(new Date(sub.trial_end * 1000).toISOString(), user.id);
+        }
+        db.prepare(`
+          UPDATE users SET status = ?, stripe_subscription_id = COALESCE(?, stripe_subscription_id)
+          WHERE id = ?
+        `).run(sub.status, sub.id, user.id);
       }
-      if (sub.status === 'canceled' || sub.status === 'past_due') {
-        // keep access until trial_end or manual
-      }
-      db.prepare('UPDATE users SET status = ? WHERE id = ?').run(newStatus, user.id);
     }
+  } catch (err) {
+    console.error('Webhook handler error:', err);
+    return res.status(500).json({ error: 'Webhook handler failed' });
   }
 
   res.json({ received: true });
@@ -793,14 +933,38 @@ app.post('/api/stripe-webhook', (req, res) => {
 
 // Simple success page after Stripe Checkout
 app.get('/success', (req, res) => {
+  const sessionId = String(req.query.session_id || '');
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
-    <p>Your ${TRIAL_DAYS}-day trial has started (or subscription activated).</p>
-    <p>Check your email for a secure login link.</p>
-    <p><a href="/app">Open the App</a> (log in with the link we emailed you)</p>
+    <p>Your ${TRIAL_DAYS}-day trial has started.</p>
+    <p id="status">Finalizing your account...</p>
+    <p><a href="/">Return to home</a> and use the <strong>Log in</strong> button with the email + password you chose.</p>
+    <p><a href="/app">Open the App</a></p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
+    <script>
+      const sessionId = ${JSON.stringify(sessionId)};
+      if (sessionId) {
+        fetch('/api/complete-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        })
+          .then(r => r.json())
+          .then(data => {
+            const el = document.getElementById('status');
+            if (el) el.textContent = data.message || data.error || 'Account ready. Check your email or log in with your password.';
+          })
+          .catch(() => {
+            const el = document.getElementById('status');
+            if (el) el.textContent = 'Account ready. Use the Log in button at the top with your email + password, or request a magic link.';
+          });
+      } else {
+        const el = document.getElementById('status');
+        if (el) el.textContent = 'Use the Log in button at the top with your email + password, or request a magic link.';
+      }
+    </script>
     </body></html>
   `);
 });
@@ -1043,5 +1207,8 @@ app.listen(PORT, () => {
   console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used only for chat/LLM answers)`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
   console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
-  console.log(`   Bible API: using bible.helloao.org (free, no key)\n`);
+  console.log(`   Bible API: using bible.helloao.org (free, no key)`);
+  console.log(`   Stripe: ${stripeConfigured() ? 'configured' : 'NOT configured (add STRIPE_SECRET_KEY + STRIPE_PRICE_ID to .env)'}`);
+  console.log(`   Stripe webhook secret: ${process.env.STRIPE_WEBHOOK_SECRET ? 'set' : 'missing (post-checkout login backup still works via /api/complete-checkout)'}`);
+  console.log(`   App base URL: ${APP_BASE_URL}\n`);
 });
