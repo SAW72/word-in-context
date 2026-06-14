@@ -763,11 +763,21 @@
       overflow-y: auto;
     }
     .speak-btn {
-      position: absolute; bottom: 8px; right: 12px;
-      background: none; border: none; font-size: 17px;
-      cursor: pointer; opacity: 0.55; padding: 2px;
+      position: absolute;
+      bottom: 8px;
+      right: 12px;
+      background: none;
+      border: none;
+      font-size: 17px;
+      cursor: pointer;
+      opacity: 0.55;
+      padding: 2px;
+      touch-action: manipulation;
     }
     .speak-btn:hover { opacity: 1; }
+    .message-actions {
+      display: none;
+    }
 
     .voice-generating-note {
       margin-left: 6px;
@@ -1224,34 +1234,6 @@
         height: 100dvh;
         height: -webkit-fill-available;
       }
-      .chat-bottom {
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-      }
-      .input-area {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 10px 12px 8px;
-        gap: 10px;
-      }
-      .input-area-top,
-      .input-area-top form {
-        width: 100%;
-      }
-      .input-area-toolbar {
-        width: 100%;
-        justify-content: center;
-        gap: 12px;
-      }
-      #user-input {
-        font-size: 16px; /* prevent iOS zoom */
-        min-height: 46px;
-        padding: 12px 14px;
-        border-radius: 14px;
-      }
-      .mic-btn, #send-btn, .stop-btn {
-        min-width: 38px;
-        min-height: 38px;
-      }
       .modal-content {
         width: 95vw;
         max-width: 95vw;
@@ -1400,15 +1382,21 @@
       }
 
       .current-chat-wrapper {
-        display: block;
-        font-size: 10px;
-        margin: 2px 0 4px;
+        display: none; /* reclaim vertical space for the chat read window */
       }
       .policy-note {
-        font-size: 11px;
-        padding: 4px 8px;
-        line-height: 1.3;
+        font-size: 10px;
+        padding: 3px 8px;
+        line-height: 1.25;
         background: #f9f5eb;
+      }
+      .main-tabs {
+        padding: 0 8px;
+      }
+      .main-tab {
+        padding: 8px 10px;
+        font-size: 12px;
+        max-width: none;
       }
       /* When keyboard is up on mobile, reclaim vertical space for the message window */
       .chat-container.mobile-keyboard .policy-note,
@@ -1417,27 +1405,112 @@
         display: none !important;
       }
       .messages {
-        padding: 10px 6px;
-        padding-bottom: 10px;
-        background: #fff; /* pure white message area on phone */
-      }
-      /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
-      .chat-container {
-        /* On phone we force full-bleed white below; the 100dvh rule in the drawer media takes precedence for full coverage */
+        flex: 1;
+        min-height: 0;
+        padding: 12px 10px 8px;
+        background: #fff;
+        -webkit-overflow-scrolling: touch;
       }
       .message {
-        max-width: 88%;
+        max-width: 92%;
         font-size: 15px;
-        padding: 10px 12px;
+        line-height: 1.45;
+        padding: 12px 14px;
       }
+      .message.user {
+        max-width: 88%;
+      }
+      /* Chat bottom dock: tall input, then balanced mic / send / HF row */
       .chat-bottom {
         background: #fff;
+        flex-shrink: 0;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        border-top: 1px solid #ece4d6;
       }
       .input-area {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px 14px 6px;
+        gap: 10px;
         background: #fff;
       }
+      .input-area-top,
+      .input-area-top form {
+        width: 100%;
+      }
+      .input-area-toolbar {
+        display: grid;
+        grid-template-columns: 52px 52px 1fr;
+        gap: 10px;
+        align-items: center;
+        width: 100%;
+        max-width: 340px;
+        margin: 0 auto;
+      }
+      #user-input {
+        font-size: 16px;
+        min-height: 48px;
+        padding: 13px 14px;
+        border-radius: 12px;
+        border-width: 1.5px;
+      }
+      .mic-btn,
+      #send-btn,
+      .stop-btn {
+        width: 52px;
+        height: 52px;
+        min-width: 52px;
+        min-height: 52px;
+        touch-action: manipulation;
+      }
+      #send-btn {
+        padding: 0;
+        font-size: 20px;
+        border-radius: 50%;
+        justify-self: center;
+      }
+      #send-btn .send-label { display: none; }
+      #send-btn .send-arrow { display: inline; }
+      .mic-btn {
+        font-size: 22px;
+        justify-self: center;
+      }
+      .handsfree-toggle {
+        font-size: 12px;
+        margin: 0;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: #f5f0e6;
+        padding: 0 10px;
+        border-radius: 12px;
+        border: 1px solid #d8c8a8;
+        min-height: 52px;
+        max-width: 100%;
+        touch-action: manipulation;
+      }
+      .handsfree-toggle input {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+      .handsfree-toggle .hf-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .status {
+        display: none;
+      }
+      #live-transcript-container {
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+      }
 
-      /* When keyboard is up: pin the whole bottom block (input + status) above the keyboard */
+      /* When keyboard is up: pin the bottom dock above the keyboard */
       .chat-container.input-focused .chat-bottom {
         position: fixed;
         bottom: 0;
@@ -1445,67 +1518,11 @@
         right: 0;
         z-index: 30;
         background: #fff;
-        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.1);
         padding-bottom: env(safe-area-inset-bottom, 0px);
       }
       .chat-container.input-focused .messages {
-        padding-bottom: 128px; /* two-row input bar + status */
-      }
-      .handsfree-toggle {
-        font-size: 12px;
-        margin-left: 0;
-        white-space: nowrap;
-        flex-shrink: 0;
-        align-items: center;
-        background: #f5f0e6;
-        padding: 8px 12px;
-        border-radius: 10px;
-        border: 1px solid #d8c8a8;
-        min-height: 44px;
-      }
-      .handsfree-toggle input {
-        width: 16px;
-        height: 16px;
-      }
-      .status {
-        font-size: 9px;
-        padding: 0 12px 6px;
-        margin: 0;
-        opacity: 0.45;
-        text-align: center;
-        position: static;
-        background: transparent;
-        pointer-events: none;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: #8b5e3c;
-      }
-      #user-input {
-        font-size: 16px;
-        padding: 12px 14px;
-        min-height: 46px;
-        border-radius: 14px;
-      }
-      .mic-btn, #send-btn {
-        min-width: 44px;
-        min-height: 44px;
-      }
-      #send-btn {
-        padding: 0;
-        width: 44px;
-        height: 44px;
-        min-width: 44px;
-        min-height: 44px;
-        font-size: 18px;
-        border-radius: 50%;
-      }
-      #send-btn .send-label { display: none; }
-      #send-btn .send-arrow { display: inline; }
-      .mic-btn {
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
+        padding-bottom: 138px;
       }
       /* Show hamburger on mobile */
       #mobile-sidebar-toggle {
@@ -1551,22 +1568,39 @@
         max-height: 120px;
       }
 
-      /* Much larger, tappable speak buttons (🔊) for AI replies and verse citations on iPhone.
-         The "read window" (messages) must allow easy access to these. */
-      .speak-btn {
-        font-size: 22px;
-        padding: 10px;
-        min-width: 44px;
-        min-height: 44px;
-        background: rgba(255,255,255,0.9);
-        border-radius: 50%;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-        right: 6px;
-        bottom: 6px;
-        opacity: 0.85;
+      /* Speak (🔊) below AI text — not overlapping the read window */
+      .message.ai {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        padding-bottom: 12px;
+        padding-right: 14px;
       }
-      .ai {
-        padding-bottom: 36px; /* room for the absolute speak button above the bubble bottom */
+      .message.ai .speak-btn {
+        position: static;
+        align-self: flex-end;
+        margin-top: 10px;
+        font-size: 20px;
+        padding: 0;
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        border: 1px solid #d8c8a8;
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+        opacity: 1;
+      }
+      .verse-speak-btn {
+        min-width: 40px;
+        min-height: 40px;
+        padding: 6px 10px;
+        font-size: 16px;
+        touch-action: manipulation;
       }
     }
 
@@ -1654,16 +1688,15 @@
         <!-- Live transcription from server STT (with Bible keyterm boosting for accuracy).
              Shown during hands-free listening so user can see the improved text as they speak
              and correct if needed (e.g. by speaking clearly or rephrasing). -->
-        <div id="live-transcript-container" style="display:none; margin: 4px 0 8px; padding: 8px 12px; background: #f5f0e6; border: 1px solid #c9a227; border-radius: 6px; font-size: 14px;">
-          <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
-          <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
-        </div>
-
         <div class="chat-bottom">
+          <div id="live-transcript-container" style="display:none; margin: 0; padding: 8px 14px; background: #f5f0e6; border-top: 1px solid #e8d9c2; border-bottom: 1px solid #c9a227; font-size: 14px;">
+            <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
+            <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
+          </div>
           <div class="input-area">
             <div class="input-area-top">
               <form id="chat-input-form" autocomplete="off" onsubmit="return false;">
-                <input type="text" id="user-input" name="wic-bible-question" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore aria-label="Type your question or Bible reference">
+                <input type="text" id="user-input" name="wic-bible-question" placeholder="Ask John about The Word..." autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore aria-label="Type your question or Bible reference" data-placeholder-mobile="Ask John about The Word..." data-placeholder-desktop="Ask about any passage, word, or verse in The Word...">
               </form>
             </div>
             <div class="input-area-toolbar">
@@ -6245,26 +6278,45 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function updateHandsFreeLabel() {
       const label = document.querySelector('label[for="handsfree-toggle"]');
       if (label) {
-        let extra = '';
         const ww = getWakeWordDisplay();
-        if (handsFreeEnabled && wakeWordEnabled && ww) {
-          extra = `(wakeword ${ww})`;
-        } else if (handsFreeEnabled && !wakeWordEnabled) {
-          extra = '(always)';
-        }
+        const isMobile = window.innerWidth <= 768;
         let textSpan = label.querySelector('.hf-text');
         if (!textSpan) {
           textSpan = document.createElement('span');
           textSpan.className = 'hf-text';
           label.appendChild(textSpan);
         }
-        // On mobile use compact "HF (John)" so the toggle is visible next to the send arrow.
-        // On desktop use fuller "handsfree (wakeword John)".
-        let base = (window.innerWidth <= 768) ? 'HF' : 'handsfree';
-        textSpan.textContent = base + (extra ? ' ' + extra : '');
+        if (isMobile) {
+          if (handsFreeEnabled && wakeWordEnabled && ww) {
+            textSpan.textContent = `HF · ${ww}`;
+          } else if (handsFreeEnabled) {
+            textSpan.textContent = 'HF · on';
+          } else {
+            textSpan.textContent = 'HF';
+          }
+        } else {
+          let extra = '';
+          if (handsFreeEnabled && wakeWordEnabled && ww) {
+            extra = `(wakeword ${ww})`;
+          } else if (handsFreeEnabled && !wakeWordEnabled) {
+            extra = '(always)';
+          }
+          textSpan.textContent = 'handsfree' + (extra ? ' ' + extra : '');
+        }
       }
     }
+
+    function syncInputPlaceholder() {
+      if (!userInput) return;
+      const mobile = window.innerWidth <= 768;
+      const ph = mobile
+        ? (userInput.getAttribute('data-placeholder-mobile') || 'Ask John about The Word...')
+        : (userInput.getAttribute('data-placeholder-desktop') || userInput.placeholder);
+      userInput.placeholder = ph;
+    }
+
     updateHandsFreeLabel();
+    syncInputPlaceholder();
 
     // On mobile + keyboard visible: hide policy/demo/live bars to make the message "read window" larger
     // (userInput is already declared earlier in the script — do not re-declare)
@@ -6283,12 +6335,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
       userInput.addEventListener('focus', toggleMobileKeyboardClass);
       userInput.addEventListener('blur', () => {
-        // small delay so iOS keyboard hide animation finishes
-        setTimeout(() => chatCont.classList.remove('mobile-keyboard'), 150);
+        setTimeout(() => {
+          chatCont.classList.remove('mobile-keyboard');
+          chatCont.classList.remove('input-focused');
+        }, 150);
       });
-      // Also clear on resize/orientation
       window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) chatCont.classList.remove('mobile-keyboard');
+        if (window.innerWidth > 768) {
+          chatCont.classList.remove('mobile-keyboard');
+          chatCont.classList.remove('input-focused');
+        }
+        updateHandsFreeLabel();
+        syncInputPlaceholder();
       });
     }
 
