@@ -775,13 +775,42 @@
       opacity: 0.65;
       color: #666;
     }
+    .chat-bottom {
+      flex-shrink: 0;
+      background: var(--bg-input-area);
+      border-top: 1px solid var(--border-soft);
+    }
     .input-area {
-      display: flex; padding: 14px 16px; background: var(--bg-input-area);
-      border-top: 1px solid var(--border-soft); gap: 10px; align-items: center;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      padding: 14px 16px;
+      gap: 10px;
+      align-items: center;
+    }
+    .input-area-top {
+      flex: 1;
+      min-width: 0;
+    }
+    .input-area-top form {
+      display: block;
+      width: 100%;
+      margin: 0;
+    }
+    .input-area-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
     }
     #user-input {
-      flex: 1; padding: 14px 20px; border: 2px solid var(--border-input);
-      border-radius: 30px; font-size: 16px; outline: none;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px 20px;
+      border: 2px solid var(--border-input);
+      border-radius: 30px;
+      font-size: 16px;
+      outline: none;
       background: var(--bg-input);
       color: var(--text-primary);
     }
@@ -1136,7 +1165,7 @@
       font-size: 11px;
       color: var(--text-muted);
       text-align: center;
-      padding: 4px;
+      padding: 4px 12px 8px;
       opacity: 0.7;
     }
     html[data-theme="dark"] .modal-content input,
@@ -1181,11 +1210,8 @@
         padding: 16px 14px 20px;
         -webkit-overflow-scrolling: touch;
       }
-      html.ios.standalone-app .chat-container.input-focused .input-area {
-        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-      }
-      html.ios.standalone-app .status {
-        bottom: calc(2px + env(safe-area-inset-bottom, 0px));
+      html.ios.standalone-app .chat-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
       }
     }
 
@@ -1198,15 +1224,29 @@
         height: 100dvh;
         height: -webkit-fill-available;
       }
+      .chat-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
       .input-area {
-        padding: 6px 4px;
-        gap: 4px;
-        flex-wrap: nowrap;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px 12px 8px;
+        gap: 10px;
+      }
+      .input-area-top,
+      .input-area-top form {
+        width: 100%;
+      }
+      .input-area-toolbar {
+        width: 100%;
+        justify-content: center;
+        gap: 12px;
       }
       #user-input {
         font-size: 16px; /* prevent iOS zoom */
-        padding: 10px;
+        min-height: 46px;
+        padding: 12px 14px;
+        border-radius: 14px;
       }
       .mic-btn, #send-btn, .stop-btn {
         min-width: 38px;
@@ -1378,7 +1418,7 @@
       }
       .messages {
         padding: 10px 6px;
-        padding-bottom: 18px; /* clear the fixed tiny "Secure..." line at bottom of screen */
+        padding-bottom: 10px;
         background: #fff; /* pure white message area on phone */
       }
       /* Give the main reading area (messages / "read window") as much vertical space as possible on small iPhones */
@@ -1390,94 +1430,82 @@
         font-size: 15px;
         padding: 10px 12px;
       }
+      .chat-bottom {
+        background: #fff;
+      }
       .input-area {
-        padding: 5px 4px;
-        flex-wrap: nowrap;
-        gap: 4px;
-        align-items: center;
-        background: #fff; /* keep the bottom input clean white */
+        background: #fff;
       }
 
-      /* When input focused on mobile, fix the input bar (with send arrow and handsfree) static at the bottom,
-         just above the iOS keyboard/accessory bar (the checkmark bar). Prevents it jumping to the top.
-         Messages get padding so content isn't hidden under the fixed bar. */
-      .chat-container.input-focused .input-area {
+      /* When keyboard is up: pin the whole bottom block (input + status) above the keyboard */
+      .chat-container.input-focused .chat-bottom {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         z-index: 30;
         background: #fff;
-        box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
       }
       .chat-container.input-focused .messages {
-        padding-bottom: 72px; /* approx height of fixed input bar */
+        padding-bottom: 128px; /* two-row input bar + status */
       }
-      /* Hands-free toggle sits next to the Send arrow button (not below).
-         Slightly smaller buttons to fit nicely on iPhone. */
       .handsfree-toggle {
-        font-size: 11px;
-        margin-left: 2px;
+        font-size: 12px;
+        margin-left: 0;
         white-space: nowrap;
         flex-shrink: 0;
         align-items: center;
         background: #f5f0e6;
-        padding: 4px 6px;
-        border-radius: 6px;
+        padding: 8px 12px;
+        border-radius: 10px;
         border: 1px solid #d8c8a8;
+        min-height: 44px;
       }
       .handsfree-toggle input {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
       }
-
-      /* Secure footer text: tiny, at the very bottom of the screen on mobile.
-         The previous internal placement was eating vertical space in the input card. */
       .status {
-        font-size: 10px;
-        padding: 2px 8px;
+        font-size: 9px;
+        padding: 0 12px 6px;
         margin: 0;
-        opacity: 0.5;
+        opacity: 0.45;
         text-align: center;
-        position: fixed;
-        bottom: env(safe-area-inset-bottom, 2px);
-        left: 0;
-        right: 0;
-        z-index: 5;
+        position: static;
         background: transparent;
         pointer-events: none;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        color: #8b5e3c; /* keep it subtle and dark enough to read on any bg */
+        color: #8b5e3c;
       }
       #user-input {
-        font-size: 16px; /* prevent iOS zoom */
-        padding: 10px 14px;
-        flex: 1 1 100px;
-        min-width: 0;
+        font-size: 16px;
+        padding: 12px 14px;
+        min-height: 46px;
+        border-radius: 14px;
       }
       .mic-btn, #send-btn {
-        min-width: 38px;
-        min-height: 38px;
+        min-width: 44px;
+        min-height: 44px;
       }
-      /* Compact send arrow for mobile, placed next to small hands-free toggle */
       #send-btn {
         padding: 0;
-        width: 38px;
-        height: 38px;
-        min-width: 38px;
-        min-height: 38px;
-        font-size: 16px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        font-size: 18px;
         border-radius: 50%;
       }
       #send-btn .send-label { display: none; }
       #send-btn .send-arrow { display: inline; }
       .mic-btn {
-        width: 38px;
-        height: 38px;
-        font-size: 18px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
       }
       /* Show hamburger on mobile */
       #mobile-sidebar-toggle {
@@ -1631,24 +1659,28 @@
           <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
         </div>
 
-        <div class="input-area">
-          <form id="chat-input-form" autocomplete="off" onsubmit="return false;" style="display:contents;">
-          <input type="text" id="user-input" name="wic-bible-question" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore aria-label="Type your question or Bible reference">
-          </form>
-          <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
-          <button id="send-btn" aria-label="Send message">
-            <span class="send-label">Send</span>
-            <span class="send-arrow">➤</span>
-          </button>
-
-          <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
-            <input type="checkbox" id="handsfree-toggle">
-            <span class="hf-text"></span>
-          </label>
-
-          <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
+        <div class="chat-bottom">
+          <div class="input-area">
+            <div class="input-area-top">
+              <form id="chat-input-form" autocomplete="off" onsubmit="return false;">
+                <input type="text" id="user-input" name="wic-bible-question" placeholder="Ask about any passage, word, or verse in The Word..." autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore aria-label="Type your question or Bible reference">
+              </form>
+            </div>
+            <div class="input-area-toolbar">
+              <button class="mic-btn" id="mic-btn" title="Click or hold to speak" aria-label="Use microphone to dictate your question">🎙️</button>
+              <button id="send-btn" aria-label="Send message">
+                <span class="send-label">Send</span>
+                <span class="send-arrow">➤</span>
+              </button>
+              <label for="handsfree-toggle" class="handsfree-toggle" title="Toggle hands-free listening (wake word)">
+                <input type="checkbox" id="handsfree-toggle">
+                <span class="hf-text"></span>
+              </label>
+              <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
+            </div>
+          </div>
+          <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
         </div>
-        <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
       </div>
 
       <div class="library-panel" id="library-panel" role="tabpanel" aria-hidden="true">
