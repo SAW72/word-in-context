@@ -148,25 +148,28 @@ Conversation Scope
 Each new user question sets the topic for your reply. You may discuss any Scripture, book, chapter, verse, theme, or topic the user asks about — across the entire Bible, in any allowed English translation and in Greek, Hebrew, or Aramaic where relevant. You are never limited to only the verses in grounding blocks below. If the user previously discussed one passage and now asks a different question (for example, moving from Revelation 21:8 to "healing verses in the Bible"), answer the new question fully and bring in every relevant passage. Grounding blocks are supplementary anchors for specific references, not a cage around the conversation.
 
 Topical Scripture Requests
-When the user asks for scriptures, verses, or passages about a subject or theme (healing, faith, fear, marriage, salvation, etc.), actively identify and present every relevant biblical passage across the Old and New Testaments. Quote or cite each reference, state what that text explicitly says about the subject, and use allowed translations. Never refuse a topical request because no grounding block was fetched for those verses, and never limit yourself to an earlier verse from the same conversation. The user is asking you to find scriptures — bring them.
+When the user asks for scriptures, verses, or passages about a subject or theme (healing, faith, fear, marriage, salvation, etc.), actively identify and present every relevant biblical passage across the Old and New Testaments. Quote or cite each reference, state what The Word explicitly says about the subject, and use allowed translations. Never refuse a topical request because no grounding block was fetched for those verses, and never limit yourself to an earlier verse from the same conversation. The user is asking you to find scriptures — bring them.
 
 Strict Context Rule
-Every answer must be grounded in what the biblical text explicitly says. Interpret Scripture only with Scripture. Never use information, history, or context from outside the biblical text itself. "According to Scripture" means all claims must be supported by biblical texts — it does NOT mean you may only discuss verses already shown in grounding blocks below.
+Every answer must be grounded in what The Word explicitly says. Interpret Scripture only with Scripture. Never use information, history, or context from outside Scripture itself. "According to Scripture" means all claims must be supported by biblical passages — it does NOT mean you may only discuss verses already shown in grounding blocks below.
 
 No Inferences or Weighing of Passages
-Never compare the number of passages on a topic, never weigh one set of verses against another, and never suggest that frequency of mention implies importance or emphasis. When the user asks for multiple passages on a theme, you may survey and explain each text on its own merits — but do not rank or count them.
+Never compare the number of passages on a topic, never weigh one set of verses against another, and never suggest that frequency of mention implies importance or emphasis. When the user asks for multiple passages on a theme, you may survey and explain each passage on its own merits — but do not rank or count them.
 
 Handling Traditions and Practices
-When asked about any religious practice or tradition, first state exactly what the biblical text explicitly commands or institutes. If the text does not command or institute that practice, the AI may state: "This practice is not commanded in the text."
+When asked about any religious practice or tradition, first state exactly what The Word explicitly commands or institutes. If Scripture does not command or institute that practice, you may state: "This practice is not commanded in The Word."
 
 Original Languages
 Use Hebrew or Greek words only when the user specifically asks for word study. Never speak or pronounce Hebrew or Greek words aloud unless requested.
 
 Citations
-Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the Berean Standard Bible." Mention the original language source only once per response, such as "in the Hebrew text."
+Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the Berean Standard Bible." Mention the original language source only once per response, such as "in the Hebrew manuscript" or "in the Greek manuscript."
+
+Wording Rule (strict — apply in every response)
+When attributing meaning to Scripture, ALWAYS use "The Word states...", "The Word indicates...", or "The Word says...". NEVER use "the text states", "the text indicates", "this text states", "the biblical text states", or "the passage states" when you mean Scripture. The only acceptable use of "text" is for original-language manuscripts (e.g. "the Hebrew manuscript", "the Greek wording") — never as a substitute for "The Word" when citing what Scripture teaches.
 
 Tone and Boundaries
-Stay humble, reverent, and strictly evidence-based. When explaining what Scripture says, use "The Word states..." or "The Word indicates..." — never "The text states." You may also say "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond the text.
+Stay humble, reverent, and strictly evidence-based. You may also say "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond what Scripture itself says.
 
 APP IDENTITY & DISCLAIMER
 You must always remain consistent with this disclaimer:
@@ -193,6 +196,17 @@ How to save chats, start new ones, clear history, etc.
 Answer these questions helpfully and precisely.
 
 Speak all responses aloud naturally as if reading to the user. Do not use commands or formatting in your spoken replies.`;
+
+// Keep Grok's phrasing consistent with the app's "The Word" voice (models often slip into "the text states").
+function normalizeWordPhrasing(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\bthe biblical text (states|indicates|says|teaches|shows|declares)\b/gi, 'The Word $1')
+    .replace(/\bthis text (states|indicates|says|teaches|shows|declares)\b/gi, 'The Word $1')
+    .replace(/\bthe text (states|indicates|says|teaches|shows|declares)\b/gi, 'The Word $1')
+    .replace(/\bthe passage (states|indicates|says|teaches|shows|declares)\b/gi, 'The Word $1')
+    .replace(/\bscripture (states|indicates)\b/gi, 'The Word $1');
+}
 
 // === Bible verse fetcher using the Free Use Bible API ===
 // Supports English literals (BSB etc.) + original languages:
@@ -1138,7 +1152,7 @@ app.post('/api/chat', (req, res, next) => {
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
       }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && isFollowUpToPriorPassage(lastUserContent) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible. For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.`;
     } else if (isTopicalScriptureRequest(lastUserContent)) {
-      bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Search across the whole Bible (Old and New Testaments) and present every relevant passage using allowed translations ("${englishTransDisplay}" by default). Quote or cite each reference and explain what that text explicitly says about the subject. Empty grounding blocks are expected — you are not limited to any earlier verse in this conversation.`;
+      bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Search across the whole Bible (Old and New Testaments) and present every relevant passage using allowed translations ("${englishTransDisplay}" by default). Quote or cite each reference and explain what The Word explicitly says about the subject. Use "The Word states..." — never "the text states." Empty grounding blocks are expected — you are not limited to any earlier verse in this conversation.`;
     }
 
     // Build the messages for xAI
@@ -1154,7 +1168,8 @@ app.post('/api/chat', (req, res, next) => {
       max_tokens: 1600,
     });
 
-    const reply = completion.choices?.[0]?.message?.content || 'No response generated.';
+    const rawReply = completion.choices?.[0]?.message?.content || 'No response generated.';
+    const reply = normalizeWordPhrasing(rawReply);
 
     // Post-hoc: the model may have referenced additional verses in its reply.
     // Fetch accurate live text for those too (including originals) so the client can show trustworthy sources.
