@@ -1440,11 +1440,12 @@
       }
       .input-area-toolbar {
         display: grid;
-        grid-template-columns: 52px 52px 1fr;
-        gap: 10px;
+        grid-template-columns: 44px 44px auto 44px;
+        gap: 6px;
         align-items: center;
+        justify-content: center;
         width: 100%;
-        max-width: 340px;
+        max-width: 320px;
         margin: 0 auto;
       }
       #user-input {
@@ -1455,50 +1456,68 @@
         border-width: 1.5px;
       }
       .mic-btn,
-      #send-btn,
-      .stop-btn {
-        width: 52px;
-        height: 52px;
-        min-width: 52px;
-        min-height: 52px;
+      #send-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
         touch-action: manipulation;
       }
       #send-btn {
         padding: 0;
-        font-size: 20px;
+        font-size: 18px;
         border-radius: 50%;
         justify-self: center;
       }
       #send-btn .send-label { display: none; }
       #send-btn .send-arrow { display: inline; }
       .mic-btn {
-        font-size: 22px;
+        font-size: 20px;
         justify-self: center;
       }
       .handsfree-toggle {
-        font-size: 12px;
+        font-size: 10px;
         margin: 0;
         white-space: nowrap;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: 4px;
         background: #f5f0e6;
-        padding: 0 10px;
-        border-radius: 12px;
+        padding: 0 6px;
+        border-radius: 8px;
         border: 1px solid #d8c8a8;
-        min-height: 52px;
-        max-width: 100%;
+        height: 36px;
+        min-height: 36px;
+        max-height: 36px;
+        width: max-content;
+        max-width: 88px;
+        justify-self: center;
         touch-action: manipulation;
       }
       .handsfree-toggle input {
-        width: 18px;
-        height: 18px;
+        width: 14px;
+        height: 14px;
         flex-shrink: 0;
+        margin: 0;
       }
       .handsfree-toggle .hf-text {
         overflow: hidden;
         text-overflow: ellipsis;
+        line-height: 1;
+      }
+      .stop-btn {
+        width: auto;
+        min-width: 44px;
+        height: 36px;
+        min-height: 36px;
+        max-height: 36px;
+        padding: 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 8px;
+        justify-self: center;
+        touch-action: manipulation;
       }
       .status {
         display: none;
@@ -1522,7 +1541,7 @@
         padding-bottom: env(safe-area-inset-bottom, 0px);
       }
       .chat-container.input-focused .messages {
-        padding-bottom: 138px;
+        padding-bottom: 120px;
       }
       /* Show hamburger on mobile */
       #mobile-sidebar-toggle {
@@ -6288,9 +6307,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
         if (isMobile) {
           if (handsFreeEnabled && wakeWordEnabled && ww) {
-            textSpan.textContent = `HF · ${ww}`;
+            textSpan.textContent = ww;
           } else if (handsFreeEnabled) {
-            textSpan.textContent = 'HF · on';
+            textSpan.textContent = 'on';
           } else {
             textSpan.textContent = 'HF';
           }
