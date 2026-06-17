@@ -85,6 +85,12 @@ const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787').replace(/\/$/, '');
 const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || APP_BASE_URL).replace(/\/$/, '');
+// Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
+const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
+
+function shareOgImageUrl() {
+  return `${SHARE_SITE_URL}/icons/share-og.png?v=${SHARE_OG_VERSION}`;
+}
 
 function newShareId() {
   return crypto.randomBytes(6).toString('base64url');
@@ -506,10 +512,36 @@ app.use((req, res, next) => {
   next();
 });
 
+let landingHtmlWithOg = null;
+function landingHtmlWithOgTags() {
+  if (landingHtmlWithOg) return landingHtmlWithOg;
+  const raw = fs.readFileSync(path.join(__dirname, 'public', 'landing.html'), 'utf8');
+  const ogImage = shareOgImageUrl();
+  const ogTags = `
+  <link rel="canonical" href="${SHARE_SITE_URL}/">
+  <meta property="og:title" content="The Word in Context">
+  <meta property="og:description" content="Voice-first offline Bible study with John — understand Scripture in its original context.">
+  <meta property="og:url" content="${SHARE_SITE_URL}/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="The Word in Context">
+  <meta property="og:image" content="${escapeHtml(ogImage)}">
+  <meta property="og:image:secure_url" content="${escapeHtml(ogImage)}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Word in Context — voice-first Bible study">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The Word in Context">
+  <meta name="twitter:description" content="Voice-first offline Bible study with John">
+  <meta name="twitter:image" content="${escapeHtml(ogImage)}">`;
+  landingHtmlWithOg = raw.replace('</head>', `${ogTags}\n</head>`);
+  return landingHtmlWithOg;
+}
+
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+  res.type('html').send(landingHtmlWithOgTags());
 });
 
 // Serve the full chat app at /app (so landing can promote signups)
@@ -540,7 +572,7 @@ app.get('/share/:id', (req, res) => {
 
   const display = buildShareDisplay(payload);
   const pageUrl = `${SHARE_SITE_URL}/share/${id}`;
-  const ogImage = `${SHARE_SITE_URL}/icons/share-og.png`;
+  const ogImage = shareOgImageUrl();
   const safeTitle = escapeHtml(display.title);
   const safeBody = escapeHtml(display.body).replace(/\n/g, '<br>');
   const safeOg = escapeHtml(display.ogDescription);
@@ -561,9 +593,12 @@ app.get('/share/:id', (req, res) => {
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="The Word in Context">
   <meta property="og:image" content="${escapeHtml(ogImage)}">
+  <meta property="og:image:secure_url" content="${escapeHtml(ogImage)}">
+  <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image:alt" content="The Word in Context — voice-first Bible study">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${safeTitle}">
   <meta name="twitter:description" content="${safeOg}">
   <meta name="twitter:image" content="${escapeHtml(ogImage)}">
