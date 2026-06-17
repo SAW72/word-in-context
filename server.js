@@ -84,7 +84,8 @@ const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787').replace(/\/$/, '');
-const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || APP_BASE_URL).replace(/\/$/, '');
+// Public links in shares/OG must use the canonical site (not *.onrender.com).
+const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincontext.org').replace(/\/$/, '');
 // Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
 
@@ -103,6 +104,11 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function ogMetaText(str) {
+  // Meta tag attributes must be one line or Facebook drops the description.
+  return escapeHtml(String(str || '').replace(/\s+/g, ' ').trim());
 }
 
 function buildShareDisplay(payload) {
@@ -128,7 +134,7 @@ function buildShareDisplay(payload) {
     return {
       title: `${title} — The Word in Context`,
       body,
-      ogDescription: body.slice(0, 300),
+      ogDescription: body.replace(/\s+/g, ' ').trim().slice(0, 300),
     };
   }
   return { title: 'The Word in Context', body: '', ogDescription: '' };
@@ -573,9 +579,9 @@ app.get('/share/:id', (req, res) => {
   const display = buildShareDisplay(payload);
   const pageUrl = `${SHARE_SITE_URL}/share/${id}`;
   const ogImage = shareOgImageUrl();
-  const safeTitle = escapeHtml(display.title);
+  const safeTitle = ogMetaText(display.title);
   const safeBody = escapeHtml(display.body).replace(/\n/g, '<br>');
-  const safeOg = escapeHtml(display.ogDescription);
+  const safeOg = ogMetaText(display.ogDescription);
   const ua = String(req.headers['user-agent'] || '');
   const isCrawler = /facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|Slackbot|Discordbot|TelegramBot/i.test(ua);
 
