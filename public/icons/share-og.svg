@@ -1,7 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="The Word in Context">
+  <defs>
+    <linearGradient id="stemGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5c4510"/>
+      <stop offset="50%" stop-color="#f0d060"/>
+      <stop offset="100%" stop-color="#4a3810"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6b5010"/>
+      <stop offset="50%" stop-color="#e8c84a"/>
+      <stop offset="100%" stop-color="#5c4510"/>
+    </linearGradient>
+  </defs>
   <rect width="1200" height="630" fill="#2c3e50"/>
-  <rect x="200" y="72" width="52" height="486" rx="8" fill="#c9a227"/>
-  <rect x="132" y="108" width="188" height="44" rx="8" fill="#c9a227"/>
+  <path fill="url(#stemGrad)" d="M188 52 L252 58 L246 578 L182 572 Z"/>
+  <path fill="url(#barGrad)" d="M108 96 L332 102 L330 126 L106 120 Z"/>
   <text x="400" y="290" font-family="Georgia, 'Times New Roman', serif" font-size="56" font-weight="700" fill="#f5f0e6">The Word in Context</text>
   <text x="400" y="360" font-family="Georgia, 'Times New Roman', serif" font-size="30" fill="#c9a227">Voice-first Bible study</text>
 </svg>

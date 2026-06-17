@@ -1,5 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Word in Context">
+  <defs>
+    <linearGradient id="stemGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5c4510"/>
+      <stop offset="50%" stop-color="#f0d060"/>
+      <stop offset="100%" stop-color="#4a3810"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6b5010"/>
+      <stop offset="50%" stop-color="#e8c84a"/>
+      <stop offset="100%" stop-color="#5c4510"/>
+    </linearGradient>
+  </defs>
   <rect width="512" height="512" fill="#2c3e50"/>
-  <rect x="232" y="136" width="48" height="260" rx="8" fill="#c9a227"/>
-  <rect x="188" y="156" width="136" height="40" rx="8" fill="#c9a227"/>
+  <path fill="url(#stemGrad)" d="M228 120 L284 124 L280 392 L224 388 Z"/>
+  <path fill="url(#barGrad)" d="M168 148 L344 152 L342 168 L166 164 Z"/>
 </svg>

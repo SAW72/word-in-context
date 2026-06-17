@@ -426,14 +426,14 @@
       border: 1px solid #f0e6d2;
     }
 
-    /* Rugged Latin cross — weathered gold, thick beams, worn edges */
+    /* Rugged Latin cross — thick stem, thin crossbar, worn edges */
     .cross {
       display: inline-block;
       position: relative;
-      width: 0.95em;
-      height: 1.3em;
+      width: 1em;
+      height: 1.35em;
       vertical-align: middle;
-      margin: 0 0.2em;
+      margin: 0 0.15em;
       flex-shrink: 0;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45))
               drop-shadow(0 0 1px rgba(201, 162, 39, 0.35));
@@ -442,54 +442,52 @@
     .cross::after {
       content: '';
       position: absolute;
-      border-radius: 2px 3px 2px 4px;
     }
     .cross::before {
       left: 50%;
       top: 0;
-      transform: translateX(-50%) rotate(0.4deg);
-      width: 0.24em;
+      transform: translateX(-50%) rotate(0.5deg);
+      width: 0.34em;
       height: 100%;
+      border-radius: 3px 5px 4px 6px;
       background: linear-gradient(
         90deg,
-        #6b4f10 0%,
+        #5c4510 0%,
         #a67c1a 18%,
-        #e8c84a 42%,
-        #f5dc6a 50%,
-        #c9a227 62%,
-        #8b6914 82%,
-        #5c4510 100%
+        #f0d060 48%,
+        #c9a227 65%,
+        #6b4f10 100%
       );
       box-shadow:
-        inset -2px 0 3px rgba(0, 0, 0, 0.35),
-        inset 2px 0 2px rgba(255, 255, 255, 0.18),
-        1px 0 0 rgba(0, 0, 0, 0.2);
+        inset -2px 0 4px rgba(0, 0, 0, 0.38),
+        inset 2px 0 2px rgba(255, 255, 255, 0.16),
+        1px 0 0 rgba(0, 0, 0, 0.25);
     }
     .cross::after {
-      top: 26%;
-      left: 4%;
-      width: 92%;
-      height: 0.22em;
-      transform: rotate(-0.8deg);
+      top: 22%;
+      left: 0;
+      width: 100%;
+      height: 0.09em;
+      min-height: 2px;
+      transform: rotate(-1deg);
+      border-radius: 5px 2px 4px 3px;
       background: linear-gradient(
         180deg,
         #5c4510 0%,
-        #9a7418 20%,
-        #e0b838 45%,
-        #f0cc50 52%,
-        #b8891f 68%,
-        #7a5c12 100%
+        #e8c84a 46%,
+        #c9a227 58%,
+        #6b5010 100%
       );
       box-shadow:
-        inset 0 -2px 3px rgba(0, 0, 0, 0.38),
-        inset 0 1px 2px rgba(255, 255, 255, 0.16),
-        0 1px 0 rgba(0, 0, 0, 0.22);
+        inset 0 -1px 2px rgba(0, 0, 0, 0.4),
+        inset 0 1px 1px rgba(255, 255, 255, 0.14),
+        0 1px 0 rgba(0, 0, 0, 0.28);
     }
     .cross-logo {
-      width: 1.15em;
-      height: 1.45em;
-      margin-right: 0.45em;
-      margin-left: 0;
+      width: 1.05em;
+      height: 1.4em;
+      margin-left: 0.35em;
+      margin-right: 0;
     }
 
     .cross-divider {
@@ -502,16 +500,16 @@
     .cross-divider::after {
       content: '';
       position: absolute;
-      top: -18px;
+      top: -20px;
       left: 50%;
       transform: translateX(-50%);
-      width: 22px;
-      height: 30px;
+      width: 24px;
+      height: 32px;
       background:
-        linear-gradient(90deg, #6b4f10, #e8c84a 45%, #c9a227 55%, #5c4510) center / 5px 100% no-repeat,
-        linear-gradient(180deg, #5c4510, #f0cc50 48%, #8b6914) center 28% / 100% 5px no-repeat;
+        linear-gradient(90deg, #5c4510, #f0d060 48%, #6b4f10) center / 8px 100% no-repeat,
+        linear-gradient(180deg, #5c4510, #e8c84a 50%, #6b5010) center 24% / 100% 3px no-repeat;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
-      border-radius: 2px;
+      border-radius: 3px 5px 4px 2px;
       opacity: 0.92;
       line-height: 1;
     }
@@ -814,7 +812,7 @@
   <header>
     <div class="container">
       <nav>
-        <a href="/" class="logo"><span class="cross cross-logo" aria-hidden="true"></span>The Word in Context</a>
+        <a href="/" class="logo">📖 The Word in Context<span class="cross cross-logo" aria-hidden="true"></span></a>
         <div class="nav-actions">
           <a href="#features" class="nav-link">Features</a>
           <a href="#pricing" class="nav-link">Pricing</a>
