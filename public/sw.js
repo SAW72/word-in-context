@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-28';
+const CACHE_VERSION = 'wic-pwa-29';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -14,12 +14,17 @@ const SHELL_URLS = [
   '/instructions.html',
   '/admin.html',
   '/manifest.webmanifest',
+  '/manifest.webmanifest?v=cross2',
   '/pwa.js',
   '/pwa.css',
   '/john-popup.js',
   '/icons/icon.svg',
   '/icons/icon-192.png',
+  '/icons/icon-192.png?v=cross2',
   '/icons/icon-512.png',
+  '/icons/icon-512.png?v=cross2',
+  '/icons/icon-maskable-512.png',
+  '/icons/icon-maskable-512.png?v=cross2',
   '/icons/share-og.png',
   '/data/study-lexicon.json',
 ];
