@@ -8,11 +8,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="The Word">
-  <link rel="manifest" href="/manifest.webmanifest?v=cross3">
+  <link rel="manifest" href="/manifest.webmanifest?v=cross4">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=cross3">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=cross3">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=cross3">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=cross4">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=cross4">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=cross4">
   <link rel="stylesheet" href="/pwa.css">
   <title>The Word in Context • Voice-First Bible Study with Grok</title>
   <script>
@@ -426,59 +426,34 @@
       border: 1px solid #f0e6d2;
     }
 
-    /* Thin vertical stem; horizontal bar visible with slight end flare */
+    /* Subtle cross decoration (original) */
     .cross {
       display: inline-block;
       position: relative;
-      width: 0.95em;
-      height: 1.15em;
+      width: 0.85em;
+      height: 1.05em;
       vertical-align: middle;
       margin: 0 0.15em;
-      flex-shrink: 0;
     }
     .cross::before,
     .cross::after {
       content: '';
       position: absolute;
+      background: #c9a227;
+      opacity: 0.85;
     }
     .cross::before {
       left: 50%;
       top: 0;
       transform: translateX(-50%);
-      width: 2px;
+      width: 1.5px;
       height: 100%;
-      border-radius: 1px;
-      background: #c9a227;
-      opacity: 0.9;
     }
     .cross::after {
-      top: 36%;
-      left: 50%;
-      width: 108%;
-      height: 3.5px;
-      min-height: 3.5px;
-      transform: translateX(-50%) rotate(-0.5deg);
-      border-radius: 3px 5px 2px 4px;
-      background: linear-gradient(
-        90deg,
-        #a67c1a 0%,
-        #e8c84a 6%,
-        #f5e08a 50%,
-        #e8c84a 94%,
-        #a67c1a 100%
-      );
-      box-shadow:
-        -0.4em -1px 0 0 #d4b84a,
-        -0.4em 1px 0 0 #d4b84a,
-        0.4em -1px 0 0 #d4b84a,
-        0.4em 1px 0 0 #d4b84a,
-        0 0 1px rgba(0, 0, 0, 0.4);
-    }
-    .cross-logo {
-      width: 1.1em;
-      height: 1.2em;
-      margin-left: 0.3em;
-      margin-right: 0;
+      top: 38%;
+      left: 0;
+      width: 100%;
+      height: 1.5px;
     }
 
     .cross-divider {
@@ -798,7 +773,7 @@
   <header>
     <div class="container">
       <nav>
-        <a href="/" class="logo">📖 The Word in Context<span class="cross cross-logo" aria-hidden="true"></span></a>
+        <a href="/" class="logo">📖 The Word in Context <span class="cross" aria-hidden="true"></span></a>
         <div class="nav-actions">
           <a href="#features" class="nav-link">Features</a>
           <a href="#pricing" class="nav-link">Pricing</a>
