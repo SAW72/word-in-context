@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-11';
+const CACHE_VERSION = 'wic-pwa-24';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -161,7 +161,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin) {
-    const isStatic = /\.(html|css|js|json|png|svg|webmanifest)$/i.test(url.pathname)
+    const isStatic = /\.(html|css|js|json|png|svg|jpg|jpeg|webp|webmanifest)$/i.test(url.pathname)
       || url.pathname === '/sw.js';
     if (isStatic) {
       event.respondWith(shellResponse(request));

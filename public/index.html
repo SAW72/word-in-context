@@ -775,6 +775,29 @@
       touch-action: manipulation;
     }
     .speak-btn:hover { opacity: 1; }
+    .message.ai .message-action-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .message.ai .message-action-row .speak-btn,
+    .message.ai .message-action-row .message-share-btn {
+      position: static;
+    }
+    .message-share-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8b5e3c;
+      cursor: pointer;
+      opacity: 0.75;
+      padding: 2px 8px;
+      touch-action: manipulation;
+    }
+    .message-share-btn:hover { opacity: 1; }
     .message-actions {
       display: none;
     }
@@ -1595,10 +1618,20 @@
         padding-bottom: 12px;
         padding-right: 14px;
       }
-      .message.ai .speak-btn {
-        position: static;
-        align-self: flex-end;
+      .message.ai .message-action-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
         margin-top: 10px;
+        align-self: flex-end;
+      }
+      .message.ai .speak-btn,
+      .message.ai .message-share-btn {
+        position: static;
+        margin: 0;
+      }
+      .message.ai .speak-btn {
         font-size: 20px;
         padding: 0;
         width: 48px;
@@ -1611,6 +1644,16 @@
         background: #fff;
         border: 1px solid #d8c8a8;
         border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+        opacity: 1;
+      }
+      .message.ai .message-share-btn {
+        font-size: 13px;
+        min-height: 40px;
+        padding: 8px 14px;
+        background: #fff;
+        border: 1px solid #d8c8a8;
+        border-radius: 20px;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
         opacity: 1;
       }
@@ -2167,6 +2210,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Defaults overridden at runtime from /api/config (env-driven on server)
     let DEMO_RESPONSE_LIMIT = 5;
     let TRIAL_DAYS = 7;
+    let SITE_SHARE_URL = 'https://www.thewordincontext.org';
     const today = new Date().toISOString().slice(0,10);
     if (localStorage.getItem('demo_last_date') !== today) {
       localStorage.setItem('demo_responses_used', '0');
@@ -3731,6 +3775,69 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return `"${text}" — ${ref} (${trans})`;
     }
 
+    function formatConversationShareText(question, reply) {
+      const q = (question || '').trim();
+      const r = (reply || '').trim();
+      let text = '';
+      if (q) text += `Q: ${q}\n\n`;
+      text += `John: ${r}`;
+      return text;
+    }
+
+    function appendShareLink(bodyText, sharePageUrl) {
+      const link = sharePageUrl || SITE_SHARE_URL;
+      return `${bodyText}\n\n${link}`;
+    }
+
+    async function createShareRecord(payload) {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Share create failed');
+      return res.json();
+    }
+
+    async function buildShareContent(payload) {
+      let bodyText = '';
+      let title = 'The Word in Context';
+      let apiPayload = null;
+
+      if (payload.type === 'verse' && payload.source) {
+        const source = payload.source;
+        bodyText = formatVerseCitation(source);
+        title = (source.reference || '').trim() || 'Scripture';
+        apiPayload = {
+          type: 'verse',
+          reference: source.reference || '',
+          translation: source.translation || '',
+          text: source.text || '',
+        };
+      } else if (payload.type === 'conversation') {
+        bodyText = formatConversationShareText(payload.question, payload.reply);
+        title = (payload.question || '').trim().slice(0, 80) || 'Study with John';
+        apiPayload = {
+          type: 'conversation',
+          question: payload.question || '',
+          reply: payload.reply || '',
+        };
+      }
+
+      let sharePageUrl = SITE_SHARE_URL;
+      try {
+        const data = await createShareRecord(apiPayload);
+        if (data && data.url) sharePageUrl = data.url;
+      } catch (e) {}
+
+      return {
+        title,
+        bodyText,
+        sharePageUrl,
+        textWithLink: appendShareLink(bodyText, sharePageUrl),
+      };
+    }
+
     let verseShareMenuCloseHandler = null;
 
     function closeVerseShareMenu() {
@@ -3767,7 +3874,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       menu.style.visibility = 'visible';
     }
 
-    async function copyVerseCitationText(text, btn) {
+    async function copyShareText(text, btn) {
       let copied = false;
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3802,18 +3909,56 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     async function copyVerseCitation(source, btn) {
-      return copyVerseCitationText(formatVerseCitation(source), btn);
+      const content = await buildShareContent({ type: 'verse', source });
+      return copyShareText(content.textWithLink, btn);
     }
 
     function openExternalShare(url) {
       window.open(url, '_blank', 'noopener,noreferrer,width=600,height=520');
     }
 
-    function shareVerseCitation(source, anchorEl) {
+    function isLocalShareUrl(url) {
+      return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url || '');
+    }
+
+    async function shareToFacebook(sharePageUrl, textWithLink, anchorEl) {
+      if (isLocalShareUrl(sharePageUrl)) {
+        await copyShareText(textWithLink, anchorEl);
+        openExternalShare('https://www.facebook.com/');
+        return;
+      }
+      openExternalShare(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(sharePageUrl)}`);
+    }
+
+    function attachAssistantMessageActions(msgEl, reply, userQuestion) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'message-action-row';
+
+      const shareBtn = document.createElement('button');
+      shareBtn.type = 'button';
+      shareBtn.className = 'message-share-btn';
+      shareBtn.textContent = 'Share';
+      shareBtn.title = 'Share question and John\'s reply';
+      shareBtn.addEventListener('click', () => openShareMenu({
+        type: 'conversation',
+        question: userQuestion,
+        reply,
+      }, shareBtn));
+      actionRow.appendChild(shareBtn);
+
+      const speakBtn = document.createElement('button');
+      speakBtn.className = 'speak-btn';
+      speakBtn.textContent = '🔊';
+      speakBtn.title = 'Speak reply';
+      speakBtn.onclick = () => speak(reply);
+      actionRow.appendChild(speakBtn);
+
+      msgEl.appendChild(actionRow);
+    }
+
+    function openShareMenu(payload, anchorEl) {
       closeVerseShareMenu();
-      const text = formatVerseCitation(source);
-      const ref = (source.reference || '').trim() || 'Scripture';
-      const pageUrl = window.location.href;
+      const menuTitle = payload.type === 'conversation' ? 'Share with John' : 'Share verse';
 
       const backdrop = document.createElement('div');
       backdrop.id = 'verse-share-backdrop';
@@ -3824,7 +3969,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       menu.id = 'verse-share-menu';
       menu.className = 'verse-share-menu';
       menu.setAttribute('role', 'menu');
-      menu.innerHTML = `<div class="verse-share-menu-title">Share verse</div>`;
+      menu.innerHTML = `<div class="verse-share-menu-title">${menuTitle}</div>`;
 
       const addItem = (label, icon, onClick) => {
         const btn = document.createElement('button');
@@ -3843,37 +3988,44 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (navigator.share) {
         addItem('Apps on this device…', '📤', async () => {
           try {
-            await navigator.share({ title: ref, text, url: pageUrl });
+            const content = await buildShareContent(payload);
+            await navigator.share({
+              title: content.title,
+              text: content.textWithLink,
+              url: content.sharePageUrl,
+            });
           } catch (e) {
             if (e && e.name !== 'AbortError') {
-              await copyVerseCitationText(text, anchorEl);
+              const content = await buildShareContent(payload);
+              await copyShareText(content.textWithLink, anchorEl);
             }
           }
         });
       }
 
-      addItem('Facebook', 'f', () => {
-        const shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}&quote=${encodeURIComponent(text)}`;
-        openExternalShare(shareUrl);
+      addItem('Facebook', 'f', async () => {
+        const content = await buildShareContent(payload);
+        await shareToFacebook(content.sharePageUrl, content.textWithLink, anchorEl);
       });
 
-      addItem('X (Twitter)', '𝕏', () => {
-        const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-        openExternalShare(shareUrl);
+      addItem('X (Twitter)', '𝕏', async () => {
+        const content = await buildShareContent(payload);
+        openExternalShare(`https://twitter.com/intent/tweet?text=${encodeURIComponent(content.textWithLink)}`);
       });
 
-      addItem('WhatsApp', '💬', () => {
-        const shareUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
-        openExternalShare(shareUrl);
+      addItem('WhatsApp', '💬', async () => {
+        const content = await buildShareContent(payload);
+        openExternalShare(`https://wa.me/?text=${encodeURIComponent(content.textWithLink)}`);
       });
 
-      addItem('Email', '✉️', () => {
-        const shareUrl = `mailto:?subject=${encodeURIComponent(ref)}&body=${encodeURIComponent(text + '\n\n' + pageUrl)}`;
-        window.location.href = shareUrl;
+      addItem('Email', '✉️', async () => {
+        const content = await buildShareContent(payload);
+        window.location.href = `mailto:?subject=${encodeURIComponent(content.title)}&body=${encodeURIComponent(content.textWithLink)}`;
       });
 
       addItem('Copy text', '📋', async () => {
-        await copyVerseCitationText(text, anchorEl);
+        const content = await buildShareContent(payload);
+        await copyShareText(content.textWithLink, anchorEl);
       });
 
       document.body.appendChild(backdrop);
@@ -3883,6 +4035,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         if (e.key === 'Escape') closeVerseShareMenu();
       };
       document.addEventListener('keydown', verseShareMenuCloseHandler);
+    }
+
+    function shareVerseCitation(source, anchorEl) {
+      openShareMenu({ type: 'verse', source }, anchorEl);
     }
 
     function getDefaultEnglishTrans() {
@@ -4994,12 +5150,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const sources = Array.isArray(data.sources) ? data.sources : [];
 
         const msgEl = addMessage(reply, false);
-
-        const speakBtn = document.createElement('button');
-        speakBtn.className = 'speak-btn';
-        speakBtn.textContent = '🔊';
-        speakBtn.onclick = () => speak(reply);
-        msgEl.appendChild(speakBtn);
+        attachAssistantMessageActions(msgEl, reply, userText);
 
         if (sources.length > 0) {
           attachSourcesUI(msgEl, sources, reply);
@@ -6736,15 +6887,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       msgsEl.innerHTML = '';
       conversation = (chat.messages || []).slice();
 
-      // re-render with speak buttons + sources when available
+      // re-render with share/speak buttons + sources when available
+      let lastUserQuestion = '';
       conversation.forEach(msg => {
         const el = addMessage(msg.content, msg.role === 'user');
-        if (msg.role === 'assistant') {
-          const btn = document.createElement('button');
-          btn.className = 'speak-btn';
-          btn.textContent = '🔊';
-          btn.onclick = () => speak(msg.content);
-          el.appendChild(btn);
+        if (msg.role === 'user') {
+          lastUserQuestion = msg.content;
+        } else if (msg.role === 'assistant') {
+          attachAssistantMessageActions(el, msg.content, lastUserQuestion);
 
           if (msg.sources && msg.sources.length) {
             attachSourcesUI(el, msg.sources, msg.content);
@@ -6950,17 +7100,16 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         speakWelcome.onclick = () => speak(welcome);
         welcomeEl.appendChild(speakWelcome);
       } else {
-        // re-render the loaded chat's messages (with speak buttons)
+        // re-render the loaded chat's messages (with share/speak buttons)
         const msgsEl = document.getElementById('messages');
         msgsEl.innerHTML = '';
+        let lastUserQuestion = '';
         conversation.forEach(msg => {
           const el = addMessage(msg.content, msg.role === 'user');
-          if (msg.role === 'assistant') {
-            const btn = document.createElement('button');
-            btn.className = 'speak-btn';
-            btn.textContent = '🔊';
-            btn.onclick = () => speak(msg.content);
-            el.appendChild(btn);
+          if (msg.role === 'user') {
+            lastUserQuestion = msg.content;
+          } else if (msg.role === 'assistant') {
+            attachAssistantMessageActions(el, msg.content, lastUserQuestion);
 
             if (msg.sources && msg.sources.length) {
               attachSourcesUI(el, msg.sources, msg.content);
@@ -6987,6 +7136,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         }
         if (typeof cfg.hasSTT === 'boolean') {
           serverHasSTT = cfg.hasSTT;
+        }
+        if (cfg && typeof cfg.siteUrl === 'string' && cfg.siteUrl) {
+          SITE_SHARE_URL = cfg.siteUrl.replace(/\/$/, '');
         }
         updateDemoStatus();
         enforceDemoLimit();

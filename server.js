@@ -10,6 +10,7 @@ const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -58,6 +59,14 @@ try {
       expires_at TEXT NOT NULL
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shares (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
 } catch (err) {
@@ -75,6 +84,49 @@ const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
 const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787').replace(/\/$/, '');
+const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || APP_BASE_URL).replace(/\/$/, '');
+
+function newShareId() {
+  return crypto.randomBytes(6).toString('base64url');
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildShareDisplay(payload) {
+  if (!payload || typeof payload !== 'object') return { title: 'The Word in Context', body: '', ogDescription: '' };
+  if (payload.type === 'verse') {
+    const ref = String(payload.reference || 'Scripture').trim();
+    const trans = String(payload.translation || '').trim();
+    const text = String(payload.text || '').trim();
+    const citation = text ? `"${text}" — ${ref}${trans ? ` (${trans})` : ''}` : `${ref}${trans ? ` (${trans})` : ''}`;
+    return {
+      title: `${ref} — The Word in Context`,
+      body: citation,
+      ogDescription: citation.slice(0, 300),
+    };
+  }
+  if (payload.type === 'conversation') {
+    const question = String(payload.question || '').trim();
+    const reply = String(payload.reply || '').trim();
+    let body = '';
+    if (question) body += `Q: ${question}\n\n`;
+    body += `John: ${reply}`;
+    const title = question ? `Q: ${question.slice(0, 80)}` : 'Study with John';
+    return {
+      title: `${title} — The Word in Context`,
+      body,
+      ogDescription: body.slice(0, 300),
+    };
+  }
+  return { title: 'The Word in Context', body: '', ogDescription: '' };
+}
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -472,6 +524,63 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Public share pages — Facebook/Twitter crawlers read OG tags; humans see the verse or Q&A.
+app.get('/share/:id', (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id || id.length > 32) return res.status(404).send('Share not found');
+  const row = db.prepare('SELECT type, payload FROM shares WHERE id = ?').get(id);
+  if (!row) return res.status(404).send('Share not found');
+
+  let payload;
+  try {
+    payload = JSON.parse(row.payload);
+  } catch (e) {
+    return res.status(500).send('Invalid share data');
+  }
+
+  const display = buildShareDisplay(payload);
+  const pageUrl = `${SHARE_SITE_URL}/share/${id}`;
+  const ogImage = `${SHARE_SITE_URL}/icons/icon-512.png`;
+  const safeTitle = escapeHtml(display.title);
+  const safeBody = escapeHtml(display.body).replace(/\n/g, '<br>');
+  const safeOg = escapeHtml(display.ogDescription);
+
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle}</title>
+  <meta property="og:title" content="${safeTitle}">
+  <meta property="og:description" content="${safeOg}">
+  <meta property="og:url" content="${escapeHtml(pageUrl)}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="The Word in Context">
+  <meta property="og:image" content="${escapeHtml(ogImage)}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${safeTitle}">
+  <meta name="twitter:description" content="${safeOg}">
+  <meta name="twitter:image" content="${escapeHtml(ogImage)}">
+  <meta http-equiv="refresh" content="0;url=/app">
+  <style>
+    body { font-family: Georgia, serif; background: #f8f5f2; color: #2c3e50; margin: 0; padding: 32px 20px; line-height: 1.6; }
+    .card { max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    h1 { font-size: 22px; margin: 0 0 16px; color: #2c3e50; }
+    .body { font-size: 17px; white-space: pre-wrap; }
+    .cta { margin-top: 24px; }
+    a { color: #8b5e3c; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${safeTitle}</h1>
+    <div class="body">${safeBody}</div>
+    <p class="cta"><a href="/app">Open The Word in Context →</a></p>
+  </div>
+</body>
+</html>`);
+});
+
 // Static assets (for any future images/css if split)
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -764,8 +873,35 @@ app.get('/api/config', (req, res) => {
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
-    hasSTT: false
+    hasSTT: false,
+    siteUrl: SHARE_SITE_URL,
   });
+});
+
+app.post('/api/share', express.json({ limit: '32kb' }), (req, res) => {
+  const body = req.body || {};
+  const type = String(body.type || '').trim();
+  if (!['verse', 'conversation'].includes(type)) {
+    return res.status(400).json({ error: 'Invalid share type' });
+  }
+
+  let payload;
+  if (type === 'verse') {
+    const reference = String(body.reference || '').trim();
+    const translation = String(body.translation || '').trim();
+    const text = String(body.text || '').trim();
+    if (!reference && !text) return res.status(400).json({ error: 'Verse share requires reference or text' });
+    payload = { type: 'verse', reference, translation, text };
+  } else {
+    const question = String(body.question || '').trim().slice(0, 2000);
+    const reply = String(body.reply || '').trim().slice(0, 8000);
+    if (!reply) return res.status(400).json({ error: 'Conversation share requires a reply' });
+    payload = { type: 'conversation', question, reply };
+  }
+
+  const id = newShareId();
+  db.prepare('INSERT INTO shares (id, type, payload) VALUES (?, ?, ?)').run(id, type, JSON.stringify(payload));
+  res.json({ id, url: `${SHARE_SITE_URL}/share/${id}` });
 });
 
 // === TTS: browser built-in system voices only (window.speechSynthesis) ===
