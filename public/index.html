@@ -1322,7 +1322,8 @@
         position: fixed;
         top: 0;
         left: 0;
-        height: 100%;
+        height: 100dvh;
+        height: -webkit-fill-available;
         width: 86vw;
         max-width: 320px;
         z-index: 200;
@@ -1330,9 +1331,46 @@
         transition: transform 0.25s ease;
         box-shadow: 4px 0 12px rgba(0,0,0,0.3);
         background: #1a252f;
+        box-sizing: border-box;
+        padding-top: max(16px, env(safe-area-inset-top, 0px));
+        padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+        padding-left: max(0px, env(safe-area-inset-left, 0px));
       }
       .sidebar.open {
         transform: translateX(0);
+      }
+      .sidebar-header {
+        padding: 10px 14px 12px;
+        flex-shrink: 0;
+      }
+      .sidebar #sidebar-toggle {
+        display: none;
+      }
+      .sidebar .new-chat-btn {
+        min-height: 48px;
+        padding: 12px 14px;
+        font-size: 16px;
+        touch-action: manipulation;
+      }
+      .sidebar-search {
+        margin: 4px 14px 10px;
+        padding: 12px 14px;
+        min-height: 48px;
+        font-size: 16px;
+        box-sizing: border-box;
+        touch-action: manipulation;
+      }
+      .sidebar-list {
+        min-height: 0;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+      }
+      .chat-list-item {
+        min-height: 44px;
+        padding: 10px 14px;
+        margin: 2px 8px;
+        font-size: 15px;
+        touch-action: manipulation;
       }
       /* When the chat list drawer is open on iPhone, dim + slightly shift the main read area
          so the "read window" (messages + speak buttons) isn't left as an unusable sliver on the side. */
