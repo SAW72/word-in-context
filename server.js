@@ -544,24 +544,29 @@ app.get('/share/:id', (req, res) => {
   const safeTitle = escapeHtml(display.title);
   const safeBody = escapeHtml(display.body).replace(/\n/g, '<br>');
   const safeOg = escapeHtml(display.ogDescription);
+  const ua = String(req.headers['user-agent'] || '');
+  const isCrawler = /facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|Slackbot|Discordbot|TelegramBot/i.test(ua);
 
   res.type('html').send(`<!DOCTYPE html>
-<html lang="en">
+<html lang="en" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${safeTitle}</title>
+  <link rel="canonical" href="${escapeHtml(pageUrl)}">
+  <meta name="description" content="${safeOg}">
   <meta property="og:title" content="${safeTitle}">
   <meta property="og:description" content="${safeOg}">
   <meta property="og:url" content="${escapeHtml(pageUrl)}">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="article">
   <meta property="og:site_name" content="The Word in Context">
   <meta property="og:image" content="${escapeHtml(ogImage)}">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="${safeTitle}">
   <meta name="twitter:description" content="${safeOg}">
   <meta name="twitter:image" content="${escapeHtml(ogImage)}">
-  <meta http-equiv="refresh" content="0;url=/app">
   <style>
     body { font-family: Georgia, serif; background: #f8f5f2; color: #2c3e50; margin: 0; padding: 32px 20px; line-height: 1.6; }
     .card { max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
@@ -577,6 +582,11 @@ app.get('/share/:id', (req, res) => {
     <div class="body">${safeBody}</div>
     <p class="cta"><a href="/app">Open The Word in Context →</a></p>
   </div>
+  ${isCrawler ? '' : `<script>
+    setTimeout(function () {
+      if (!document.hidden) window.location.replace('/app');
+    }, 4000);
+  </script>`}
 </body>
 </html>`);
 });

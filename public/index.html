@@ -651,6 +651,34 @@
       z-index: 2499;
       background: transparent;
     }
+    .share-toast {
+      position: fixed;
+      left: 50%;
+      bottom: max(20px, env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      z-index: 2600;
+      max-width: min(92vw, 360px);
+      background: #1a252f;
+      color: #f5f0e6;
+      border: 1px solid #c9a227;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      text-align: center;
+      animation: share-toast-in 0.25s ease;
+    }
+    .share-toast strong {
+      display: block;
+      color: #c9a227;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+    @keyframes share-toast-in {
+      from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
     .ref-share-btn {
       font-size: 10px;
       padding: 0 4px;
@@ -3976,21 +4004,78 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return copyShareText(content.textWithLink, btn);
     }
 
+    let shareToastTimer = null;
+
+    function showShareToast(title, message) {
+      const existing = document.getElementById('share-toast');
+      if (existing) existing.remove();
+      if (shareToastTimer) clearTimeout(shareToastTimer);
+
+      const toast = document.createElement('div');
+      toast.id = 'share-toast';
+      toast.className = 'share-toast';
+      toast.setAttribute('role', 'status');
+      toast.innerHTML = `<strong>${title}</strong><span>${message}</span>`;
+      document.body.appendChild(toast);
+
+      shareToastTimer = setTimeout(() => {
+        toast.remove();
+        shareToastTimer = null;
+      }, 9000);
+    }
+
+    function isMobileShareDevice() {
+      return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+    }
+
     function openExternalShare(url) {
-      window.open(url, '_blank', 'noopener,noreferrer,width=600,height=520');
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
 
     function isLocalShareUrl(url) {
       return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url || '');
     }
 
+    function productionShareUrl(url) {
+      if (!url || isLocalShareUrl(url)) return 'https://www.thewordincontext.org';
+      return url.replace(/^http:\/\//i, 'https://');
+    }
+
     async function shareToFacebook(sharePageUrl, textWithLink, anchorEl) {
+      const copied = await copyShareText(textWithLink, anchorEl);
+      const mobile = isMobileShareDevice();
+      const publicUrl = productionShareUrl(sharePageUrl);
+
       if (isLocalShareUrl(sharePageUrl)) {
-        await copyShareText(textWithLink, anchorEl);
-        openExternalShare('https://www.facebook.com/');
+        showShareToast(
+          copied ? 'Copied!' : 'Copy this text',
+          copied
+            ? 'Facebook opened. Tap in the post box, then tap and hold → Paste.'
+            : 'Select and copy the text, then paste it into a Facebook post.'
+        );
+        setTimeout(() => openExternalShare('https://www.facebook.com/'), mobile ? 700 : 350);
         return;
       }
-      openExternalShare(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(sharePageUrl)}`);
+
+      const fbUrl = mobile
+        ? `https://m.facebook.com/sharer.php?u=${encodeURIComponent(publicUrl)}`
+        : `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
+
+      showShareToast(
+        copied ? 'Copied!' : 'Ready to share',
+        copied
+          ? 'Your message is on the clipboard. In Facebook, tap the post box → Paste. A link preview may appear too.'
+          : 'In Facebook, paste your message into a new post. A link preview may also appear.'
+      );
+
+      setTimeout(() => openExternalShare(fbUrl), mobile ? 800 : 400);
     }
 
     function attachAssistantMessageActions(msgEl, reply, userQuestion) {
