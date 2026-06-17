@@ -35,7 +35,7 @@
     banner.setAttribute('role', 'dialog');
     banner.setAttribute('aria-label', 'Install app');
     banner.innerHTML = `
-      <img class="pwa-icon" src="/icons/icon-192.png?v=cross2" alt="" width="44" height="44">
+      <img class="pwa-icon" src="/icons/icon-192.png?v=cross3" alt="" width="44" height="44">
       <div class="pwa-copy">
         <strong>Install The Word in Context</strong>
         <span id="pwa-install-subtitle">Voice-first offline Bible study with John.</span>
