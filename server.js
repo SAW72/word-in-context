@@ -540,7 +540,7 @@ app.get('/share/:id', (req, res) => {
 
   const display = buildShareDisplay(payload);
   const pageUrl = `${SHARE_SITE_URL}/share/${id}`;
-  const ogImage = `${SHARE_SITE_URL}/icons/icon-512.png`;
+  const ogImage = `${SHARE_SITE_URL}/icons/share-og.png`;
   const safeTitle = escapeHtml(display.title);
   const safeBody = escapeHtml(display.body).replace(/\n/g, '<br>');
   const safeOg = escapeHtml(display.ogDescription);
@@ -561,8 +561,8 @@ app.get('/share/:id', (req, res) => {
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="The Word in Context">
   <meta property="og:image" content="${escapeHtml(ogImage)}">
-  <meta property="og:image:width" content="512">
-  <meta property="og:image:height" content="512">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="${safeTitle}">
   <meta name="twitter:description" content="${safeOg}">

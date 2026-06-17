@@ -679,6 +679,81 @@
       from { opacity: 0; transform: translateX(-50%) translateY(12px); }
       to { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
+    #facebook-share-modal .modal-content {
+      max-width: 420px;
+      width: calc(100vw - 28px);
+    }
+    #facebook-share-modal .fb-share-note {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0 0 12px;
+      line-height: 1.45;
+    }
+    #facebook-share-modal .fb-share-status {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #2d6a3e;
+      background: #e8f5ec;
+      border-radius: 8px;
+      padding: 6px 10px;
+      margin-bottom: 10px;
+    }
+    #facebook-share-modal .fb-share-status.failed {
+      color: #8b3a3a;
+      background: #fdeaea;
+    }
+    #facebook-share-modal .fb-share-text {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 140px;
+      max-height: 220px;
+      font-size: 14px;
+      line-height: 1.45;
+      padding: 12px;
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      background: var(--bg-input);
+      color: var(--text-primary);
+      resize: vertical;
+      font-family: inherit;
+    }
+    #facebook-share-modal .fb-share-steps {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 10px 0 14px;
+      padding-left: 18px;
+      line-height: 1.5;
+    }
+    #facebook-share-modal .fb-share-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    #facebook-share-modal .fb-open-btn {
+      flex: 1;
+      min-width: 140px;
+      background: #1877f2;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    #facebook-share-modal .fb-copy-btn,
+    #facebook-share-modal .fb-close-btn {
+      background: var(--bg-input);
+      color: var(--text-primary);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
     .ref-share-btn {
       font-size: 10px;
       padding: 0 4px;
@@ -3890,7 +3965,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return res.json();
     }
 
-    async function buildShareContent(payload) {
+    function formatSharePayload(payload) {
       let bodyText = '';
       let title = 'The Word in Context';
       let apiPayload = null;
@@ -3915,17 +3990,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         };
       }
 
-      let sharePageUrl = SITE_SHARE_URL;
-      try {
-        const data = await createShareRecord(apiPayload);
-        if (data && data.url) sharePageUrl = data.url;
-      } catch (e) {}
-
       return {
         title,
         bodyText,
+        apiPayload,
+        textWithLink: appendShareLink(bodyText, SITE_SHARE_URL),
+      };
+    }
+
+    async function buildShareContent(payload) {
+      const base = formatSharePayload(payload);
+      let sharePageUrl = SITE_SHARE_URL;
+      if (base.apiPayload) {
+        try {
+          const data = await createShareRecord(base.apiPayload);
+          if (data && data.url) sharePageUrl = data.url;
+        } catch (e) {}
+      }
+      return {
+        title: base.title,
+        bodyText: base.bodyText,
         sharePageUrl,
-        textWithLink: appendShareLink(bodyText, sharePageUrl),
+        textWithLink: appendShareLink(base.bodyText, sharePageUrl),
       };
     }
 
@@ -4048,34 +4134,95 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return url.replace(/^http:\/\//i, 'https://');
     }
 
-    async function shareToFacebook(sharePageUrl, textWithLink, anchorEl) {
-      const copied = await copyShareText(textWithLink, anchorEl);
-      const mobile = isMobileShareDevice();
-      const publicUrl = productionShareUrl(sharePageUrl);
+    function closeFacebookShareModal() {
+      const modal = document.getElementById('facebook-share-modal');
+      if (modal) modal.remove();
+    }
 
-      if (isLocalShareUrl(sharePageUrl)) {
-        showShareToast(
-          copied ? 'Copied!' : 'Copy this text',
-          copied
-            ? 'Facebook opened. Tap in the post box, then tap and hold → Paste.'
-            : 'Select and copy the text, then paste it into a Facebook post.'
-        );
-        setTimeout(() => openExternalShare('https://www.facebook.com/'), mobile ? 700 : 350);
-        return;
+    function copyFromTextarea(ta) {
+      if (!ta) return false;
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      try {
+        return document.execCommand('copy');
+      } catch (e) {
+        return false;
       }
+    }
 
-      const fbUrl = mobile
-        ? `https://m.facebook.com/sharer.php?u=${encodeURIComponent(publicUrl)}`
-        : `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
+    function showFacebookShareModal(payload) {
+      closeFacebookShareModal();
+      const base = formatSharePayload(payload);
+      const mobile = isMobileShareDevice();
 
-      showShareToast(
-        copied ? 'Copied!' : 'Ready to share',
-        copied
-          ? 'Your message is on the clipboard. In Facebook, tap the post box → Paste. A link preview may appear too.'
-          : 'In Facebook, paste your message into a new post. A link preview may also appear.'
-      );
+      const backdrop = document.createElement('div');
+      backdrop.id = 'facebook-share-modal';
+      backdrop.className = 'modal';
+      backdrop.style.display = 'flex';
 
-      setTimeout(() => openExternalShare(fbUrl), mobile ? 800 : 400);
+      const panel = document.createElement('div');
+      panel.className = 'modal-content';
+      panel.innerHTML = `
+        <h3>Share on Facebook</h3>
+        <p class="fb-share-note">Facebook only allows a link preview — it won't insert your text automatically. Your message is copied below; paste it after you open Facebook.</p>
+        <div class="fb-share-status" id="fb-share-status">Copying…</div>
+        <textarea class="fb-share-text" id="fb-share-text" readonly aria-label="Message to share"></textarea>
+        <ol class="fb-share-steps">
+          <li>Confirm the text above looks right</li>
+          <li>Tap <strong>Open Facebook</strong></li>
+          <li>In Facebook, tap the post box → <strong>Paste</strong></li>
+        </ol>
+        <div class="fb-share-actions">
+          <button type="button" class="fb-open-btn" id="fb-open-btn">Open Facebook</button>
+          <button type="button" class="fb-copy-btn" id="fb-copy-btn">Copy again</button>
+          <button type="button" class="fb-close-btn" id="fb-close-btn">Close</button>
+        </div>
+      `;
+
+      backdrop.appendChild(panel);
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeFacebookShareModal();
+      });
+      document.body.appendChild(backdrop);
+
+      const ta = panel.querySelector('#fb-share-text');
+      const status = panel.querySelector('#fb-share-status');
+      const openBtn = panel.querySelector('#fb-open-btn');
+      const copyBtn = panel.querySelector('#fb-copy-btn');
+      const closeBtn = panel.querySelector('#fb-close-btn');
+
+      let sharePageUrl = SITE_SHARE_URL;
+
+      const refreshCopyStatus = () => {
+        const copied = copyFromTextarea(ta);
+        status.textContent = copied ? 'Copied to clipboard ✓' : 'Tap Copy again or select all text';
+        status.classList.toggle('failed', !copied);
+      };
+
+      ta.value = base.textWithLink;
+      refreshCopyStatus();
+
+      copyBtn.addEventListener('click', refreshCopyStatus);
+      closeBtn.addEventListener('click', closeFacebookShareModal);
+      openBtn.addEventListener('click', () => {
+        refreshCopyStatus();
+        const publicUrl = productionShareUrl(sharePageUrl);
+        const fbUrl = mobile
+          ? `https://m.facebook.com/sharer.php?u=${encodeURIComponent(publicUrl)}`
+          : `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
+        openExternalShare(fbUrl);
+      });
+
+      if (base.apiPayload) {
+        createShareRecord(base.apiPayload).then((data) => {
+          if (data && data.url) {
+            sharePageUrl = data.url;
+            ta.value = appendShareLink(base.bodyText, sharePageUrl);
+            refreshCopyStatus();
+          }
+        }).catch(() => {});
+      }
     }
 
     function attachAssistantMessageActions(msgEl, reply, userQuestion) {
@@ -4151,9 +4298,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         });
       }
 
-      addItem('Facebook', 'f', async () => {
-        const content = await buildShareContent(payload);
-        await shareToFacebook(content.sharePageUrl, content.textWithLink, anchorEl);
+      addItem('Facebook', 'f', () => {
+        showFacebookShareModal(payload);
       });
 
       addItem('X (Twitter)', '𝕏', async () => {
