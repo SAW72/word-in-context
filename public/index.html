@@ -718,6 +718,19 @@
       cursor: pointer; display: flex; align-items: center; gap: 4px;
     }
     .chats-btn:hover { background: rgba(255,255,255,0.25); }
+    .mobile-sidebar-toggle {
+      display: none;
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 12px;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      flex-shrink: 0;
+    }
     .policy-note {
       background: var(--bg-policy); color: var(--text-muted); font-size: 12px;
       padding: 6px 14px; text-align: center; border-bottom: 1px solid var(--border-soft);
@@ -1347,8 +1360,16 @@
         background: #fff;
       }
       .header {
-        padding: 8px 10px;
-        gap: 6px;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+        align-items: center;
+        gap: 8px 10px;
+        padding:
+          max(10px, env(safe-area-inset-top, 0px))
+          max(14px, env(safe-area-inset-right, 0px))
+          8px
+          max(14px, env(safe-area-inset-left, 0px));
       }
       .header h1 {
         font-size: 17px;
@@ -1360,7 +1381,7 @@
       }
       .header-left,
       .header-right {
-        gap: 4px;
+        gap: 6px;
       }
       .header-right .voice-btn,
       .header-right .settings-btn,
@@ -1370,35 +1391,42 @@
         padding: 5px 7px;
         min-height: 32px;
       }
-      #mobile-sidebar-toggle {
-        padding: 6px 8px;
-        font-size: 16px;
-        min-width: 36px;
-        min-height: 36px;
-      }
 
-      /* Mobile header: ☰ top left, "The Word in Context" (with book) above the Voice/Sources/Account buttons.
-         Subtitle hidden on mobile. */
-      .header {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 6px 8px;
-        position: relative;
-      }
+      /* Mobile header: large ☰ beside title, then Settings/Sources/Account row below. */
       .header-left {
-        position: absolute;
-        left: 6px;
-        top: 6px;
+        position: static;
+        grid-row: 1;
+        grid-column: 1;
+        align-self: center;
       }
       .center {
-        text-align: center;
-        padding: 0 30px 2px; /* space for absolute left button */
+        grid-row: 1;
+        grid-column: 2;
+        text-align: left;
+        padding: 0;
+        min-width: 0;
       }
       .header-right {
+        grid-row: 2;
+        grid-column: 1 / -1;
         display: flex;
         justify-content: center;
-        gap: 4px;
-        margin-top: 2px;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 0;
+      }
+      .mobile-sidebar-toggle,
+      #mobile-sidebar-toggle {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0;
+        font-size: 24px;
+        border-radius: 12px;
       }
       .header .subtitle {
         display: none; /* hide on mobile as requested */
@@ -1566,10 +1594,7 @@
       .chat-container.input-focused .messages {
         padding-bottom: 120px;
       }
-      /* Show hamburger on mobile */
-      #mobile-sidebar-toggle {
-        display: block !important;
-      }
+
       /* Backdrop on mobile when drawer open — captures taps to close and dims the main read area */
       body.sidebar-open::before {
         content: '';
@@ -1706,7 +1731,7 @@
     <div class="chat-container">
       <div class="header">
         <div class="header-left">
-          <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" aria-label="Open chat list" style="display:none; background:#2c3e50; color:#eee; border:none; padding:4px 6px; border-radius:4px; font-size:15px; cursor:pointer;">☰</button>
+          <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" type="button" aria-label="Open chat list" title="Chats">☰</button>
         </div>
         <div class="center">
           <h1>📖 The Word in Context</h1>
