@@ -1,5 +1,8 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+// Local dev only — production (Render) uses dashboard env vars; never load a .env file there.
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: path.join(__dirname, '.env') });
+}
 const express = require('express');
 const OpenAI = require('openai');
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -205,6 +208,58 @@ function formatXaiError(err) {
   return 'Unable to get a study response right now. Please try again.';
 }
 
+// Native fetch is more reliable on Render than the OpenAI SDK (avoids "Premature close").
+async function callXaiChat(apiMessages) {
+  const body = {
+    model: XAI_MODEL,
+    messages: apiMessages,
+    temperature: 0.55,
+    max_tokens: 1600,
+  };
+  const url = 'https://api.x.ai/v1/chat/completions';
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+      const raw = await res.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        const err = new Error(`xAI returned non-JSON (${res.status})`);
+        err.status = res.status;
+        throw err;
+      }
+      if (!res.ok) {
+        const detail = data?.error?.message || data?.error || `HTTP ${res.status}`;
+        const err = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        err.status = res.status;
+        throw err;
+      }
+      return data.choices?.[0]?.message?.content || 'No response generated.';
+    } catch (err) {
+      lastErr = err;
+      const retryable = /premature|econnreset|etimedout|timeout|502|503|504|fetch failed|non-json/i.test(String(err.message));
+      if (!retryable || attempt === 2) break;
+      await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
+  }
+  try {
+    const completion = await xai.chat.completions.create(body);
+    return completion.choices?.[0]?.message?.content || 'No response generated.';
+  } catch (sdkErr) {
+    throw lastErr || sdkErr;
+  }
+}
+
 // Block adult, violent, and off-topic harmful requests before they reach the LLM.
 function getBlockedContentReason(text) {
   if (!text || typeof text !== 'string') return null;
@@ -271,7 +326,7 @@ Wording Rule (strict — apply in every response)
 When attributing meaning to Scripture, ALWAYS use "The Word states...", "The Word indicates...", or "The Word says...". NEVER use "the text states", "the text indicates", "this text states", "the biblical text states", or "the passage states" when you mean Scripture. The only acceptable use of "text" is for original-language manuscripts (e.g. "the Hebrew manuscript", "the Greek wording") — never as a substitute for "The Word" when citing what Scripture teaches.
 
 Tone and Boundaries
-Stay humble, reverent, and strictly evidence-based. You may also say "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond what Scripture itself says. Balance truth with grace: speak Scripture faithfully without harshness, and without softening hard truths.
+Always present the Scriptures exactly as they are written, including both strong warnings and gracious promises when they appear in the text. Never soften, remove, or avoid difficult verses. Maintain a humble and respectful tone, but never add emotional encouragement, devotional thoughts, or application that goes beyond what the text itself actually says. You may also say "a more literal rendering would be..."
 
 Content Safety (strict)
 - This app is for Scripture study only. Refuse any request for pornography, sexual content, erotica, explicit material, or adult entertainment — even if framed as "Bible study."
@@ -1400,14 +1455,7 @@ app.post('/api/chat', (req, res, next) => {
       ...messages.filter(m => m.role !== 'system')
     ];
 
-    const completion = await xai.chat.completions.create({
-      model: XAI_MODEL,
-      messages: apiMessages,
-      temperature: 0.55,
-      max_tokens: 1600,
-    });
-
-    const rawReply = completion.choices?.[0]?.message?.content || 'No response generated.';
+    const rawReply = await callXaiChat(apiMessages);
     const reply = normalizeWordPhrasing(rawReply);
 
     // Post-hoc: the model may have referenced additional verses in its reply.
