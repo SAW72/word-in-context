@@ -180,16 +180,20 @@ function userHasAccess(user) {
 // Free tiers may sleep the service — that's fine for early beta.
 
 // === xAI Client (secure — key never leaves the server) ===
-const XAI_MODEL = process.env.XAI_MODEL || 'grok-4.3';
+const XAI_MODEL = (process.env.XAI_MODEL || 'grok-4.3').trim();
+function getXaiApiKey() {
+  // Render dashboard secrets sometimes include trailing newline or stray quotes — trim them.
+  return String(process.env.XAI_API_KEY || '').trim().replace(/^["']+|["']+$/g, '');
+}
 const xai = new OpenAI({
-  apiKey: process.env.XAI_API_KEY,
+  apiKey: getXaiApiKey(),
   baseURL: 'https://api.x.ai/v1',
   timeout: 120_000,
   maxRetries: 3,
 });
 
 function xaiKeyLooksConfigured() {
-  const key = process.env.XAI_API_KEY || '';
+  const key = getXaiApiKey();
   return key.startsWith('xai-') && key.length > 24 && !/your-key-here/i.test(key);
 }
 
@@ -224,7 +228,7 @@ async function callXaiChat(apiMessages) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+          Authorization: `Bearer ${getXaiApiKey()}`,
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
@@ -1329,7 +1333,7 @@ app.post('/api/chat', (req, res, next) => {
       return res.status(400).json({ error: 'messages array required' });
     }
 
-    if (!process.env.XAI_API_KEY) {
+    if (!getXaiApiKey()) {
       return res.status(500).json({ error: 'Server not configured with XAI_API_KEY' });
     }
 
@@ -1496,17 +1500,19 @@ app.post('/api/chat', (req, res, next) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    hasKey: !!process.env.XAI_API_KEY,
+    hasKey: !!getXaiApiKey(),
     xaiKeyLooksValid: xaiKeyLooksConfigured(),
     hasSTT: false,
-    model: XAI_MODEL
+    model: XAI_MODEL,
+    deploy: process.env.RENDER_GIT_COMMIT || 'local'
   });
 });
 
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${xaiKeyLooksConfigured() ? 'yes (looks valid)' : (process.env.XAI_API_KEY ? 'present but may be placeholder/invalid' : 'NO — add to .env')} (model: ${XAI_MODEL})`);
+  const keyLen = getXaiApiKey().length;
+  console.log(`   xAI key loaded: ${xaiKeyLooksConfigured() ? `yes (${keyLen} chars)` : (keyLen ? 'present but may be placeholder/invalid' : 'NO — add to .env')} (model: ${XAI_MODEL})`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
   console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)`);
