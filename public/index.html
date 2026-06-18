@@ -7464,7 +7464,9 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
       // Optional: show connection status
       fetch('/api/health').then(r => r.json()).then(d => {
         if (!d.hasKey) {
-          addMessage("Server warning: No XAI_API_KEY configured in .env", false);
+          addMessage("Server warning: No XAI_API_KEY configured on the server.", false);
+        } else if (d.hasKey && d.xaiKeyLooksValid === false) {
+          addMessage("Server warning: XAI_API_KEY is set but may be a placeholder or invalid. Chat may fail until the production key is updated in Render.", false);
         }
         if (typeof d.hasSTT === 'boolean') serverHasSTT = d.hasSTT;
       }).catch(() => {});

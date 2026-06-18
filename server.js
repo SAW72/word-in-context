@@ -177,10 +177,33 @@ function userHasAccess(user) {
 // Free tiers may sleep the service — that's fine for early beta.
 
 // === xAI Client (secure — key never leaves the server) ===
+const XAI_MODEL = process.env.XAI_MODEL || 'grok-4.3';
 const xai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
+  timeout: 120_000,
+  maxRetries: 3,
 });
+
+function xaiKeyLooksConfigured() {
+  const key = process.env.XAI_API_KEY || '';
+  return key.startsWith('xai-') && key.length > 24 && !/your-key-here/i.test(key);
+}
+
+function formatXaiError(err) {
+  const msg = String(err?.message || '');
+  const status = err?.status;
+  if (status === 401 || status === 403 || /invalid.*api.*key|incorrect api key/i.test(msg)) {
+    return 'AI service authentication failed on the server. The XAI_API_KEY in Render may be missing, expired, or different from your working local key.';
+  }
+  if (/premature close|econnreset|etimedout|socket hang up|fetch failed/i.test(msg)) {
+    return 'AI service connection dropped. Please try again in a few seconds. If this keeps happening, verify XAI_API_KEY in the Render dashboard matches your working local .env key.';
+  }
+  if (status === 429 || /rate limit/i.test(msg)) {
+    return 'AI service rate limit reached. Please wait a moment and try again.';
+  }
+  return 'Unable to get a study response right now. Please try again.';
+}
 
 // Block adult, violent, and off-topic harmful requests before they reach the LLM.
 function getBlockedContentReason(text) {
@@ -1378,7 +1401,7 @@ app.post('/api/chat', (req, res, next) => {
     ];
 
     const completion = await xai.chat.completions.create({
-      model: 'grok-4.3',
+      model: XAI_MODEL,
       messages: apiMessages,
       temperature: 0.55,
       max_tokens: 1600,
@@ -1415,10 +1438,9 @@ app.post('/api/chat', (req, res, next) => {
 
     res.json({ reply, sources });
   } catch (err) {
-    console.error('xAI proxy error:', err);
-    const status = err.status || 500;
-    const message = err.message || 'Unknown error calling xAI';
-    res.status(status).json({ error: message });
+    console.error('xAI proxy error:', err?.status || '', err?.message || err);
+    const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 503;
+    res.status(status).json({ error: formatXaiError(err) });
   }
 });
 
@@ -1427,15 +1449,16 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     hasKey: !!process.env.XAI_API_KEY,
+    xaiKeyLooksValid: xaiKeyLooksConfigured(),
     hasSTT: false,
-    model: 'grok-4.3'
+    model: XAI_MODEL
   });
 });
 
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
   console.log(`   → http://localhost:${PORT}`);
-  console.log(`   xAI key loaded: ${process.env.XAI_API_KEY ? 'yes' : 'NO — add to .env'} (used only for chat/LLM answers)`);
+  console.log(`   xAI key loaded: ${xaiKeyLooksConfigured() ? 'yes (looks valid)' : (process.env.XAI_API_KEY ? 'present but may be placeholder/invalid' : 'NO — add to .env')} (model: ${XAI_MODEL})`);
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
   console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)`);
