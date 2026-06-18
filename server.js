@@ -212,10 +212,15 @@ function formatXaiError(err) {
   return 'Unable to get a study response right now. Please try again.';
 }
 
-// Native fetch is more reliable on Render than the OpenAI SDK (avoids "Premature close").
-async function callXaiChat(apiMessages) {
+const XAI_MODEL_FALLBACKS = [...new Set([
+  XAI_MODEL,
+  'grok-3',
+  'grok-2-latest',
+].filter(Boolean))];
+
+async function callXaiChatOnce(model, apiMessages) {
   const body = {
-    model: XAI_MODEL,
+    model,
     messages: apiMessages,
     temperature: 0.55,
     max_tokens: 1600,
@@ -262,6 +267,24 @@ async function callXaiChat(apiMessages) {
   } catch (sdkErr) {
     throw lastErr || sdkErr;
   }
+}
+
+// Native fetch is more reliable on Render than the OpenAI SDK alone (avoids "Premature close").
+async function callXaiChat(apiMessages) {
+  let lastErr;
+  for (const model of XAI_MODEL_FALLBACKS) {
+    try {
+      const reply = await callXaiChatOnce(model, apiMessages);
+      if (model !== XAI_MODEL) {
+        console.warn(`[xAI] primary model ${XAI_MODEL} failed; succeeded with fallback ${model}`);
+      }
+      return reply;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[xAI] model ${model} failed:`, err?.status || '', err?.message || err);
+    }
+  }
+  throw lastErr || new Error('xAI request failed');
 }
 
 // Block adult, violent, and off-topic harmful requests before they reach the LLM.
@@ -1502,6 +1525,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasKey: !!getXaiApiKey(),
     xaiKeyLooksValid: xaiKeyLooksConfigured(),
+    xaiKeyLength: getXaiApiKey().length,
     hasSTT: false,
     model: XAI_MODEL,
     deploy: process.env.RENDER_GIT_COMMIT || 'local'
