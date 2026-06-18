@@ -38,7 +38,7 @@
       <img class="pwa-icon" src="/icons/icon-192.png?v=cross4" alt="" width="44" height="44">
       <div class="pwa-copy">
         <strong>Install The Word in Context</strong>
-        <span id="pwa-install-subtitle">Voice-first offline Bible study with John.</span>
+        <span id="pwa-install-subtitle">Voice-first offline Bible study with AI.</span>
       </div>
       <div class="pwa-actions">
         <button type="button" id="pwa-install-install">Install</button>

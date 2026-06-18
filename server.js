@@ -1,6 +1,6 @@
-require('dotenv').config();
-const express = require('express');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const express = require('express');
 const OpenAI = require('openai');
 const stripe = process.env.STRIPE_SECRET_KEY
   ? require('stripe')(process.env.STRIPE_SECRET_KEY)
@@ -129,8 +129,8 @@ function buildShareDisplay(payload) {
     const reply = String(payload.reply || '').trim();
     let body = '';
     if (question) body += `Q: ${question}\n\n`;
-    body += `John: ${reply}`;
-    const title = question ? `Q: ${question.slice(0, 80)}` : 'Study with John';
+    body += `AI: ${reply}`;
+    const title = question ? `Q: ${question.slice(0, 80)}` : 'Study with AI';
     return {
       title: `${title} — The Word in Context`,
       body,
@@ -181,6 +181,21 @@ const xai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
 });
+
+// Block adult, violent, and off-topic harmful requests before they reach the LLM.
+function getBlockedContentReason(text) {
+  if (!text || typeof text !== 'string') return null;
+  const t = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const adult = /\b(porn|pornograph|xxx|nudes?|naked|erotic|fetish|onlyfans|hentai|nsfw|sext(?:ing)?|stripper|prostitut|escort\s+service|adult\s+content|sex\s+toy)\b/.test(t);
+  if (adult) {
+    return 'This app is for Scripture study only. Adult or sexual content requests are not permitted.';
+  }
+  const harm = /\b(how\s+to\s+(kill|murder|harm|hurt|poison|stab|shoot)|make\s+a\s+bomb|build\s+a\s+bomb|suicide\s+method|self[- ]harm\s+method)\b/.test(t);
+  if (harm) {
+    return 'This app cannot assist with harming people. For crisis support, contact a pastor, counselor, or local emergency services.';
+  }
+  return null;
+}
 
 // Very lightweight in-memory demo throttle (protects the xAI key from scrapers/bots hitting /app?demo=1)
 // No extra deps. For production you can later add express-rate-limit + helmet.
@@ -233,7 +248,13 @@ Wording Rule (strict — apply in every response)
 When attributing meaning to Scripture, ALWAYS use "The Word states...", "The Word indicates...", or "The Word says...". NEVER use "the text states", "the text indicates", "this text states", "the biblical text states", or "the passage states" when you mean Scripture. The only acceptable use of "text" is for original-language manuscripts (e.g. "the Hebrew manuscript", "the Greek wording") — never as a substitute for "The Word" when citing what Scripture teaches.
 
 Tone and Boundaries
-Stay humble, reverent, and strictly evidence-based. You may also say "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond what Scripture itself says.
+Stay humble, reverent, and strictly evidence-based. You may also say "a more literal rendering would be..." Never add devotional warmth, encouragement, or application beyond what Scripture itself says. Balance truth with grace: speak Scripture faithfully without harshness, and without softening hard truths.
+
+Content Safety (strict)
+- This app is for Scripture study only. Refuse any request for pornography, sexual content, erotica, explicit material, or adult entertainment — even if framed as "Bible study."
+- Refuse requests for instructions to harm, kill, abuse, or endanger people. Do not provide weapons, violence, or self-harm how-to content.
+- Refuse requests clearly unrelated to studying the Hebrew, Aramaic, and Greek Scriptures and their literal English renderings.
+- When refusing, stay brief, gracious, and redirect the user back to Scripture study.
 
 APP IDENTITY & DISCLAIMER
 You must always remain consistent with this disclaimer:
@@ -526,7 +547,7 @@ function landingHtmlWithOgTags() {
   const ogTags = `
   <link rel="canonical" href="${SHARE_SITE_URL}/">
   <meta property="og:title" content="The Word in Context">
-  <meta property="og:description" content="Voice-first offline Bible study with John — understand Scripture in its original context.">
+  <meta property="og:description" content="Voice-first offline Bible study with AI — understand Scripture in its original context.">
   <meta property="og:url" content="${SHARE_SITE_URL}/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="The Word in Context">
@@ -538,11 +559,13 @@ function landingHtmlWithOgTags() {
   <meta property="og:image:alt" content="The Word in Context — voice-first Bible study">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="The Word in Context">
-  <meta name="twitter:description" content="Voice-first offline Bible study with John">
+  <meta name="twitter:description" content="Voice-first offline Bible study with AI">
   <meta name="twitter:image" content="${escapeHtml(ogImage)}">`;
   landingHtmlWithOg = raw.replace('</head>', `${ogTags}\n</head>`);
   return landingHtmlWithOg;
 }
+
+app.get('/copyright', (req, res) => res.redirect(301, '/attributions.html'));
 
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
@@ -1266,6 +1289,12 @@ app.post('/api/chat', (req, res, next) => {
 
     const userMessages = messages.filter(m => m.role === 'user');
     const lastUserContent = userMessages[userMessages.length - 1]?.content || '';
+
+    const blockedReason = getBlockedContentReason(lastUserContent);
+    if (blockedReason) {
+      console.warn('[chat] blocked request:', blockedReason.slice(0, 80));
+      return res.status(400).json({ error: blockedReason });
+    }
 
     let allRefs = [...new Set(extractRefs(lastUserContent))];
 

@@ -1,7 +1,7 @@
 {
   "name": "The Word in Context",
   "short_name": "The Word",
-  "description": "Voice-first offline Bible study with John",
+  "description": "Voice-first offline Bible study with AI",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",

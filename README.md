@@ -40,7 +40,7 @@ A secure, voice-first application for deep study of The Word — the Hebrew, Ara
 ## Features
 
 - Deep original-language and literary context study
-- Strict literal translation policy (ESV, NASB, NKJV, LSB, BSB, etc.)
+- Strict literal translation policy — **BSB, ASV, YLT, and WEB only** (public-domain / free-use via [bible.helloao.org](https://bible.helloao.org); no ESV/NASB/NKJV/NIV)
 - Voice input + high-quality text-to-speech (including hands-free back-and-forth mode)
 - All voices are your browser's built-in system voices (window.speechSynthesis) only. Every installed voice on Mac/iPhone (including premium/enhanced you downloaded via Piper or Spoken Content) appears with no filters. Use the 🔊 buttons in Voice Settings to test them.
 - Server-side Bible text injection for accuracy

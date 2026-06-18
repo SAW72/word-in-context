@@ -1,19 +1,19 @@
 /**
- * Embeddable "Ask John" pop-out — text + voice on landing, help, and other pages.
+ * Embeddable "Ask AI" pop-out — text + voice on landing, help, and other pages.
  */
 (function () {
   'use strict';
 
   const WELCOME = {
-    demo: `Hi — I'm John. Ask me about any passage, Greek or Hebrew word, or biblical theme. Type your question or tap the microphone to speak. Demo mode includes a limited number of responses.`,
-    help: `Hi — I'm John. Need help using the app? Ask me about voices, hands-free mode, the Library, Settings, installing the PWA, or anything else. Type or tap the microphone.`,
-    sources: `Hi — I'm John. Ask me anything about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
+    demo: `Hi — ask AI, John. Ask about any passage, Greek or Hebrew word, or biblical theme. Responses are AI-generated — test them against Scripture. Type your question or tap the microphone to speak. Demo mode includes a limited number of responses.`,
+    help: `Hi — ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
+    sources: `Hi — ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
   };
 
   const POPUP_TITLES = {
-    demo: '🎙️ Ask John?',
-    help: '💬 Ask John?',
-    sources: '📚 Ask John? — Sources'
+    demo: '🎙️ Ask AI, John',
+    help: '💬 Ask AI, John',
+    sources: '📚 Ask AI, John — Sources'
   };
 
   let demoLimit = 10;
@@ -275,14 +275,14 @@
     overlay.innerHTML = `
       <div class="john-popup-panel" role="dialog" aria-labelledby="john-popup-title" aria-modal="true">
         <div class="john-popup-header">
-          <h3 id="john-popup-title">🎙️ Ask John?</h3>
+          <h3 id="john-popup-title">🎙️ Ask AI, John</h3>
           <button type="button" class="john-popup-close" aria-label="Close chat">&times;</button>
         </div>
         <div class="john-popup-messages" id="john-popup-messages"></div>
         <div class="john-popup-status" id="john-popup-status"></div>
         <div class="john-popup-input-row">
           <button type="button" class="john-popup-mic" id="john-popup-mic" aria-label="Speak your question">🎤</button>
-          <input type="text" class="john-popup-input" id="john-popup-input" placeholder="Ask John…" autocomplete="off" name="john-popup-question">
+          <input type="text" class="john-popup-input" id="john-popup-input" placeholder="Ask AI, John…" autocomplete="off" name="john-popup-question">
           <button type="button" class="john-popup-send" id="john-popup-send">Send</button>
         </div>
       </div>
