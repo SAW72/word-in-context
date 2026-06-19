@@ -344,7 +344,7 @@ Handling Traditions and Practices
 When asked about any religious practice or tradition, first state exactly what The Word explicitly commands or institutes. If Scripture does not command or institute that practice, you may state: "This practice is not commanded in The Word."
 
 Original Languages
-Use Hebrew or Greek words only when the user specifically asks for word study. Never speak or pronounce Hebrew or Greek words aloud unless requested.
+When the user asks for word study, Greek/Hebrew/Aramaic meanings, transliteration, lexical range, or "the Greek/Hebrew of" a term, this is core Scripture study — always answer fully. Provide the original-language form, transliteration, literal gloss as used in the passage, and how The Word employs the term there (and in other Scripture uses when helpful). If they are following up on a passage already in this conversation (e.g. Hebrews 4:12) without repeating the reference, anchor your analysis to that passage. Original-language word study is never "outside Scripture" and must not be refused. For general answers without a word-study request, begin with literal English before introducing Greek or Hebrew. Never speak or pronounce Hebrew or Greek words aloud unless requested.
 
 Citations
 Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the Berean Standard Bible." Mention the original language source only once per response, such as "in the Hebrew manuscript" or "in the Greek manuscript."
@@ -1384,6 +1384,15 @@ app.post('/api/chat', (req, res, next) => {
         || /\bwhat about (it|that|verse|this)\b/.test(t);
     }
 
+    function isWordStudyFollowUp(text) {
+      if (!text || typeof text !== 'string') return false;
+      if (extractRefs(text).length > 0) return false;
+      const t = text.toLowerCase().trim();
+      return /\b(greek|hebrew|aramaic|original language|transliterat|word study|lexical|underlying word|root word)\b/.test(t)
+        || /\b(what does|meaning of|meanings of|define|definition of)\b/.test(t)
+        || /\b(soul|spirit|dividing|divide|divided|merism|psyche|pneuma)\b/.test(t);
+    }
+
     function isTopicalScriptureRequest(text) {
       if (!text || typeof text !== 'string') return false;
       if (extractRefs(text).length > 0) return false;
@@ -1403,9 +1412,12 @@ app.post('/api/chat', (req, res, next) => {
 
     let allRefs = [...new Set(extractRefs(lastUserContent))];
 
-    // Only pull refs from earlier turns when the user is clearly following up on the same passage.
-    if (allRefs.length === 0 && isFollowUpToPriorPassage(lastUserContent)) {
-      const recent = messages.slice(-6);
+    const wordStudyFollowUp = isWordStudyFollowUp(lastUserContent);
+    const passageFollowUp = isFollowUpToPriorPassage(lastUserContent);
+
+    // Pull refs from earlier turns when the user is following up on the same passage or doing word study.
+    if (allRefs.length === 0 && (passageFollowUp || wordStudyFollowUp)) {
+      const recent = messages.slice(-8);
       for (const m of recent) {
         if (m.content && (m.role === 'user' || m.role === 'assistant')) {
           allRefs.push(...extractRefs(m.content));
@@ -1471,7 +1483,9 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && isFollowUpToPriorPassage(lastUserContent) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible. For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.`;
+      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible. For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.${wordStudyFollowUp ? ' WORD STUDY: The user is asking about original-language words in the grounded passage(s). Show Greek/Hebrew forms, transliteration, and lexical meaning as used in Scripture — do not refuse or answer only in English.' : ''}`;
+    } else if (wordStudyFollowUp) {
+      bibleContext = `\n\nWORD STUDY REQUEST: The user is asking about Greek, Hebrew, or Aramaic word meanings without naming a new reference. Use the passage(s) already discussed in this conversation. Show original-language forms, transliteration, literal glosses, and how The Word uses each term in context. Do not refuse as "beyond the text" — original-language study is the core purpose of this app.`;
     } else if (isTopicalScriptureRequest(lastUserContent)) {
       bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Search across the whole Bible (Old and New Testaments) and present every relevant passage using allowed translations ("${englishTransDisplay}" by default). Quote or cite each reference and explain what The Word explicitly says about the subject. Use "The Word states..." — never "the text states." Empty grounding blocks are expected — you are not limited to any earlier verse in this conversation.`;
     }
