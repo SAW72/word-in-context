@@ -2499,14 +2499,75 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg|EdgiOS|Firefox|FxiOS|OPR/i.test(ua);
     }
 
+    function isChromeBrowser() {
+      const ua = navigator.userAgent;
+      return /Chrome|CriOS|Chromium/i.test(ua) && !/Edg|EdgiOS|OPR/i.test(ua);
+    }
+
+    function getDefaultEnglishVoice() {
+      const voices = getBrowserVoices();
+      if (!voices.length) return null;
+      const english = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
+      if (isChromeBrowser()) {
+        return english.find(v => /google.*english.*(united states|us)/i.test(v.name || ''))
+          || english.find(v => /google/i.test(v.name || ''))
+          || english.find(v => (v.lang || '').toLowerCase() === 'en-us')
+          || english[0]
+          || voices[0];
+      }
+      if (isSafariBrowser()) {
+        return english.find(v => /daniel|samantha|alex|karen/i.test(v.name || ''))
+          || english[0]
+          || voices[0];
+      }
+      return english[0] || voices[0];
+    }
+
+    function ensureSpeechEngineReady() {
+      try {
+        synth.getVoices();
+        if (isChromeBrowser()) {
+          // Chrome can get a stuck speech queue (speaking=false but no audio). resume() clears it.
+          synth.cancel();
+          synth.resume();
+        }
+      } catch (e) {}
+    }
+
+    function reconcileVoiceForBrowser() {
+      const voices = getBrowserVoices();
+      if (!voices.length) return;
+      const saved = voiceSettings.voiceId;
+      const resolved = saved ? findLocalVoiceById(saved, { strict: true }) : null;
+      if (!resolved) {
+        const fallback = getDefaultEnglishVoice();
+        if (fallback) {
+          voiceSettings.voiceId = fallback.name;
+          selectedVoice = fallback;
+          localStorage.setItem('voice_id', fallback.name);
+          localStorage.setItem('voice_settings', JSON.stringify(voiceSettings));
+          console.info('[TTS] Saved voice not available in this browser; using', fallback.name);
+        }
+      } else {
+        selectedVoice = resolved;
+      }
+    }
+
     // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
     // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
     function wakeSpeechEngine(force) {
-      if (__ttsWoken && !force) return;
+      if (__ttsWoken && !force) {
+        ensureSpeechEngineReady();
+        return;
+      }
       __ttsWoken = true;
       try {
         try { synth.getVoices(); } catch (e) {}
+        if (isChromeBrowser()) {
+          ensureSpeechEngineReady();
+          return;
+        }
         const u = new SpeechSynthesisUtterance(' ');
         if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
           const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
@@ -2516,6 +2577,21 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         synth.speak(u);
         setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
       } catch (e) {}
+    }
+
+    function doSpeakUtterance(utterance) {
+      ensureSpeechEngineReady();
+      wakeSpeechEngine();
+      if (synth.speaking) synth.cancel();
+      const delay = isChromeBrowser() ? 60 : 0;
+      setTimeout(() => {
+        try {
+          if (isChromeBrowser()) synth.resume();
+          synth.speak(utterance);
+        } catch (e) {
+          console.error('[TTS] speak failed:', e);
+        }
+      }, delay);
     }
 
     function getBrowserVoices() {
@@ -2558,6 +2634,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         html += '<br><span class="settings-diag-hint"><strong>iPhone:</strong> basic system voices only (any browser). Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
       } else if (isSafariBrowser()) {
         html += '<br><span class="settings-diag-safari"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
+      } else if (isChromeBrowser()) {
+        html += '<br><span class="settings-diag-hint"><strong>Chrome:</strong> tap <strong>Unlock all voices</strong>, then <strong>Test selected</strong>. Voices saved in Safari are reset automatically here.</span>';
       } else {
         html += '<br><span class="settings-diag-hint"><strong>Mac:</strong> <strong>Chrome</strong> recommended for Enhanced voices.</span>';
       }
@@ -2565,6 +2643,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function scheduleVoiceListRefresh() {
+      reconcileVoiceForBrowser();
       loadVoices();
       populateVoicePreviews();
       updateVoiceDiagnostics();
@@ -2588,10 +2667,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.onend = scheduleVoiceListRefresh;
       utterance.onerror = scheduleVoiceListRefresh;
-      if (synth.speaking) synth.cancel();
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
-      }, 60);
+      doSpeakUtterance(utterance);
     }
 
     // Back-compat alias
@@ -4640,6 +4716,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       let usedVoice = voiceId ? findLocalVoiceById(voiceId) : null;
       if (!usedVoice && selectedVoice) usedVoice = selectedVoice;
+      if (!usedVoice) usedVoice = getDefaultEnglishVoice();
 
       if (langHint) {
         const langVoice = findVoiceForLangHint(langHint);
@@ -4677,35 +4754,22 @@ STRICT RULES — FOLLOW THESE ALWAYS:
             u2.rate = currentUtterance.rate || 0.95;
             u2.pitch = currentUtterance.pitch || 1.0;
             u2.volume = 1.0;
-            if (synth.speaking) synth.cancel();
-            synth.speak(u2);
+            const fallbackVoice = getDefaultEnglishVoice();
+            if (fallbackVoice) {
+              u2.voice = fallbackVoice;
+              u2.lang = fallbackVoice.lang || 'en-US';
+            }
+            doSpeakUtterance(u2);
           }
         } catch (e) {}
       };
 
-      if (synth.speaking) synth.cancel();
-
-      // Simple, clean pattern: fresh getVoices + resolve the saved/chosen voice, then
-      // cancel + tiny timeout + speak. Let the browser populate voices naturally.
-      setTimeout(() => {
-        try {
-          try { synth.getVoices(); } catch (e) {}
-          if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-            const lastFresh = synth.getVoices();
-            const norm = normalizeVoiceName(voiceSettings.voiceId);
-            const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm) ||
-                            lastFresh.find(v => v.name.toLowerCase() === voiceSettings.voiceId.toLowerCase());
-            if (reMatch) {
-              currentUtterance.voice = reMatch;
-            }
-          }
-
-          setTimeout(() => {
-            try { if (synth.speaking) synth.cancel(); } catch (e) {}
-            synth.speak(currentUtterance);
-          }, 0);
-        } catch (e) { console.error(e); }
-      }, 0);
+      try { synth.getVoices(); } catch (e) {}
+      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
+        const reMatch = findLocalVoiceById(voiceSettings.voiceId);
+        if (reMatch) currentUtterance.voice = reMatch;
+      }
+      doSpeakUtterance(currentUtterance);
     }
 
     function stopSpeaking() {
@@ -4816,12 +4880,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
     // Uses exact, case-insensitive, includes, normalized names (strip Enhanced/System suffixes common on Mac/iOS),
     // and special case for UK male.
-    function findLocalVoiceById(id) {
+    function findLocalVoiceById(id, opts = {}) {
       if (!id) return null;
       const voices = synth.getVoices();
       if (!voices || voices.length === 0) return null;
 
       const normId = normalizeVoiceName(id);
+      const strict = !!opts.strict || isChromeBrowser();
 
       let v = voices.find(v => v.name === id);
       if (v) return v;
@@ -4835,11 +4900,13 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       v = voices.find(v => normalizeVoiceName(v.name).toLowerCase() === normId.toLowerCase());
       if (v) return v;
 
-      v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
-      if (v) return v;
+      if (!strict) {
+        v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
+        if (v) return v;
 
-      v = voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
-      if (v) return v;
+        v = voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
+        if (v) return v;
+      }
 
       // Special handling for UK male preference
       if (id.toLowerCase().includes('uk') && id.toLowerCase().includes('male')) {
@@ -4917,12 +4984,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       // Stop anything currently speaking
-      if (synth.speaking) synth.cancel();
-
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { console.error(e); }
-      }, 60);
-
+      doSpeakUtterance(utterance);
     }
 
     // Populate a separate preview list with speaker buttons so user can test ANY voice
@@ -5020,11 +5082,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
           utterance.onerror = (ev) => { if (ev.error === 'canceled' || ev.error === 'interrupted') return; console.error('[TTS preview] error:', ev && ev.error); };
 
-          if (synth.speaking) synth.cancel();
-          setTimeout(() => {
-            try { synth.speak(utterance); } catch (e) { console.error(e); }
-          }, 60);
-
+          doSpeakUtterance(utterance);
         };
 
         // Layout: [label] [edit] [test]
@@ -6458,6 +6516,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     userInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        wakeSpeechEngine();
         const text = userInput.value.trim();
         if (text) sendToGrok(text);
       }
