@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-31';
+const CACHE_VERSION = 'wic-pwa-32';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -18,6 +18,7 @@ const SHELL_URLS = [
   '/pwa.js',
   '/pwa.css',
   '/john-popup.js',
+  '/auth-api.js',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-192.png?v=cross4',

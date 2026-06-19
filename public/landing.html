@@ -968,6 +968,7 @@
     </div>
   </footer>
 
+  <script src="/auth-api.js"></script>
   <script>
     // === 7-Day Trial (Stripe checkout) — only creates account + starts payment. No auto-login. ===
     const trialForm = document.getElementById('trial-form');
@@ -977,12 +978,7 @@
         const email = document.getElementById('trial-email').value;
         const password = document.getElementById('trial-password').value;
         try {
-          const res = await fetch('/api/create-checkout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
+          const { res, data } = await apiPost('/api/create-checkout', { email, password });
           if (data.url) {
             // After Stripe success, user will use the Login modal (top of page) or magic link
             window.location.href = data.url;
@@ -990,7 +986,7 @@
             alert(data.error || 'Something went wrong.');
           }
         } catch (err) {
-          alert('Network error. Please try again later.');
+          alert(err.message || 'Network error. Please try again later.');
         }
       });
     }
@@ -1010,12 +1006,7 @@
         if (successDiv) successDiv.style.display = 'none';
 
         try {
-          const res = await fetch('/api/tester-signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
+          const { res, data } = await apiPost('/api/tester-signup', { email, password });
 
           if (res.ok) {
             if (data.token) {
@@ -1044,7 +1035,7 @@
           }
         } catch (err) {
           if (errDiv) {
-            errDiv.textContent = 'Network error. Please try again later.';
+            errDiv.textContent = err.message || 'Network error. Please try again later.';
             errDiv.style.display = 'block';
           }
         }
@@ -1093,12 +1084,7 @@
         if (successDiv) successDiv.style.display = 'none';
 
         try {
-          const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
+          const { res, data } = await apiPost('/api/login', { email, password });
 
           if (res.ok && data.token) {
             localStorage.setItem('auth_token', data.token);
@@ -1120,19 +1106,14 @@
                 successDiv.style.display = 'block';
               }
               try {
-                const magicRes = await fetch('/api/request-login', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email })
-                });
-                const magicData = await magicRes.json();
+                const { res: magicRes, data: magicData } = await apiPost('/api/request-login', { email });
                 if (magicRes.ok && successDiv) {
                   successDiv.textContent = magicData.message || 'Check your email for the secure magic login link.';
                 } else if (successDiv) {
                   successDiv.textContent = (magicData && magicData.error) || 'Could not send magic link.';
                 }
-              } catch (_) {
-                if (successDiv) successDiv.textContent = 'Could not send magic link right now.';
+              } catch (magicErr) {
+                if (successDiv) successDiv.textContent = magicErr.message || 'Could not send magic link right now.';
               }
             } else {
               if (errDiv) {
@@ -1143,7 +1124,7 @@
           }
         } catch (err) {
           if (errDiv) {
-            errDiv.textContent = 'Network error. Please try again later.';
+            errDiv.textContent = err.message || 'Network error. Please try again later.';
             errDiv.style.display = 'block';
           }
         }
@@ -1167,12 +1148,7 @@
           return;
         }
         try {
-          const res = await fetch('/api/request-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          });
-          const data = await res.json();
+          const { res, data } = await apiPost('/api/request-login', { email });
           if (res.ok) {
             if (successDiv) {
               successDiv.textContent = data.message || 'Check your email for the magic login link.';
@@ -1186,7 +1162,7 @@
           }
         } catch (err) {
           if (errDiv) {
-            errDiv.textContent = 'Network error.';
+            errDiv.textContent = err.message || 'Network error.';
             errDiv.style.display = 'block';
           }
         }

@@ -485,6 +485,7 @@
     </div>
   </div>
 
+  <script src="/auth-api.js"></script>
   <script>
     function isDarkMode() {
       return localStorage.getItem('dark_mode') === 'true';
@@ -559,12 +560,7 @@
       if (errDiv) errDiv.style.display = 'none';
       if (successDiv) successDiv.style.display = 'none';
       try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
+        const { res, data } = await apiPost('/api/login', { email, password });
         if (res.ok && data.token) {
           localStorage.setItem('auth_token', data.token);
           localStorage.setItem('user_email', data.email || email);
@@ -582,7 +578,7 @@
         }
       } catch (err) {
         if (errDiv) {
-          errDiv.textContent = 'Network error. Please try again later.';
+          errDiv.textContent = err.message || 'Network error. Please try again later.';
           errDiv.style.display = 'block';
         }
       }
@@ -597,12 +593,7 @@
       if (successDiv) successDiv.style.display = 'none';
       if (!email) { alert('Enter your email first.'); return; }
       try {
-        const res = await fetch('/api/request-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await res.json();
+        const { res, data } = await apiPost('/api/request-login', { email });
         if (res.ok && successDiv) {
           successDiv.textContent = data.message || 'Check your email for the magic login link.';
           successDiv.style.display = 'block';
@@ -612,7 +603,7 @@
         }
       } catch (err) {
         if (errDiv) {
-          errDiv.textContent = 'Network error.';
+          errDiv.textContent = err.message || 'Network error.';
           errDiv.style.display = 'block';
         }
       }

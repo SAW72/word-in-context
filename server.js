@@ -971,7 +971,7 @@ app.post('/api/request-login', async (req, res) => {
 });
 
 // Password login (for accounts that have a password set via admin or future flows)
-app.post('/api/login', express.json({ limit: '10kb' }), async (req, res) => {
+app.post('/api/login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const { password } = req.body || {};

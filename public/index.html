@@ -2258,6 +2258,7 @@
     </div>
   </div>
 
+  <script src="/auth-api.js"></script>
   <script>
     // ====================== SUPPRESS EXTENSION NOISE ======================
     // These warnings come from browser extensions (especially MetaMask and other
@@ -6592,12 +6593,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         try {
           sendLoginBtn.disabled = true;
           sendLoginBtn.textContent = 'Logging in...';
-          const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
+          const { res, data } = await apiPost('/api/login', { email, password });
           if (res.ok && data.token) {
             localStorage.setItem('auth_token', data.token);
             localStorage.setItem('user_email', data.email || email);
@@ -6614,24 +6610,19 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                 successDiv.style.display = 'block';
               }
               try {
-                const magicRes = await fetch('/api/request-login', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email })
-                });
-                const magicData = await magicRes.json();
+                const { res: magicRes, data: magicData } = await apiPost('/api/request-login', { email });
                 if (successDiv) {
                   successDiv.textContent = (magicRes.ok && (magicData.message || 'Check your email for magic link.')) || (magicData.error || 'Could not send magic link.');
                 }
-              } catch (_) {
-                if (successDiv) successDiv.textContent = 'Could not send magic link.';
+              } catch (magicErr) {
+                if (successDiv) successDiv.textContent = magicErr.message || 'Could not send magic link.';
               }
             } else {
               alert(errText || 'Login failed. Use magic link if no password set.');
             }
           }
         } catch (err) {
-          alert('Network error. Please try again.');
+          alert(err.message || 'Network error. Please try again.');
         } finally {
           sendLoginBtn.disabled = false;
           sendLoginBtn.textContent = 'Log in with password';
@@ -6648,11 +6639,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         const email = emailInput ? emailInput.value.trim() : '';
         if (!email) { alert('Enter email first'); return; }
         try {
-          const res = await fetch('/api/request-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-          const data = await res.json();
-          alert(data.message || 'Check your email for magic link.');
+          const { res, data } = await apiPost('/api/request-login', { email });
+          alert((res.ok && (data.message || 'Check your email for magic link.')) || data.error || 'Could not send link.');
         } catch (err) {
-          alert('Error sending link.');
+          alert(err.message || 'Error sending link.');
         }
       });
     }
