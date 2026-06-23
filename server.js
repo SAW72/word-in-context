@@ -511,6 +511,12 @@ When the user asks whether signs and wonders apply or may apply today, report wh
 Authority distinctions the user may intend (honor them when stated)
 If the user distinguishes (1) apostolic writing authority and directional authority over the church from (2) signs and wonders following believers, keep those two lanes separate. The Word presents foundational apostolic witness and "signs of an apostle" in some passages; it presents signs accompanying those who believe and Spirit-distributed gifts in others. One does not automatically cancel the other in the text. Answer the lane the user asked about first; cross-reference the other lane only briefly if it helps clarity.
 
+When the user asks what Paul said (quote Paul first — do not dodge)
+If the user asks what Paul said about apostles, being last, or similar, quote First Corinthians 15:5–10 before other passages — especially 15:8 and 15:9. The Word states in 1 Corinthians 15:8 that Christ appeared last of all to Paul, as to one of untimely birth. The Word states in 15:9 that Paul is the least of the apostles and unworthy to be called an apostle because he persecuted the church. Do not answer "Paul last apostle" questions using only Acts 1:21–22, Ephesians 2:20, or 2 Corinthians 12:12 while skipping 1 Corinthians 15. Do not claim Paul never spoke of being "last" without quoting 15:8. Distinguish the user's paraphrase ("Paul said he was the last apostle") from Paul's actual wording: 15:8 is "last of all" in the list of resurrection appearances (after Cephas, the Twelve, more than five hundred, James, and the apostles); 15:9 is "least of the apostles," not the exact phrase "last apostle." Then state plainly what those verses do and do not say about whether any apostles after Paul hold the same office — 15:8–9 do not use the words "no more apostles after me," but they do place Paul last in that appearance list and name his apostleship in the same paragraph.
+
+Named-speaker rule (general)
+When the user names a biblical speaker ("what Paul said," "what Peter said," "what Jesus said"), locate and quote that speaker's own words on the topic first. Secondary passages about the same theme (criteria, foundations, signs) come after the primary speech.
+
 Original Languages
 When the user asks for word study, Greek/Hebrew/Aramaic meanings, transliteration, lexical range, or "the Greek/Hebrew of" a term, this is core Scripture study — always answer fully. Provide the original-language form, transliteration, literal gloss as used in the passage, and how The Word employs the term there (and in other Scripture uses when helpful). If they are following up on a passage already in this conversation (e.g. Hebrews 4:12) without repeating the reference, anchor your analysis to that passage. Original-language word study is never "outside Scripture" and must not be refused. For general answers without a word-study request, begin with literal English before introducing Greek or Hebrew. Never speak or pronounce Hebrew or Greek words aloud unless requested.
 
@@ -1809,7 +1815,24 @@ app.post('/api/chat', (req, res, next) => {
       if (extractRefs(text).length > 0) return false;
       const t = text.toLowerCase().trim();
       return /\b(that|this|it|those|these|the verse|the passage|same (verse|passage|chapter)|explain (more|further|that)|go deeper|tell me more|elaborate|expand on)\b/.test(t)
-        || /\bwhat about (it|that|verse|this)\b/.test(t);
+        || /\bwhat about (it|that|verse|this)\b/.test(t)
+        || /\b(but you just said|you just said|what about what)\b/.test(t);
+    }
+
+    function extractThematicRefs(text) {
+      if (!text || typeof text !== 'string') return [];
+      const t = text.toLowerCase();
+      const refs = [];
+      const paulLastTopic = /\b(paul|apostle paul)\b/.test(t)
+        && /\b(last apostle|last of all|least of the apostles|untimely birth|abnormally born|what paul said|what did paul)\b/.test(t);
+      const lastApostleTopic = /\blast apostle\b/.test(t);
+      if (paulLastTopic || lastApostleTopic) {
+        refs.push('1 Corinthians 15:8', '1 Corinthians 15:9', '1 Corinthians 15:7', '1 Corinthians 15:5');
+      }
+      if (/\bwhat (did |about )?paul\b/.test(t) && /\b(apostle|last)\b/.test(t)) {
+        refs.push('1 Corinthians 15:8', '1 Corinthians 15:9');
+      }
+      return refs;
     }
 
     function isWordStudyFollowUp(text) {
@@ -1838,7 +1861,7 @@ app.post('/api/chat', (req, res, next) => {
       return res.status(400).json({ error: blockedReason });
     }
 
-    let allRefs = [...new Set(extractRefs(lastUserContent))];
+    let allRefs = [...new Set([...extractRefs(lastUserContent), ...extractThematicRefs(lastUserContent)])];
 
     const wordStudyFollowUp = isWordStudyFollowUp(lastUserContent);
     const passageFollowUp = isFollowUpToPriorPassage(lastUserContent);
@@ -1854,7 +1877,13 @@ app.post('/api/chat', (req, res, next) => {
       allRefs = [...new Set(allRefs)];
     }
 
-    allRefs = allRefs.slice(0, 4);
+    // Keep thematic Paul/1 Cor 15 refs at the front when present.
+    const thematicFirst = extractThematicRefs(lastUserContent);
+    if (thematicFirst.length) {
+      const rest = allRefs.filter((r) => !thematicFirst.includes(r));
+      allRefs = [...new Set([...thematicFirst, ...rest])];
+    }
+    allRefs = allRefs.slice(0, 6);
 
     // Translation display names for citations and UI
     const transDisplayNames = {
