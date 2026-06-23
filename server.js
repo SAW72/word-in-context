@@ -271,6 +271,24 @@ function whopPayloadEmail(payload) {
   );
 }
 
+function whopPayloadManageUrl(payload) {
+  return payload?.manage_url || payload?.membership?.manage_url || 'https://whop.com/billing';
+}
+
+function formatWhopDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
 function whopPayloadPlanId(payload) {
   return payload?.plan?.id || payload?.plan_id || null;
 }
@@ -304,7 +322,8 @@ function userHasAccess(user) {
   const now = new Date();
   const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
   const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-  const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+  // past_due: keep access while Whop retries billing; membership.deactivated cuts access off
+  const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
   return !!user.access_granted && (effectivelyTrialing || hasPaidOrFree);
 }
 
@@ -936,7 +955,20 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   }
 });
 
-// === NEW: User login / account system with configurable trial (TRIAL_DAYS env) + Stripe ===
+// === User login / account system with configurable trial (TRIAL_DAYS env) + Whop ===
+
+async function sendWhopNotificationEmail(email, { subject, html }) {
+  if (resend) {
+    await resend.emails.send({
+      from: 'The Word in Context <no-reply@thewordincontext.org>',
+      to: email,
+      subject,
+      html,
+    });
+  } else {
+    console.log(`[WHOP EMAIL to ${email}] ${subject}`);
+  }
+}
 
 // Helper: send magic link email (or log in dev)
 // options: { subject?, htmlPrefix?, isTester? }
@@ -1162,7 +1194,7 @@ app.post('/api/login', async (req, res) => {
     const now = new Date();
     const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
     const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-    const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free;
+    const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
     if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
       return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
@@ -1389,6 +1421,61 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   return user;
 }
 
+async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
+  if (!whopMembershipIsAllowed(payload)) return null;
+
+  const email = whopPayloadEmail(payload);
+  if (!email) {
+    console.warn(`[whop:${source}] trial_ending_soon missing email`);
+    return null;
+  }
+
+  const manageUrl = whopPayloadManageUrl(payload);
+  const trialEnd = formatWhopDate(payload?.renewal_period_end) || 'soon';
+  const loginUrl = `${APP_BASE_URL}/`;
+
+  await sendWhopNotificationEmail(email, {
+    subject: 'Your Word in Context free trial ends soon',
+    html: `
+      <p>Hi — your <strong>free trial</strong> for <strong>The Word in Context</strong> ends on <strong>${trialEnd}</strong>.</p>
+      <p>After that, your subscription continues automatically at the plan you chose (monthly or yearly) unless you cancel before the trial ends.</p>
+      <p><a href="${manageUrl}">Manage or cancel your subscription</a></p>
+      <p><a href="${loginUrl}">Open The Word in Context</a></p>
+      <p><small>Questions? Email <a href="mailto:hello@stewardoftheking.com">hello@stewardoftheking.com</a>. We will never sell your information.</small></p>
+    `,
+  });
+  console.log(`[whop:${source}] trial-ending reminder sent to ${email}`);
+  return email;
+}
+
+async function handleWhopPaymentFailed(payload, source = 'webhook') {
+  const email = whopPayloadEmail(payload);
+  if (!email) {
+    console.warn(`[whop:${source}] payment.failed missing email`);
+    return null;
+  }
+
+  const manageUrl = whopPayloadManageUrl(payload);
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (user) {
+    db.prepare(`UPDATE users SET status = 'past_due' WHERE id = ?`).run(user.id);
+    console.log(`[whop:${source}] marked ${email} past_due (access kept until Whop deactivates membership)`);
+  }
+
+  await sendWhopNotificationEmail(email, {
+    subject: 'Action needed — Word in Context payment failed',
+    html: `
+      <p>We couldn't process your latest payment for <strong>The Word in Context</strong>.</p>
+      <p>Please update your payment method so your access isn't interrupted:</p>
+      <p><a href="${manageUrl}">Update payment method</a></p>
+      <p><a href="${APP_BASE_URL}/">Return to The Word in Context</a></p>
+      <p><small>Need help? Email <a href="mailto:hello@stewardoftheking.com">hello@stewardoftheking.com</a>.</small></p>
+    `,
+  });
+  console.log(`[whop:${source}] payment-failed notice sent to ${email}`);
+  return email;
+}
+
 async function activateStripeCheckoutSession(session, source = 'webhook') {
   const email = normalizeEmail(session.metadata?.email || session.customer_email);
   if (!email) {
@@ -1561,6 +1648,10 @@ app.post('/api/whop-webhook', async (req, res) => {
           }
         }
       }
+    } else if (type === 'membership.trial_ending_soon') {
+      await handleWhopTrialEndingSoon(data, 'webhook');
+    } else if (type === 'payment.failed') {
+      await handleWhopPaymentFailed(data, 'webhook');
     }
   } catch (err) {
     console.error('Whop webhook handler error:', err);
@@ -1875,7 +1966,8 @@ app.listen(PORT, () => {
   console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
   console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
   console.log(`   Bible API: using bible.helloao.org (free, no key)`);
-  console.log(`   Stripe: ${stripeConfigured() ? 'configured' : 'NOT configured (add STRIPE_SECRET_KEY + STRIPE_PRICE_ID to .env)'}`);
-  console.log(`   Stripe webhook secret: ${process.env.STRIPE_WEBHOOK_SECRET ? 'set' : 'missing (post-checkout login backup still works via /api/complete-checkout)'}`);
+  console.log(`   Whop checkout: ${whopConfigured() ? 'configured' : 'NOT configured (set WHOP_CHECKOUT_URL_MONTHLY + WHOP_CHECKOUT_URL_YEARLY)'}`);
+  console.log(`   Whop webhook secret: ${process.env.WHOP_WEBHOOK_SECRET ? 'set' : 'missing (add WHOP_WEBHOOK_SECRET for membership activation)'}`);
+  console.log(`   Stripe (legacy): ${stripeConfigured() ? 'still configured' : 'off'}`);
   console.log(`   App base URL: ${APP_BASE_URL}\n`);
 });

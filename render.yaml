@@ -40,9 +40,6 @@ services:
       # Add these ONLY in the Render dashboard (Environment tab) and mark as Secret:
       #   XAI_API_KEY
       #   WHOP_WEBHOOK_SECRET
-      #   STRIPE_SECRET_KEY   (legacy — only if not using Whop)
-      #   STRIPE_WEBHOOK_SECRET
-      #   STRIPE_PRICE_ID
       #   RESEND_API_KEY
       #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
       #   JWT_SECRET
