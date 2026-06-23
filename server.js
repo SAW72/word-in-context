@@ -155,7 +155,7 @@ async function hashPassword(password) {
   return bcrypt.hash(String(password), 10);
 }
 
-const DEFAULT_WHOP_CHECKOUT_URL_MONTHLY = 'https://whop.com/checkout/plan_hWWAQiPvpAYKN';
+const DEFAULT_WHOP_CHECKOUT_URL_MONTHLY = 'https://whop.com/checkout/plan_W9vAA0xyptzgt';
 const DEFAULT_WHOP_CHECKOUT_URL_YEARLY = 'https://whop.com/checkout/plan_xjGkPczz1CWju';
 const DEFAULT_WHOP_PLAN_IDS = [
   'plan_hWWAQiPvpAYKN',

@@ -29,7 +29,7 @@ services:
         value: https://www.thewordincontext.org
       # Whop checkout links (7-day free trial on both — set to match your monthly/yearly plans in Whop)
       - key: WHOP_CHECKOUT_URL_MONTHLY
-        value: https://whop.com/checkout/plan_hWWAQiPvpAYKN
+        value: https://whop.com/checkout/plan_W9vAA0xyptzgt
       - key: WHOP_CHECKOUT_URL_YEARLY
         value: https://whop.com/checkout/plan_xjGkPczz1CWju
       # Third plan ID (if any) goes in WHOP_PLAN_IDS only — webhook allowlist, not a signup button
