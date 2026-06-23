@@ -24,16 +24,23 @@ services:
         value: "14"
       - key: DEMO_LIMIT
         value: "5"
-      # Use www — bare thewordincontext.org redirects to www (Stripe success/cancel + magic links must match).
+      # Use www — bare thewordincontext.org redirects to www (checkout success + magic links must match).
       - key: RENDER_EXTERNAL_URL
         value: https://www.thewordincontext.org
+      # Whop checkout for 7-day trial (override if a different plan has your trial pricing)
+      - key: WHOP_CHECKOUT_URL
+        value: https://whop.com/checkout/plan_hWWAQiPvpAYKN
+      # Optional comma-separated allowlist for webhook plan IDs
+      - key: WHOP_PLAN_IDS
+        value: plan_hWWAQiPvpAYKN,plan_xjGkPczz1CWju,plan_W9vAA0xyptzgt
 
       # --- Sensitive secrets (NEVER put real values in this file or git) ---
       # Add these ONLY in the Render dashboard (Environment tab) and mark as Secret:
       #   XAI_API_KEY
-      #   STRIPE_SECRET_KEY
+      #   WHOP_WEBHOOK_SECRET
+      #   STRIPE_SECRET_KEY   (legacy — only if not using Whop)
       #   STRIPE_WEBHOOK_SECRET
-      #   STRIPE_PRICE_ID   (can be non-secret if you want)
+      #   STRIPE_PRICE_ID
       #   RESEND_API_KEY
       #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
       #   JWT_SECRET

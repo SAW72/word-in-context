@@ -883,20 +883,20 @@
 
     <div class="signup-form">
 
-      <!-- 7-Day Paid Trial (Stripe) -->
+      <!-- 7-Day Paid Trial (Whop checkout) -->
       <form id="trial-form" class="auth-form">
         <input type="email" id="trial-email" class="auth-input" placeholder="Your email" required>
         <input type="password" id="trial-password" class="auth-input" placeholder="Choose password (min 8 chars — for future logins)" required minlength="8">
         <button type="submit" class="btn">Start 7-Day Free Trial (card required after)</button>
         <p style="font-size:12px; text-align:center; margin-top:10px; opacity:0.7; line-height:1.4;">
-          Card collected securely by Stripe for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top.
+          Card collected securely by Whop for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top.
         </p>
       </form>
 
       <!-- Trial success -->
       <div id="trial-success" style="display:none; text-align:center; color:#2c3e50; margin-top:14px; padding:11px 14px; background:#f8f1e3; border-radius:8px; font-size:13px;">
         <strong>Account created.</strong><br>
-        Complete payment on Stripe. Then click the <strong>Log in</strong> button at the top (or check your email for a magic link).
+        Complete payment on Whop. Then click the <strong>Log in</strong> button at the top (or check your email for a magic link).
       </div>
 
       <!-- 14-day Tester (card-free) -->
@@ -970,7 +970,7 @@
 
   <script src="/auth-api.js"></script>
   <script>
-    // === 7-Day Trial (Stripe checkout) — only creates account + starts payment. No auto-login. ===
+    // === 7-Day Trial (Whop checkout) — creates account locally, then redirects to Whop. No auto-login. ===
     const trialForm = document.getElementById('trial-form');
     if (trialForm) {
       trialForm.addEventListener('submit', async function(e) {
@@ -980,7 +980,7 @@
         try {
           const { res, data } = await apiPost('/api/create-checkout', { email, password });
           if (data.url) {
-            // After Stripe success, user will use the Login modal (top of page) or magic link
+            try { sessionStorage.setItem('wic_checkout_email', email.trim().toLowerCase()); } catch (err) {}
             window.location.href = data.url;
           } else {
             alert(data.error || 'Something went wrong.');

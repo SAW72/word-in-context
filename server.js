@@ -18,9 +18,10 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 8787;
 
-// Raw body for Stripe webhook MUST be the very first middleware (before any express.json or body parsers)
+// Raw body for payment webhooks MUST be the very first middleware (before any express.json or body parsers)
 // so that req.body is the raw Buffer/string for signature verification.
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+app.use('/api/whop-webhook', express.raw({ type: 'application/json' }));
 
 // === SQLite DB for users (with Render persistent disk support) ===
 // IMPORTANT: On Render, when adding the disk in the dashboard:
@@ -55,6 +56,8 @@ try {
   `);
   try { db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -152,8 +155,121 @@ async function hashPassword(password) {
   return bcrypt.hash(String(password), 10);
 }
 
+const DEFAULT_WHOP_CHECKOUT_URL = 'https://whop.com/checkout/plan_hWWAQiPvpAYKN';
+const DEFAULT_WHOP_PLAN_IDS = [
+  'plan_hWWAQiPvpAYKN',
+  'plan_xjGkPczz1CWju',
+  'plan_W9vAA0xyptzgt',
+];
+
+function whopCheckoutUrl() {
+  return (process.env.WHOP_CHECKOUT_URL || DEFAULT_WHOP_CHECKOUT_URL).trim();
+}
+
+function whopPlanIds() {
+  const raw = (process.env.WHOP_PLAN_IDS || '').trim();
+  if (raw) {
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return DEFAULT_WHOP_PLAN_IDS.slice();
+}
+
+function whopConfigured() {
+  return !!whopCheckoutUrl();
+}
+
+function whopWebhookConfigured() {
+  return !!(whopConfigured() && process.env.WHOP_WEBHOOK_SECRET);
+}
+
 function stripeConfigured() {
   return !!(stripe && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID);
+}
+
+function paymentProvider() {
+  if (whopConfigured()) return 'whop';
+  if (stripeConfigured()) return 'stripe';
+  return null;
+}
+
+function whopWebhookSigningKey(secret) {
+  const s = String(secret || '').trim();
+  if (s.startsWith('whsec_')) return Buffer.from(s.slice(6), 'base64');
+  return Buffer.from(s, 'base64');
+}
+
+function verifyWhopWebhook(rawBody, headers) {
+  const secret = process.env.WHOP_WEBHOOK_SECRET;
+  if (!secret) throw new Error('WHOP_WEBHOOK_SECRET not configured');
+
+  const id = headers['webhook-id'] || headers['Webhook-Id'];
+  const timestamp = headers['webhook-timestamp'] || headers['Webhook-Timestamp'];
+  const signatureHeader = headers['webhook-signature'] || headers['Webhook-Signature'];
+  if (!id || !timestamp || !signatureHeader) {
+    throw new Error('Missing Whop webhook headers');
+  }
+
+  const ts = parseInt(timestamp, 10);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
+    throw new Error('Whop webhook timestamp outside tolerance');
+  }
+
+  const bodyText = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody || '');
+  const signedContent = `${id}.${timestamp}.${bodyText}`;
+  const key = whopWebhookSigningKey(secret);
+  const expected = crypto.createHmac('sha256', key).update(signedContent).digest('base64');
+
+  const signatures = String(signatureHeader).split(/\s+/);
+  for (const sig of signatures) {
+    const comma = sig.indexOf(',');
+    if (comma === -1) continue;
+    const version = sig.slice(0, comma);
+    const value = sig.slice(comma + 1);
+    if (version !== 'v1' || !value) continue;
+    try {
+      const a = Buffer.from(value);
+      const b = Buffer.from(expected);
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+        return JSON.parse(bodyText);
+      }
+    } catch (_) {}
+  }
+  throw new Error('Invalid Whop webhook signature');
+}
+
+function buildWhopCheckoutUrl(email) {
+  const base = whopCheckoutUrl();
+  const url = base.startsWith('http') ? new URL(base) : new URL(`https://whop.com/checkout/${base.replace(/^\//, '')}`);
+  url.searchParams.set('email', email);
+  url.searchParams.set('email.disabled', '1');
+  return url.toString();
+}
+
+function whopPayloadEmail(payload) {
+  return normalizeEmail(
+    payload?.user?.email
+    || payload?.member?.user?.email
+    || payload?.member?.email
+    || payload?.email
+  );
+}
+
+function whopPayloadPlanId(payload) {
+  return payload?.plan?.id || payload?.plan_id || null;
+}
+
+function whopMembershipIsAllowed(payload) {
+  const allowed = whopPlanIds();
+  if (!allowed.length) return true;
+  const planId = whopPayloadPlanId(payload);
+  return !planId || allowed.includes(planId);
+}
+
+function mapWhopStatusToUserStatus(whopStatus) {
+  const s = String(whopStatus || '').toLowerCase();
+  if (['trialing', 'active'].includes(s)) return s;
+  if (['canceled', 'cancelled', 'expired', 'completed', 'past_due', 'unresolved'].includes(s)) return 'canceled';
+  return 'active';
 }
 
 async function ensureStripeCustomer(user, email) {
@@ -819,7 +935,7 @@ async function sendMagicLink(email, token, options = {}) {
     ${prefix}
     <p><a href="${loginUrl}">Log in to your account</a></p>
     <p>This link expires in 15 minutes. If you didn't request this, ignore it.</p>
-    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? 'This is tester access and will expire after the trial period.' : 'Payment info is handled securely by Stripe. Your conversations never leave your device.'}</small></p>
+    <p><small>We will never sell your information. All chats are stored only in your browser. ${isTester ? 'This is tester access and will expire after the trial period.' : 'Payment info is handled securely by Whop. Your conversations never leave your device.'}</small></p>
   `;
   if (resend) {
     await resend.emails.send({
@@ -833,11 +949,38 @@ async function sendMagicLink(email, token, options = {}) {
   }
 }
 
-// Create or get user + start configurable trial via Stripe Checkout
+async function upsertTrialCheckoutUser(email, password, effectiveTrialDays) {
+  const passwordHash = await hashPassword(password);
+  if (!passwordHash) throw Object.assign(new Error('Password must be at least 8 characters.'), { statusCode: 400 });
+
+  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user) {
+    db.prepare(`
+      INSERT INTO users (email, status, trial_end, access_granted, password_hash)
+      VALUES (?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1, ?)
+    `).run(email, passwordHash);
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else {
+    if (passwordHash) {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+    }
+    if (!user.trial_end) {
+      db.prepare(`UPDATE users SET trial_end = datetime('now', '+${effectiveTrialDays} days') WHERE id = ?`).run(user.id);
+    }
+    if (!user.access_granted) {
+      db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
+    }
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  }
+  return user;
+}
+
+// Create or get user + start configurable trial via Whop (preferred) or Stripe Checkout
 app.post('/api/create-checkout', async (req, res) => {
   try {
-    if (!stripeConfigured()) {
-      return res.status(503).json({ error: 'Stripe is not configured on this server. Add STRIPE_SECRET_KEY and STRIPE_PRICE_ID to your environment.' });
+    const provider = paymentProvider();
+    if (!provider) {
+      return res.status(503).json({ error: 'Payments are not configured. Add WHOP_CHECKOUT_URL or Stripe keys to your environment.' });
     }
 
     const { email: rawEmail, password, trialDays: requestedTrialDays } = req.body;
@@ -847,6 +990,11 @@ app.post('/api/create-checkout', async (req, res) => {
     const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
       ? requestedTrialDays
       : TRIAL_DAYS;
+
+    if (provider === 'whop') {
+      await upsertTrialCheckoutUser(email, password, effectiveTrialDays);
+      return res.json({ url: buildWhopCheckoutUrl(email), provider: 'whop' });
+    }
 
     const passwordHash = await hashPassword(password);
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
@@ -889,11 +1037,12 @@ app.post('/api/create-checkout', async (req, res) => {
       metadata: { email }
     });
 
-    res.json({ url: session.url });
+    res.json({ url: session.url, provider: 'stripe' });
   } catch (err) {
     console.error('create-checkout error:', err);
+    const status = err?.statusCode || 500;
     const message = err?.raw?.message || err?.message || 'Could not start checkout';
-    res.status(500).json({ error: message });
+    res.status(status).json({ error: message });
   }
 });
 
@@ -1054,6 +1203,7 @@ app.get('/api/config', (req, res) => {
     testerTrialDays: TESTER_TRIAL_DAYS,
     hasSTT: false,
     siteUrl: SHARE_SITE_URL,
+    paymentProvider: paymentProvider(),
   });
 });
 
@@ -1145,6 +1295,78 @@ app.post('/api/admin/set-access', (req, res) => {
   res.json({ success: true });
 });
 
+async function activateWhopMembership(payload, source = 'webhook', options = {}) {
+  if (!whopMembershipIsAllowed(payload)) {
+    console.warn(`[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)}`);
+    return null;
+  }
+
+  const email = whopPayloadEmail(payload);
+  if (!email) {
+    console.warn(`[whop:${source}] membership ${payload?.id || '(unknown)'} missing email`);
+    return null;
+  }
+
+  const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
+  const accessGranted = ['trialing', 'active'].includes(mappedStatus) ? 1 : 0;
+  const membershipId = payload?.id || null;
+  const memberId = payload?.member?.id || null;
+  const renewalEnd = payload?.renewal_period_end || null;
+
+  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user) {
+    if (renewalEnd) {
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(email, mappedStatus, renewalEnd, accessGranted, membershipId, memberId);
+    } else {
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
+        VALUES (?, ?, datetime('now', '+${TRIAL_DAYS} days'), ?, ?, ?)
+      `).run(email, mappedStatus, accessGranted, membershipId, memberId);
+    }
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else {
+    db.prepare(`
+      UPDATE users
+      SET status = ?,
+          access_granted = ?,
+          whop_membership_id = COALESCE(?, whop_membership_id),
+          whop_member_id = COALESCE(?, whop_member_id),
+          trial_end = COALESCE(?, trial_end)
+      WHERE id = ?
+    `).run(mappedStatus, accessGranted, membershipId, memberId, renewalEnd, user.id);
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  }
+
+  if (!accessGranted) {
+    console.log(`[whop:${source}] deactivated ${email} (${mappedStatus})`);
+    return user;
+  }
+
+  if (options.sendLoginEmail === false) {
+    console.log(`[whop:${source}] activated ${email} (${mappedStatus})`);
+    return user;
+  }
+
+  const token = require('crypto').randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+
+  try {
+    await sendMagicLink(email, token, {
+      subject: 'Your Word in Context trial is ready — log in here',
+      htmlPrefix: `<p>Your Whop checkout is complete and your <strong>${TRIAL_DAYS}-day trial</strong> is active.</p>`
+    });
+    console.log(`[whop:${source}] activated ${email} (${mappedStatus}) and sent login link`);
+  } catch (emailErr) {
+    console.error(`[whop:${source}] activated ${email} but login email failed:`, emailErr);
+  }
+
+  return user;
+}
+
 async function activateStripeCheckoutSession(session, source = 'webhook') {
   const email = normalizeEmail(session.metadata?.email || session.customer_email);
   if (!email) {
@@ -1190,13 +1412,35 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
   return user;
 }
 
-// Backup path when Stripe webhooks are missing/misconfigured: success page can confirm the session directly.
+// Backup path when webhooks are missing/misconfigured: success page can confirm checkout directly.
 app.post('/api/complete-checkout', async (req, res) => {
   try {
-    if (!stripeConfigured()) {
-      return res.status(503).json({ error: 'Stripe is not configured on this server.' });
+    const { sessionId, email: rawEmail } = req.body || {};
+    const provider = paymentProvider();
+
+    if (provider === 'whop') {
+      const email = normalizeEmail(rawEmail);
+      if (!email) return res.status(400).json({ error: 'email required' });
+
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
+
+      if (!user.access_granted || !['trialing', 'active', 'free'].includes(user.status)) {
+        return res.status(400).json({
+          error: 'Checkout is still processing. Wait a moment, refresh, or use Log in at the top with the email + password you chose.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        email: user.email,
+        message: 'Trial active. Check your email for a secure login link, or use the Log in button with the password you chose.'
+      });
     }
-    const { sessionId } = req.body || {};
+
+    if (!stripeConfigured()) {
+      return res.status(503).json({ error: 'Payments are not configured on this server.' });
+    }
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -1260,9 +1504,56 @@ app.post('/api/stripe-webhook', async (req, res) => {
   res.json({ received: true });
 });
 
-// Simple success page after Stripe Checkout
+app.post('/api/whop-webhook', async (req, res) => {
+  if (!whopWebhookConfigured()) {
+    return res.status(503).send('Whop webhook not configured');
+  }
+
+  let event;
+  try {
+    event = verifyWhopWebhook(req.body, req.headers);
+  } catch (err) {
+    console.error('Whop webhook signature error:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    const type = event?.type;
+    const data = event?.data || {};
+
+    if (type === 'membership.activated' || type === 'membership.went_valid') {
+      await activateWhopMembership(data, 'webhook');
+    } else if (type === 'membership.deactivated' || type === 'membership.went_invalid') {
+      await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
+    } else if (type === 'payment.succeeded') {
+      const membership = data?.membership || data;
+      if (membership?.id || membership?.status) {
+        await activateWhopMembership(membership, 'webhook-payment');
+      } else {
+        const email = whopPayloadEmail(data);
+        if (email) {
+          const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+          if (user) {
+            db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
+            console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Whop webhook handler error:', err);
+    return res.status(500).json({ error: 'Webhook handler failed' });
+  }
+
+  res.json({ received: true });
+});
+
+// Simple success page after checkout (Whop redirect or Stripe session_id)
 app.get('/success', (req, res) => {
   const sessionId = String(req.query.session_id || '');
+  const email = normalizeEmail(req.query.email || '');
+  const provider = paymentProvider() || 'stripe';
+  const paymentLabel = provider === 'whop' ? 'Whop' : 'Stripe';
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
@@ -1271,14 +1562,22 @@ app.get('/success', (req, res) => {
     <p><a href="/">Return to home</a> and use the <strong>Log in</strong> button with the email + password you chose.</p>
     <p><a href="/app">Open the App</a></p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
-    <p><small>We will never sell your information. Chats stay in your browser only. Powered by Stripe for secure payments.</small></p>
+    <p><small>We will never sell your information. Chats stay in your browser only. Payments handled securely by ${paymentLabel}.</small></p>
     <script>
       const sessionId = ${JSON.stringify(sessionId)};
-      if (sessionId) {
+      let email = ${JSON.stringify(email)};
+      const provider = ${JSON.stringify(provider)};
+      try {
+        if (!email) email = sessionStorage.getItem('wic_checkout_email') || '';
+      } catch (e) {}
+      const body = sessionId
+        ? { sessionId }
+        : (provider === 'whop' && email ? { email } : null);
+      if (body) {
         fetch('/api/complete-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId })
+          body: JSON.stringify(body)
         })
           .then(r => r.json())
           .then(data => {
