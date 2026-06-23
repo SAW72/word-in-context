@@ -514,8 +514,11 @@ If the user distinguishes (1) apostolic writing authority and directional author
 When the user asks what Paul said (quote Paul first — do not dodge)
 If the user asks what Paul said about apostles, being last, or similar, quote First Corinthians 15:5–10 before other passages — especially 15:8 and 15:9. The Word states in 1 Corinthians 15:8 that Christ appeared last of all to Paul, as to one of untimely birth. The Word states in 15:9 that Paul is the least of the apostles and unworthy to be called an apostle because he persecuted the church. Do not answer "Paul last apostle" questions using only Acts 1:21–22, Ephesians 2:20, or 2 Corinthians 12:12 while skipping 1 Corinthians 15. Do not claim Paul never spoke of being "last" without quoting 15:8. Distinguish the user's paraphrase ("Paul said he was the last apostle") from Paul's actual wording: 15:8 is "last of all" in the list of resurrection appearances (after Cephas, the Twelve, more than five hundred, James, and the apostles); 15:9 is "least of the apostles," not the exact phrase "last apostle." Then state plainly what those verses do and do not say about whether any apostles after Paul hold the same office — 15:8–9 do not use the words "no more apostles after me," but they do place Paul last in that appearance list and name his apostleship in the same paragraph.
 
+When the user names specific verses (narrow focus — e.g. "what about 1 Corinthians 15:8-9")
+Stay on those verses and their immediate same-chapter context. Quote the verses named, then explain them inside Paul's argument in chapter 15 (the resurrection witness list in 15:5–7 leading into 15:8–9). For 1 Corinthians 15:8–9 specifically: (1) 15:8 places Paul last in the enumerated resurrection appearances; "as to one of untimely birth" addresses his not having been with Jesus during the earthly ministry like the earlier witnesses. (2) 15:9 is a separate statement — Paul is the least of the apostles because he persecuted the church, yet he remains an apostle in the same breath. (3) State what 15:8–9 say: Paul is last in that appearance sequence; Paul is least among apostles but still an apostle. (4) State what 15:8–9 do not say: they do not contain the sentence "I am the last apostle" or "no apostles after me." Do not, after explaining 15:8–9, pad the answer with bulk quotations from Acts, Ephesians, or 2 Corinthians unless the user asked to compare passages. Do not attach "The Word does not, in these verses…" conclusions to verses you introduced that the user did not ask about.
+
 Named-speaker rule (general)
-When the user names a biblical speaker ("what Paul said," "what Peter said," "what Jesus said"), locate and quote that speaker's own words on the topic first. Secondary passages about the same theme (criteria, foundations, signs) come after the primary speech.
+When the user names a biblical speaker ("what Paul said," "what Peter said," "what Jesus said"), locate and quote that speaker's own words on the topic first. Secondary passages about the same theme (criteria, foundations, signs) come after the primary speech — briefly, only if the user asked for comparison.
 
 Original Languages
 When the user asks for word study, Greek/Hebrew/Aramaic meanings, transliteration, lexical range, or "the Greek/Hebrew of" a term, this is core Scripture study — always answer fully. Provide the original-language form, transliteration, literal gloss as used in the passage, and how The Word employs the term there (and in other Scripture uses when helpful). If they are following up on a passage already in this conversation (e.g. Hebrews 4:12) without repeating the reference, anchor your analysis to that passage. Original-language word study is never "outside Scripture" and must not be refused. For general answers without a word-study request, begin with literal English before introducing Greek or Hebrew. Never speak or pronounce Hebrew or Greek words aloud unless requested.
@@ -1832,7 +1835,30 @@ app.post('/api/chat', (req, res, next) => {
       if (/\bwhat (did |about )?paul\b/.test(t) && /\b(apostle|last)\b/.test(t)) {
         refs.push('1 Corinthians 15:8', '1 Corinthians 15:9');
       }
+      if (/1\s?cor(?:inthians)?\s+15:8/i.test(t)) {
+        refs.push('1 Corinthians 15:5-10');
+      }
       return refs;
+    }
+
+    function expandNearbyContextRefs(refs, text) {
+      const t = String(text || '').toLowerCase();
+      const out = [];
+      const cor15Eight = refs.some((r) => /1\s?cor(?:inthians)?\s+15:(8|9|8-9|5-10)/i.test(r))
+        || /1\s?cor(?:inthians)?\s+15:8/i.test(t);
+      if (cor15Eight) {
+        out.push('1 Corinthians 15:5-10');
+        return out;
+      }
+      return [...refs];
+    }
+
+    function isNarrowVerseQuestion(text, namedRefs) {
+      if (!namedRefs?.length || !text) return false;
+      const t = text.toLowerCase().trim();
+      return /\bwhat about\b/.test(t)
+        || namedRefs.length <= 2
+        || (namedRefs.length <= 3 && t.length < 200);
     }
 
     function isWordStudyFollowUp(text) {
@@ -1861,7 +1887,13 @@ app.post('/api/chat', (req, res, next) => {
       return res.status(400).json({ error: blockedReason });
     }
 
-    let allRefs = [...new Set([...extractRefs(lastUserContent), ...extractThematicRefs(lastUserContent)])];
+    const userNamedRefs = extractRefs(lastUserContent);
+    let allRefs = [...new Set([...userNamedRefs, ...extractThematicRefs(lastUserContent)])];
+    const narrowVerseFocus = isNarrowVerseQuestion(lastUserContent, userNamedRefs);
+
+    if (narrowVerseFocus) {
+      allRefs = expandNearbyContextRefs(allRefs, lastUserContent);
+    }
 
     const wordStudyFollowUp = isWordStudyFollowUp(lastUserContent);
     const passageFollowUp = isFollowUpToPriorPassage(lastUserContent);
@@ -1883,7 +1915,7 @@ app.post('/api/chat', (req, res, next) => {
       const rest = allRefs.filter((r) => !thematicFirst.includes(r));
       allRefs = [...new Set([...thematicFirst, ...rest])];
     }
-    allRefs = allRefs.slice(0, 6);
+    allRefs = allRefs.slice(0, narrowVerseFocus ? 3 : 6);
 
     // Translation display names for citations and UI
     const transDisplayNames = {
@@ -1919,7 +1951,8 @@ app.post('/api/chat', (req, res, next) => {
     }
 
     const fetchedPassages = [];
-    for (const ref of allRefs.slice(0, 4)) { // cap refs, will fetch originals too
+    const fetchRefLimit = narrowVerseFocus ? 2 : 4;
+    for (const ref of allRefs.slice(0, fetchRefLimit)) { // cap refs, will fetch originals too
       const english = await fetchEnglishPassage(ref);
       if (english) fetchedPassages.push(english);
 
@@ -1940,7 +1973,7 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible. For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.${wordStudyFollowUp ? ' WORD STUDY: The user is asking about original-language words in the grounded passage(s). Show Greek/Hebrew forms, transliteration, and lexical meaning as used in Scripture — do not refuse or answer only in English.' : ''}`;
+      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations.${narrowVerseFocus ? ' NARROW VERSE FOCUS: The user named specific verse(s). Explain those verses and their immediate same-chapter context first. Do not pad the reply with quotations from other books (Acts, Ephesians, etc.) unless the user asked to compare. When stating what The Word does not say, apply that only to the verses the user asked about — not to extra passages you add.' : ' These blocks do NOT limit your answer: respond fully to whatever the user is asking now, including other books, chapters, themes, and verses across the whole Bible.'} For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture. Mention the original language source only once per response when relevant.${wordStudyFollowUp ? ' WORD STUDY: The user is asking about original-language words in the grounded passage(s). Show Greek/Hebrew forms, transliteration, and lexical meaning as used in Scripture — do not refuse or answer only in English.' : ''}${narrowVerseFocus && /1\s?Corinthians\s+15/i.test(allRefs.join(' ')) ? ' For 1 Corinthians 15:8-9: explain Paul\'s resurrection-witness list in 15:5-7, then 15:8 (last of all / untimely birth), then 15:9 (least of the apostles) — say what those two verses affirm and what they do not explicitly claim.' : ''}`;
     } else if (wordStudyFollowUp) {
       bibleContext = `\n\nWORD STUDY REQUEST: The user is asking about Greek, Hebrew, or Aramaic word meanings without naming a new reference. Use the passage(s) already discussed in this conversation. Show original-language forms, transliteration, literal glosses, and how The Word uses each term in context. Do not refuse as "beyond the text" — original-language study is the core purpose of this app.`;
     } else if (isTopicalScriptureRequest(lastUserContent)) {
