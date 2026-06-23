@@ -27,10 +27,12 @@ services:
       # Use www — bare thewordincontext.org redirects to www (checkout success + magic links must match).
       - key: RENDER_EXTERNAL_URL
         value: https://www.thewordincontext.org
-      # Whop checkout for 7-day trial (override if a different plan has your trial pricing)
-      - key: WHOP_CHECKOUT_URL
+      # Whop checkout links (7-day free trial on both — set to match your monthly/yearly plans in Whop)
+      - key: WHOP_CHECKOUT_URL_MONTHLY
         value: https://whop.com/checkout/plan_hWWAQiPvpAYKN
-      # Optional comma-separated allowlist for webhook plan IDs
+      - key: WHOP_CHECKOUT_URL_YEARLY
+        value: https://whop.com/checkout/plan_xjGkPczz1CWju
+      # Third plan ID (if any) goes in WHOP_PLAN_IDS only — webhook allowlist, not a signup button
       - key: WHOP_PLAN_IDS
         value: plan_hWWAQiPvpAYKN,plan_xjGkPczz1CWju,plan_W9vAA0xyptzgt
 

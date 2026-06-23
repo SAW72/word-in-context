@@ -887,6 +887,15 @@
       <form id="trial-form" class="auth-form">
         <input type="email" id="trial-email" class="auth-input" placeholder="Your email" required>
         <input type="password" id="trial-password" class="auth-input" placeholder="Choose password (min 8 chars — for future logins)" required minlength="8">
+        <fieldset id="trial-billing" style="border:none; margin:0 0 10px; padding:0; text-align:center;">
+          <legend style="font-size:12px; opacity:0.75; margin-bottom:8px;">Billing after your 7-day free trial</legend>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0 12px 6px 0; font-size:14px; cursor:pointer;">
+            <input type="radio" name="trial-billing" value="monthly" checked> Monthly ($4.99/mo)
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:6px; margin:0 0 6px; font-size:14px; cursor:pointer;">
+            <input type="radio" name="trial-billing" value="yearly"> Yearly (best value)
+          </label>
+        </fieldset>
         <button type="submit" class="btn">Start 7-Day Free Trial (card required after)</button>
         <p style="font-size:12px; text-align:center; margin-top:10px; opacity:0.7; line-height:1.4;">
           Card collected securely by Whop for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top.
@@ -977,8 +986,10 @@
         e.preventDefault();
         const email = document.getElementById('trial-email').value;
         const password = document.getElementById('trial-password').value;
+        const billingInput = document.querySelector('input[name="trial-billing"]:checked');
+        const billing = billingInput ? billingInput.value : 'monthly';
         try {
-          const { res, data } = await apiPost('/api/create-checkout', { email, password });
+          const { res, data } = await apiPost('/api/create-checkout', { email, password, billing });
           if (data.url) {
             try { sessionStorage.setItem('wic_checkout_email', email.trim().toLowerCase()); } catch (err) {}
             window.location.href = data.url;

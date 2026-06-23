@@ -155,15 +155,32 @@ async function hashPassword(password) {
   return bcrypt.hash(String(password), 10);
 }
 
-const DEFAULT_WHOP_CHECKOUT_URL = 'https://whop.com/checkout/plan_hWWAQiPvpAYKN';
+const DEFAULT_WHOP_CHECKOUT_URL_MONTHLY = 'https://whop.com/checkout/plan_hWWAQiPvpAYKN';
+const DEFAULT_WHOP_CHECKOUT_URL_YEARLY = 'https://whop.com/checkout/plan_xjGkPczz1CWju';
 const DEFAULT_WHOP_PLAN_IDS = [
   'plan_hWWAQiPvpAYKN',
   'plan_xjGkPczz1CWju',
   'plan_W9vAA0xyptzgt',
 ];
 
+function whopCheckoutUrlForBilling(billing = 'monthly') {
+  const cycle = String(billing || 'monthly').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
+  if (cycle === 'yearly') {
+    return (
+      process.env.WHOP_CHECKOUT_URL_YEARLY
+      || process.env.WHOP_CHECKOUT_URL
+      || DEFAULT_WHOP_CHECKOUT_URL_YEARLY
+    ).trim();
+  }
+  return (
+    process.env.WHOP_CHECKOUT_URL_MONTHLY
+    || process.env.WHOP_CHECKOUT_URL
+    || DEFAULT_WHOP_CHECKOUT_URL_MONTHLY
+  ).trim();
+}
+
 function whopCheckoutUrl() {
-  return (process.env.WHOP_CHECKOUT_URL || DEFAULT_WHOP_CHECKOUT_URL).trim();
+  return whopCheckoutUrlForBilling('monthly');
 }
 
 function whopPlanIds() {
@@ -237,8 +254,8 @@ function verifyWhopWebhook(rawBody, headers) {
   throw new Error('Invalid Whop webhook signature');
 }
 
-function buildWhopCheckoutUrl(email) {
-  const base = whopCheckoutUrl();
+function buildWhopCheckoutUrl(email, billing = 'monthly') {
+  const base = whopCheckoutUrlForBilling(billing);
   const url = base.startsWith('http') ? new URL(base) : new URL(`https://whop.com/checkout/${base.replace(/^\//, '')}`);
   url.searchParams.set('email', email);
   url.searchParams.set('email.disabled', '1');
@@ -983,7 +1000,7 @@ app.post('/api/create-checkout', async (req, res) => {
       return res.status(503).json({ error: 'Payments are not configured. Add WHOP_CHECKOUT_URL or Stripe keys to your environment.' });
     }
 
-    const { email: rawEmail, password, trialDays: requestedTrialDays } = req.body;
+    const { email: rawEmail, password, trialDays: requestedTrialDays, billing } = req.body;
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
@@ -992,8 +1009,13 @@ app.post('/api/create-checkout', async (req, res) => {
       : TRIAL_DAYS;
 
     if (provider === 'whop') {
+      const billingCycle = String(billing || 'monthly').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
       await upsertTrialCheckoutUser(email, password, effectiveTrialDays);
-      return res.json({ url: buildWhopCheckoutUrl(email), provider: 'whop' });
+      return res.json({
+        url: buildWhopCheckoutUrl(email, billingCycle),
+        provider: 'whop',
+        billing: billingCycle,
+      });
     }
 
     const passwordHash = await hashPassword(password);
