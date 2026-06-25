@@ -2020,6 +2020,7 @@
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a>
         <button type="button" id="unlock-all-voices-btn" class="settings-chip-btn" onclick="unlockAllVoices()">🔊 Unlock all voices</button>
+        <button type="button" id="fix-chrome-speech-btn" class="settings-chip-btn" onclick="fixChromeSpeech()" style="display:none;">🔧 Fix Chrome audio</button>
         <button type="button" class="settings-chip-btn" onclick="testSelectedVoice()">🔊 Test selected</button>
       </label>
       <div id="voice-diagnostics" class="settings-diagnostics"></div>
@@ -2361,6 +2362,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let isListening = false;
     let startingRecognition = false; // prevents re-entrant start() calls that cause "already started" InvalidStateError
     let currentUtterance = null;
+    let speechQueue = [];
+    let speechQueueIndex = 0;
+    let speechKeepAliveTimer = null;
+    let speechChunkRetryCount = 0;
+    let speechSilentWatchdog = null;
 
     // Audio capture for cheap high-accuracy xAI STT (only used on hands-free commits).
     // Browser SpeechRecognition gives us fast interim + wake word; xAI STT gives far better
@@ -2499,23 +2505,100 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg|EdgiOS|Firefox|FxiOS|OPR/i.test(ua);
     }
 
+    function isChromeBrowser() {
+      const ua = navigator.userAgent;
+      return /Chrome|CriOS|Chromium/i.test(ua) && !/Edg|EdgiOS|OPR/i.test(ua);
+    }
+
+    function chromeSpeechDelayMs() {
+      return isChromeBrowser() ? 200 : 40;
+    }
+
+    function isChromeSpeechStuck() {
+      if (!isChromeBrowser()) return false;
+      try {
+        return !!(synth.speaking || synth.pending || synth.paused);
+      } catch (e) {
+        return !!synth.speaking;
+      }
+    }
+
     // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
     // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
-    function wakeSpeechEngine(force) {
-      if (__ttsWoken && !force) return;
-      __ttsWoken = true;
-      try {
-        try { synth.getVoices(); } catch (e) {}
-        const u = new SpeechSynthesisUtterance(' ');
-        if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
-          const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
-          if (target) u.voice = target;
+    let chromeSpeechResetChain = Promise.resolve();
+
+    function hardResetChromeSpeech() {
+      chromeSpeechResetChain = chromeSpeechResetChain.then(() => new Promise((resolve) => {
+        try {
+          synth.cancel();
+          setTimeout(() => {
+            try { synth.cancel(); } catch (e) {}
+            try { synth.getVoices(); } catch (e) {}
+            setTimeout(resolve, chromeSpeechDelayMs());
+          }, isChromeBrowser() ? 80 : 20);
+        } catch (e) {
+          resolve();
         }
-        u.volume = 0.001;
-        synth.speak(u);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
-      } catch (e) {}
+      }));
+      return chromeSpeechResetChain;
+    }
+
+    function refreshVoiceObject(voice) {
+      if (!voice || !voice.name) return null;
+      try {
+        const fresh = synth.getVoices();
+        return fresh.find((v) => v.name === voice.name && (!voice.voiceURI || v.voiceURI === voice.voiceURI))
+          || fresh.find((v) => v.name === voice.name)
+          || null;
+      } catch (e) {
+        return voice;
+      }
+    }
+
+    function primeSpeechEngine(force) {
+      if (isChromeSpeechStuck() || force) {
+        __ttsWoken = false;
+      }
+      if (__ttsWoken && !force) return hardResetChromeSpeech();
+      __ttsWoken = true;
+      return hardResetChromeSpeech().then(() => {
+        try {
+          try { synth.getVoices(); } catch (e) {}
+          const u = new SpeechSynthesisUtterance(' ');
+          const target = refreshVoiceObject(selectedVoice) || findLocalVoiceById(voiceSettings.voiceId);
+          if (target) u.voice = target;
+          u.volume = 0.001;
+          u.rate = 1.1;
+          u.onend = () => { try { if (synth.speaking) synth.cancel(); } catch (e) {} };
+          synth.speak(u);
+        } catch (e) {}
+      });
+    }
+
+    function wakeSpeechEngine(force) {
+      primeSpeechEngine(force);
+    }
+
+    function fixChromeSpeech() {
+      __ttsWoken = false;
+      speechChunkRetryCount = 0;
+      stopSpeaking();
+      return hardResetChromeSpeech().then(() => {
+        try { synth.getVoices(); } catch (e) {}
+        scheduleVoiceListRefresh();
+        const testVoice = refreshVoiceObject(selectedVoice) || findLocalVoiceById(voiceSettings.voiceId)
+          || getBrowserVoices().find((v) => (v.lang || '').startsWith('en'));
+        const utterance = new SpeechSynthesisUtterance('Chrome audio reset. John chapter three verse sixteen.');
+        if (testVoice) utterance.voice = testVoice;
+        utterance.volume = 1.0;
+        utterance.rate = voiceSettings.rate || 0.95;
+        utterance.onend = scheduleVoiceListRefresh;
+        utterance.onerror = scheduleVoiceListRefresh;
+        setTimeout(() => {
+          try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
+        }, chromeSpeechDelayMs());
+      });
     }
 
     function getBrowserVoices() {
@@ -2544,6 +2627,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function updateVoiceDiagnostics() {
       const el = document.getElementById('voice-diagnostics');
+      const chromeFixBtn = document.getElementById('fix-chrome-speech-btn');
+      if (chromeFixBtn) chromeFixBtn.style.display = isChromeBrowser() ? 'inline-block' : 'none';
       if (!el) return;
       const voices = getBrowserVoices();
       const english = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
@@ -2558,6 +2643,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         html += '<br><span class="settings-diag-hint"><strong>iPhone:</strong> basic system voices only (any browser). Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
       } else if (isSafariBrowser()) {
         html += '<br><span class="settings-diag-safari"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
+      } else if (isChromeBrowser()) {
+        html += '<br><span class="settings-diag-hint"><strong>Chrome:</strong> if you see speaking but hear nothing, tap <strong>Fix Chrome audio</strong> (no restart needed).</span>';
       } else {
         html += '<br><span class="settings-diag-hint"><strong>Mac:</strong> <strong>Chrome</strong> recommended for Enhanced voices.</span>';
       }
@@ -2588,10 +2675,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.onend = scheduleVoiceListRefresh;
       utterance.onerror = scheduleVoiceListRefresh;
-      if (synth.speaking) synth.cancel();
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
-      }, 60);
+      hardResetChromeSpeech().then(() => {
+        setTimeout(() => {
+          try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
+        }, chromeSpeechDelayMs());
+      });
     }
 
     // Back-compat alias
@@ -2606,6 +2694,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
       document.addEventListener('click', handler, { once: true });
       document.addEventListener('touchstart', handler, { once: true });
+      if (isChromeBrowser()) {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            __ttsWoken = false;
+            hardResetChromeSpeech().then(() => {
+              try { synth.getVoices(); } catch (e) {}
+              scheduleVoiceListRefresh();
+            });
+          }
+        });
+      }
     }
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
@@ -4524,7 +4623,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function speak(text, voiceNoteEl = null, langHint = null) {
       text = cleanTextForSpeech(text);
-      wakeSpeechEngine();   // ensure browser TTS is unlocked for this session (first call must be gesture-driven)
       stopSpeaking();
 
       // Make sure we're not listening while the AI is speaking its reply.
@@ -4623,14 +4721,94 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         || voices.find((v) => (v.lang || '').toLowerCase().startsWith(base));
     }
 
-    function fallbackToBrowserSpeech(text, langHint = null) {
-      text = cleanTextForSpeech(text);
-      currentUtterance = new SpeechSynthesisUtterance(text);
-      lastSpokenText = text;
-      currentUtterance.rate = voiceSettings.rate || 0.95;
-      currentUtterance.pitch = voiceSettings.pitch || 1.0;
-      currentUtterance.volume = 1.0;
+    function isSpeechOutputting() {
+      return synth.speaking || speechQueue.length > 0;
+    }
 
+    function clearSpeechKeepAlive() {
+      if (speechKeepAliveTimer) {
+        clearInterval(speechKeepAliveTimer);
+        speechKeepAliveTimer = null;
+      }
+    }
+
+    function resetSpeechQueue() {
+      speechQueue = [];
+      speechQueueIndex = 0;
+      clearSpeechKeepAlive();
+      clearSpeechSilentWatchdog();
+    }
+
+    // Chrome/Safari cut off long utterances (~15s). Chunk + queue + keepalive fixes mid-reply stops.
+    function splitTextForSpeechChunks(text, maxLen = 220) {
+      if (!text) return [];
+      const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+      const chunks = [];
+      let current = '';
+
+      function flushCurrent() {
+        if (current.trim()) chunks.push(current.trim());
+        current = '';
+      }
+
+      function pushWordChunks(part) {
+        const words = part.split(/\s+/).filter(Boolean);
+        let buf = '';
+        for (const word of words) {
+          const next = buf ? `${buf} ${word}` : word;
+          if (next.length <= maxLen) {
+            buf = next;
+          } else {
+            if (buf) chunks.push(buf);
+            buf = word.length <= maxLen ? word : word.slice(0, maxLen);
+          }
+        }
+        if (buf) current = buf;
+      }
+
+      for (const rawSentence of sentences) {
+        const sentence = rawSentence.trim();
+        if (!sentence) continue;
+        const candidate = current ? `${current} ${sentence}` : sentence;
+        if (candidate.length <= maxLen) {
+          current = candidate;
+        } else {
+          flushCurrent();
+          if (sentence.length <= maxLen) {
+            current = sentence;
+          } else {
+            pushWordChunks(sentence);
+          }
+        }
+      }
+      flushCurrent();
+      return chunks.length ? chunks : [text];
+    }
+
+    function startSpeechKeepAlive() {
+      clearSpeechKeepAlive();
+      // Chrome often goes silent after pause/resume — chunking handles long replies instead.
+      if (isChromeBrowser()) return;
+      speechKeepAliveTimer = setInterval(() => {
+        if (!isSpeechOutputting()) {
+          clearSpeechKeepAlive();
+          return;
+        }
+        try {
+          synth.pause();
+          synth.resume();
+        } catch (e) {}
+      }, 8000);
+    }
+
+    function clearSpeechSilentWatchdog() {
+      if (speechSilentWatchdog) {
+        clearTimeout(speechSilentWatchdog);
+        speechSilentWatchdog = null;
+      }
+    }
+
+    function resolveSpeechVoice(langHint = null) {
       let voiceId = voiceSettings.voiceId;
       const voiceModalEl = document.getElementById('voice-modal');
       const voiceSelectEl = document.getElementById('voice-select');
@@ -4644,71 +4822,154 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (langHint) {
         const langVoice = findVoiceForLangHint(langHint);
         if (langVoice) {
-          currentUtterance.voice = langVoice;
-          currentUtterance.lang = langVoice.lang || langHint;
-        } else {
-          currentUtterance.lang = langHint;
+          return { voice: langVoice, lang: langVoice.lang || langHint };
         }
-      } else if (usedVoice) {
-        currentUtterance.voice = usedVoice;
-        currentUtterance.lang = usedVoice.lang || 'en-US';
-        selectedVoice = usedVoice;
-      } else {
-        currentUtterance.lang = 'en-US';
+        return { voice: null, lang: langHint };
       }
 
-      currentUtterance.onend = () => {
-        currentUtterance = null;
-        if (handsFreeEnabled && !isListening) {
-          // longer delay after TTS ends before listening again, to let audio/echo settle in the mic
-          scheduleHandsFreeRestart(1200);
-        }
-      };
+      if (usedVoice) {
+        const freshVoice = refreshVoiceObject(usedVoice) || usedVoice;
+        selectedVoice = freshVoice;
+        return { voice: freshVoice, lang: freshVoice.lang || 'en-US' };
+      }
 
-      currentUtterance.onerror = (ev) => {
-        if (ev.error === 'canceled' || ev.error === 'interrupted') {
-          return; // expected when canceling for new speak or barge-in; ignore silently to stop spam
-        }
-        console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (currentUtterance && currentUtterance.voice && currentUtterance.voice.name) || 'default');
-        // Last-ditch: try once more with no forced voice (lets browser pick its system default)
+      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
         try {
-          if (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed') {
-            const u2 = new SpeechSynthesisUtterance(text);
-            u2.rate = currentUtterance.rate || 0.95;
-            u2.pitch = currentUtterance.pitch || 1.0;
-            u2.volume = 1.0;
-            if (synth.speaking) synth.cancel();
-            synth.speak(u2);
+          const reMatch = findLocalVoiceById(voiceSettings.voiceId);
+          if (reMatch) {
+            selectedVoice = reMatch;
+            return { voice: reMatch, lang: reMatch.lang || 'en-US' };
           }
         } catch (e) {}
+      }
+
+      return { voice: null, lang: 'en-US' };
+    }
+
+    function finishSpeechOutput() {
+      resetSpeechQueue();
+      currentUtterance = null;
+      if (handsFreeEnabled && !isListening) {
+        scheduleHandsFreeRestart(1200);
+      }
+    }
+
+    function speakNextInQueue(langHint = null, allowVoiceFallback = true) {
+      if (speechQueueIndex >= speechQueue.length) {
+        speechChunkRetryCount = 0;
+        finishSpeechOutput();
+        return;
+      }
+
+      const chunkText = speechQueue[speechQueueIndex++];
+      const utterance = new SpeechSynthesisUtterance(chunkText);
+      currentUtterance = utterance;
+      utterance.rate = voiceSettings.rate || 0.95;
+      utterance.pitch = voiceSettings.pitch || 1.0;
+      utterance.volume = 1.0;
+
+      const voiceChoice = resolveSpeechVoice(langHint);
+      if (allowVoiceFallback && voiceChoice.voice) {
+        const freshVoice = refreshVoiceObject(voiceChoice.voice);
+        if (freshVoice) {
+          utterance.voice = freshVoice;
+          utterance.lang = freshVoice.lang || voiceChoice.lang;
+        } else {
+          utterance.lang = voiceChoice.lang;
+        }
+      } else {
+        utterance.lang = voiceChoice.lang || 'en-US';
+      }
+
+      let chunkStarted = false;
+
+      utterance.onstart = () => {
+        chunkStarted = true;
+        speechChunkRetryCount = 0;
+        clearSpeechSilentWatchdog();
       };
 
-      if (synth.speaking) synth.cancel();
+      utterance.onend = () => {
+        clearSpeechSilentWatchdog();
+        speakNextInQueue(langHint, allowVoiceFallback);
+      };
 
-      // Simple, clean pattern: fresh getVoices + resolve the saved/chosen voice, then
-      // cancel + tiny timeout + speak. Let the browser populate voices naturally.
-      setTimeout(() => {
+      utterance.onerror = (ev) => {
+        clearSpeechSilentWatchdog();
+        if (ev.error === 'canceled' || ev.error === 'interrupted') return;
+        console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (utterance.voice && utterance.voice.name) || 'default');
+        if (allowVoiceFallback && (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed')) {
+          speechQueueIndex = Math.max(0, speechQueueIndex - 1);
+          speakNextInQueue(langHint, false);
+          return;
+        }
+        speakNextInQueue(langHint, allowVoiceFallback);
+      };
+
+      const launchChunk = () => {
         try {
-          try { synth.getVoices(); } catch (e) {}
-          if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-            const lastFresh = synth.getVoices();
-            const norm = normalizeVoiceName(voiceSettings.voiceId);
-            const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm) ||
-                            lastFresh.find(v => v.name.toLowerCase() === voiceSettings.voiceId.toLowerCase());
-            if (reMatch) {
-              currentUtterance.voice = reMatch;
-            }
+          if (isChromeSpeechStuck()) {
+            return hardResetChromeSpeech().then(() => {
+              setTimeout(() => {
+                try { synth.speak(utterance); } catch (e) {
+                  console.error('[TTS] speak() failed after Chrome reset:', e);
+                  speakNextInQueue(langHint, allowVoiceFallback);
+                }
+              }, chromeSpeechDelayMs());
+            });
           }
+          synth.speak(utterance);
+        } catch (e) {
+          console.error('[TTS] speak() failed:', e);
+          speakNextInQueue(langHint, allowVoiceFallback);
+        }
 
+        if (isChromeBrowser()) {
+          clearSpeechSilentWatchdog();
+          speechSilentWatchdog = setTimeout(() => {
+            if (chunkStarted) return;
+            if (speechChunkRetryCount >= 2) {
+              console.warn('[TTS] Chrome silent failure — skipping chunk after retries');
+              speakNextInQueue(langHint, false);
+              return;
+            }
+            speechChunkRetryCount += 1;
+            speechQueueIndex = Math.max(0, speechQueueIndex - 1);
+            console.warn('[TTS] Chrome silent failure — resetting speech engine and retrying');
+            hardResetChromeSpeech().then(() => speakNextInQueue(langHint, false));
+          }, 1100);
+        }
+      };
+
+      if (speechQueueIndex === 1) {
+        hardResetChromeSpeech().then(() => {
           setTimeout(() => {
-            try { if (synth.speaking) synth.cancel(); } catch (e) {}
-            synth.speak(currentUtterance);
-          }, 0);
-        } catch (e) { console.error(e); }
-      }, 0);
+            try { synth.getVoices(); } catch (e) {}
+            launchChunk();
+          }, chromeSpeechDelayMs());
+        });
+        return;
+      }
+
+      setTimeout(launchChunk, chromeSpeechDelayMs());
+    }
+
+    function fallbackToBrowserSpeech(text, langHint = null) {
+      text = cleanTextForSpeech(text);
+      lastSpokenText = text;
+      clearSpeechSilentWatchdog();
+      speechChunkRetryCount = 0;
+      resetSpeechQueue();
+      speechQueue = splitTextForSpeechChunks(text);
+      speechQueueIndex = 0;
+      startSpeechKeepAlive();
+      speakNextInQueue(langHint, true);
     }
 
     function stopSpeaking() {
+      clearSpeechSilentWatchdog();
+      speechChunkRetryCount = 0;
+      resetSpeechQueue();
       if (synth.speaking) synth.cancel();
       currentUtterance = null;
 
@@ -4727,7 +4988,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function updateStopButton() {
-      const isSpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
+      const isSpeaking = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
       stopBtn.style.display = isSpeaking ? 'inline-block' : 'none';
     }
     setInterval(updateStopButton, 400);
@@ -4898,30 +5159,36 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      wakeSpeechEngine();
-      // Prime (Mac)
+      wakeSpeechEngine(true);
       try { synth.getVoices(); } catch(e){}
 
+      const freshVoice = refreshVoiceObject(voice) || voice;
       const utterance = new SpeechSynthesisUtterance(
         cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
       );
-      utterance.voice = voice;
+      utterance.voice = freshVoice;
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.pitch = voiceSettings.pitch || 1.0;
       utterance.volume = 1.0;
-      if (voice && voice.lang) utterance.lang = voice.lang;
+      if (freshVoice && freshVoice.lang) utterance.lang = freshVoice.lang;
 
       utterance.onerror = (ev) => {
         if (ev.error === 'canceled' || ev.error === 'interrupted') return;
         console.error('[TTS testSelected] error:', ev && ev.error);
+        if (isChromeBrowser() && (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed')) {
+          hardResetChromeSpeech().then(() => {
+            utterance.voice = null;
+            setTimeout(() => { try { synth.speak(utterance); } catch (e) { console.error(e); } }, chromeSpeechDelayMs());
+          });
+        }
       };
 
-      // Stop anything currently speaking
-      if (synth.speaking) synth.cancel();
-
-      setTimeout(() => {
-        try { synth.speak(utterance); } catch (e) { console.error(e); }
-      }, 60);
+      stopSpeaking();
+      hardResetChromeSpeech().then(() => {
+        setTimeout(() => {
+          try { synth.speak(utterance); } catch (e) { console.error(e); }
+        }, chromeSpeechDelayMs());
+      });
 
     }
 
@@ -5583,7 +5850,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         }
 
         if (handsFreeEnabled) {
-          const isCurrentlySpeaking = synth.speaking || (hostedAudio && !hostedAudio.paused);
+          const isCurrentlySpeaking = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
           const hasWake = containsWakeWord(transcript);
           const cmd = hasWake ? stripWakeWordPrefix(transcript) : '';
 
@@ -5767,8 +6034,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         if (errType === "no-speech" || errType === "aborted") {
           if (handsFreeEnabled && !startingRecognition) {
-            // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
-            scheduleHandsFreeRestart(1400);
+            const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
+            if (!isOutputting) {
+              // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
+              scheduleHandsFreeRestart(1400);
+            }
           }
           return;
         }
@@ -5812,7 +6082,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       recognition.onend = () => {
         stopListeningUI();
-        const isOutputting = synth.speaking || (hostedAudio && !hostedAudio.paused);
+        const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
           // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
@@ -5835,8 +6105,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       currentTranscript = '';
 
-      // ensure we're not outputting sound while trying to listen (prevents picking up own voice)
-      if (synth.speaking) synth.cancel();
+      // Don't cut off AI speech in hands-free — recognition stays open during TTS for barge-in only.
+      if (isSpeechOutputting()) {
+        if (handsFreeEnabled) {
+          scheduleHandsFreeRestart(500);
+          return;
+        }
+        if (synth.speaking) synth.cancel();
+      }
 
       if (hostedAudio) {
         try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
@@ -6069,6 +6345,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       restartTimer = setTimeout(() => {
         restartTimer = null;
         if (handsFreeEnabled && !isListening && !isAwaitingResponse && !startingRecognition) {
+          if (isSpeechOutputting()) {
+            scheduleHandsFreeRestart(500);
+            return;
+          }
           startListening();
         }
       }, delayMs);
@@ -6424,7 +6704,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
         if (isListening) {
           recognition.stop();
-        } else if (synth.speaking || (hostedAudio && !hostedAudio.paused)) {
+        } else if (isSpeechOutputting() || (hostedAudio && !hostedAudio.paused)) {
           stopSpeaking();
         } else {
           startListening();
