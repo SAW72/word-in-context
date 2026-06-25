@@ -2080,7 +2080,7 @@
         <label for="library-reading-trans-select" style="font-size:13px;display:block;margin-bottom:4px;">Bible translation
           <select id="library-reading-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;" aria-label="Library Bible translation"></select>
         </label>
-        <p class="settings-fine-print" id="library-lang-hint">Speak uses a browser voice matching this language when one is installed.</p>
+        <p class="settings-fine-print" id="library-lang-hint">Speak uses your saved voice above when it matches this language; otherwise a voice for the Library language.</p>
       </div>
 
       <!-- Default English translation for Bible grounding -->
@@ -4626,6 +4626,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         || voices.find((v) => (v.lang || '').toLowerCase().startsWith(base));
     }
 
+    function voiceMatchesLangHint(voice, langHint) {
+      if (!voice || !langHint) return true;
+      const vlang = (voice.lang || '').toLowerCase();
+      const hint = langHint.toLowerCase();
+      const base = hint.split('-')[0];
+      return vlang === hint
+        || vlang.startsWith(base + '-')
+        || vlang.startsWith(base);
+    }
+
     function isSpeechOutputting() {
       return synth.speaking || speechQueue.length > 0;
     }
@@ -4714,10 +4724,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       let usedVoice = voiceId ? findLocalVoiceById(voiceId) : null;
       if (!usedVoice && selectedVoice) usedVoice = selectedVoice;
 
+      if (!usedVoice && voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
+        usedVoice = findLocalVoiceById(voiceSettings.voiceId);
+      }
+
+      // Prefer the user's saved Settings voice (same as chat). Only pick a different
+      // language voice when the saved one does not match the Library language.
+      if (usedVoice && (!langHint || voiceMatchesLangHint(usedVoice, langHint))) {
+        selectedVoice = usedVoice;
+        return { voice: usedVoice, lang: usedVoice.lang || langHint || 'en-US' };
+      }
+
       if (langHint) {
         const langVoice = findVoiceForLangHint(langHint);
         if (langVoice) {
           return { voice: langVoice, lang: langVoice.lang || langHint };
+        }
+        if (usedVoice) {
+          selectedVoice = usedVoice;
+          return { voice: usedVoice, lang: usedVoice.lang || langHint };
         }
         return { voice: null, lang: langHint };
       }
@@ -4725,19 +4750,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (usedVoice) {
         selectedVoice = usedVoice;
         return { voice: usedVoice, lang: usedVoice.lang || 'en-US' };
-      }
-
-      if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
-        try {
-          const lastFresh = synth.getVoices();
-          const norm = normalizeVoiceName(voiceSettings.voiceId);
-          const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm)
-            || lastFresh.find(v => v.name.toLowerCase() === voiceSettings.voiceId.toLowerCase());
-          if (reMatch) {
-            selectedVoice = reMatch;
-            return { voice: reMatch, lang: reMatch.lang || 'en-US' };
-          }
-        } catch (e) {}
       }
 
       return { voice: null, lang: 'en-US' };
