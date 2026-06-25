@@ -2015,12 +2015,12 @@
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
         <span class="settings-voice-hint">
           <strong>iPhone:</strong> every browser (Safari, Chrome, Edge) only gets the same <strong>basic system voices</strong> — try <strong>Daniel</strong> (male) or <strong>Karen</strong> (female). Enhanced/Premium downloads do not work in web apps.<br>
-          <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices from Spoken Content settings.
+          <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices from Spoken Content settings.<br>
+          <strong>Zoom / video calls:</strong> turn off <strong>Hands-free</strong>, use <strong>headphones</strong>, and tap 🔊 on replies — Zoom often holds the mic/speaker and browser voices go silent.
         </span>
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a>
         <button type="button" id="unlock-all-voices-btn" class="settings-chip-btn" onclick="unlockAllVoices()">🔊 Unlock all voices</button>
-        <button type="button" id="fix-chrome-speech-btn" class="settings-chip-btn" onclick="fixChromeSpeech()" style="display:none;">🔧 Fix Chrome audio</button>
         <button type="button" class="settings-chip-btn" onclick="testSelectedVoice()">🔊 Test selected</button>
       </label>
       <div id="voice-diagnostics" class="settings-diagnostics"></div>
@@ -2365,8 +2365,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let speechQueue = [];
     let speechQueueIndex = 0;
     let speechKeepAliveTimer = null;
-    let speechChunkRetryCount = 0;
-    let speechSilentWatchdog = null;
 
     // Audio capture for cheap high-accuracy xAI STT (only used on hands-free commits).
     // Browser SpeechRecognition gives us fast interim + wake word; xAI STT gives far better
@@ -2505,100 +2503,23 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg|EdgiOS|Firefox|FxiOS|OPR/i.test(ua);
     }
 
-    function isChromeBrowser() {
-      const ua = navigator.userAgent;
-      return /Chrome|CriOS|Chromium/i.test(ua) && !/Edg|EdgiOS|OPR/i.test(ua);
-    }
-
-    function chromeSpeechDelayMs() {
-      return isChromeBrowser() ? 200 : 40;
-    }
-
-    function isChromeSpeechStuck() {
-      if (!isChromeBrowser()) return false;
-      try {
-        return !!(synth.speaking || synth.pending || synth.paused);
-      } catch (e) {
-        return !!synth.speaking;
-      }
-    }
-
     // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
     // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
-    let chromeSpeechResetChain = Promise.resolve();
-
-    function hardResetChromeSpeech() {
-      chromeSpeechResetChain = chromeSpeechResetChain.then(() => new Promise((resolve) => {
-        try {
-          synth.cancel();
-          setTimeout(() => {
-            try { synth.cancel(); } catch (e) {}
-            try { synth.getVoices(); } catch (e) {}
-            setTimeout(resolve, chromeSpeechDelayMs());
-          }, isChromeBrowser() ? 80 : 20);
-        } catch (e) {
-          resolve();
-        }
-      }));
-      return chromeSpeechResetChain;
-    }
-
-    function refreshVoiceObject(voice) {
-      if (!voice || !voice.name) return null;
-      try {
-        const fresh = synth.getVoices();
-        return fresh.find((v) => v.name === voice.name && (!voice.voiceURI || v.voiceURI === voice.voiceURI))
-          || fresh.find((v) => v.name === voice.name)
-          || null;
-      } catch (e) {
-        return voice;
-      }
-    }
-
-    function primeSpeechEngine(force) {
-      if (isChromeSpeechStuck() || force) {
-        __ttsWoken = false;
-      }
-      if (__ttsWoken && !force) return hardResetChromeSpeech();
-      __ttsWoken = true;
-      return hardResetChromeSpeech().then(() => {
-        try {
-          try { synth.getVoices(); } catch (e) {}
-          const u = new SpeechSynthesisUtterance(' ');
-          const target = refreshVoiceObject(selectedVoice) || findLocalVoiceById(voiceSettings.voiceId);
-          if (target) u.voice = target;
-          u.volume = 0.001;
-          u.rate = 1.1;
-          u.onend = () => { try { if (synth.speaking) synth.cancel(); } catch (e) {} };
-          synth.speak(u);
-        } catch (e) {}
-      });
-    }
-
     function wakeSpeechEngine(force) {
-      primeSpeechEngine(force);
-    }
-
-    function fixChromeSpeech() {
-      __ttsWoken = false;
-      speechChunkRetryCount = 0;
-      stopSpeaking();
-      return hardResetChromeSpeech().then(() => {
+      if (__ttsWoken && !force) return;
+      __ttsWoken = true;
+      try {
         try { synth.getVoices(); } catch (e) {}
-        scheduleVoiceListRefresh();
-        const testVoice = refreshVoiceObject(selectedVoice) || findLocalVoiceById(voiceSettings.voiceId)
-          || getBrowserVoices().find((v) => (v.lang || '').startsWith('en'));
-        const utterance = new SpeechSynthesisUtterance('Chrome audio reset. John chapter three verse sixteen.');
-        if (testVoice) utterance.voice = testVoice;
-        utterance.volume = 1.0;
-        utterance.rate = voiceSettings.rate || 0.95;
-        utterance.onend = scheduleVoiceListRefresh;
-        utterance.onerror = scheduleVoiceListRefresh;
-        setTimeout(() => {
-          try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
-        }, chromeSpeechDelayMs());
-      });
+        const u = new SpeechSynthesisUtterance(' ');
+        if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
+          const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
+          if (target) u.voice = target;
+        }
+        u.volume = 0.001;
+        synth.speak(u);
+        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
+      } catch (e) {}
     }
 
     function getBrowserVoices() {
@@ -2627,8 +2548,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function updateVoiceDiagnostics() {
       const el = document.getElementById('voice-diagnostics');
-      const chromeFixBtn = document.getElementById('fix-chrome-speech-btn');
-      if (chromeFixBtn) chromeFixBtn.style.display = isChromeBrowser() ? 'inline-block' : 'none';
       if (!el) return;
       const voices = getBrowserVoices();
       const english = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
@@ -2643,8 +2562,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         html += '<br><span class="settings-diag-hint"><strong>iPhone:</strong> basic system voices only (any browser). Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
       } else if (isSafariBrowser()) {
         html += '<br><span class="settings-diag-safari"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
-      } else if (isChromeBrowser()) {
-        html += '<br><span class="settings-diag-hint"><strong>Chrome:</strong> if you see speaking but hear nothing, tap <strong>Fix Chrome audio</strong> (no restart needed).</span>';
       } else {
         html += '<br><span class="settings-diag-hint"><strong>Mac:</strong> <strong>Chrome</strong> recommended for Enhanced voices.</span>';
       }
@@ -2675,11 +2592,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.onend = scheduleVoiceListRefresh;
       utterance.onerror = scheduleVoiceListRefresh;
-      hardResetChromeSpeech().then(() => {
-        setTimeout(() => {
-          try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
-        }, chromeSpeechDelayMs());
-      });
+      if (synth.speaking) synth.cancel();
+      setTimeout(() => {
+        try { synth.speak(utterance); } catch (e) { scheduleVoiceListRefresh(); }
+      }, 60);
     }
 
     // Back-compat alias
@@ -2694,17 +2610,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
       document.addEventListener('click', handler, { once: true });
       document.addEventListener('touchstart', handler, { once: true });
-      if (isChromeBrowser()) {
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') {
-            __ttsWoken = false;
-            hardResetChromeSpeech().then(() => {
-              try { synth.getVoices(); } catch (e) {}
-              scheduleVoiceListRefresh();
-            });
-          }
-        });
-      }
     }
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
@@ -4736,7 +4641,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       speechQueue = [];
       speechQueueIndex = 0;
       clearSpeechKeepAlive();
-      clearSpeechSilentWatchdog();
     }
 
     // Chrome/Safari cut off long utterances (~15s). Chunk + queue + keepalive fixes mid-reply stops.
@@ -4787,8 +4691,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function startSpeechKeepAlive() {
       clearSpeechKeepAlive();
-      // Chrome often goes silent after pause/resume — chunking handles long replies instead.
-      if (isChromeBrowser()) return;
       speechKeepAliveTimer = setInterval(() => {
         if (!isSpeechOutputting()) {
           clearSpeechKeepAlive();
@@ -4799,13 +4701,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           synth.resume();
         } catch (e) {}
       }, 8000);
-    }
-
-    function clearSpeechSilentWatchdog() {
-      if (speechSilentWatchdog) {
-        clearTimeout(speechSilentWatchdog);
-        speechSilentWatchdog = null;
-      }
     }
 
     function resolveSpeechVoice(langHint = null) {
@@ -4828,14 +4723,16 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
 
       if (usedVoice) {
-        const freshVoice = refreshVoiceObject(usedVoice) || usedVoice;
-        selectedVoice = freshVoice;
-        return { voice: freshVoice, lang: freshVoice.lang || 'en-US' };
+        selectedVoice = usedVoice;
+        return { voice: usedVoice, lang: usedVoice.lang || 'en-US' };
       }
 
       if (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId) {
         try {
-          const reMatch = findLocalVoiceById(voiceSettings.voiceId);
+          const lastFresh = synth.getVoices();
+          const norm = normalizeVoiceName(voiceSettings.voiceId);
+          const reMatch = lastFresh.find(v => normalizeVoiceName(v.name) === norm)
+            || lastFresh.find(v => v.name.toLowerCase() === voiceSettings.voiceId.toLowerCase());
           if (reMatch) {
             selectedVoice = reMatch;
             return { voice: reMatch, lang: reMatch.lang || 'en-US' };
@@ -4856,7 +4753,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function speakNextInQueue(langHint = null, allowVoiceFallback = true) {
       if (speechQueueIndex >= speechQueue.length) {
-        speechChunkRetryCount = 0;
         finishSpeechOutput();
         return;
       }
@@ -4870,32 +4766,15 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       const voiceChoice = resolveSpeechVoice(langHint);
       if (allowVoiceFallback && voiceChoice.voice) {
-        const freshVoice = refreshVoiceObject(voiceChoice.voice);
-        if (freshVoice) {
-          utterance.voice = freshVoice;
-          utterance.lang = freshVoice.lang || voiceChoice.lang;
-        } else {
-          utterance.lang = voiceChoice.lang;
-        }
+        utterance.voice = voiceChoice.voice;
+        utterance.lang = voiceChoice.lang;
       } else {
         utterance.lang = voiceChoice.lang || 'en-US';
       }
 
-      let chunkStarted = false;
-
-      utterance.onstart = () => {
-        chunkStarted = true;
-        speechChunkRetryCount = 0;
-        clearSpeechSilentWatchdog();
-      };
-
-      utterance.onend = () => {
-        clearSpeechSilentWatchdog();
-        speakNextInQueue(langHint, allowVoiceFallback);
-      };
+      utterance.onend = () => speakNextInQueue(langHint, allowVoiceFallback);
 
       utterance.onerror = (ev) => {
-        clearSpeechSilentWatchdog();
         if (ev.error === 'canceled' || ev.error === 'interrupted') return;
         console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (utterance.voice && utterance.voice.name) || 'default');
         if (allowVoiceFallback && (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed')) {
@@ -4906,69 +4785,31 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         speakNextInQueue(langHint, allowVoiceFallback);
       };
 
-      const launchChunk = () => {
-        try {
-          if (isChromeSpeechStuck()) {
-            return hardResetChromeSpeech().then(() => {
-              setTimeout(() => {
-                try { synth.speak(utterance); } catch (e) {
-                  console.error('[TTS] speak() failed after Chrome reset:', e);
-                  speakNextInQueue(langHint, allowVoiceFallback);
-                }
-              }, chromeSpeechDelayMs());
-            });
-          }
-          synth.speak(utterance);
-        } catch (e) {
-          console.error('[TTS] speak() failed:', e);
-          speakNextInQueue(langHint, allowVoiceFallback);
-        }
-
-        if (isChromeBrowser()) {
-          clearSpeechSilentWatchdog();
-          speechSilentWatchdog = setTimeout(() => {
-            if (chunkStarted) return;
-            if (speechChunkRetryCount >= 2) {
-              console.warn('[TTS] Chrome silent failure — skipping chunk after retries');
-              speakNextInQueue(langHint, false);
-              return;
-            }
-            speechChunkRetryCount += 1;
-            speechQueueIndex = Math.max(0, speechQueueIndex - 1);
-            console.warn('[TTS] Chrome silent failure — resetting speech engine and retrying');
-            hardResetChromeSpeech().then(() => speakNextInQueue(langHint, false));
-          }, 1100);
-        }
-      };
-
-      if (speechQueueIndex === 1) {
-        hardResetChromeSpeech().then(() => {
-          setTimeout(() => {
-            try { synth.getVoices(); } catch (e) {}
-            launchChunk();
-          }, chromeSpeechDelayMs());
-        });
-        return;
+      try {
+        synth.speak(utterance);
+      } catch (e) {
+        console.error('[TTS] speak() failed:', e);
+        speakNextInQueue(langHint, allowVoiceFallback);
       }
-
-      setTimeout(launchChunk, chromeSpeechDelayMs());
     }
 
     function fallbackToBrowserSpeech(text, langHint = null) {
       text = cleanTextForSpeech(text);
       lastSpokenText = text;
-      clearSpeechSilentWatchdog();
-      speechChunkRetryCount = 0;
       resetSpeechQueue();
       speechQueue = splitTextForSpeechChunks(text);
       speechQueueIndex = 0;
       startSpeechKeepAlive();
-      speakNextInQueue(langHint, true);
+
+      if (synth.speaking) synth.cancel();
+
+      setTimeout(() => {
+        try { synth.getVoices(); } catch (e) {}
+        speakNextInQueue(langHint, true);
+      }, 0);
     }
 
     function stopSpeaking() {
-      clearSpeechSilentWatchdog();
-      speechChunkRetryCount = 0;
       resetSpeechQueue();
       if (synth.speaking) synth.cancel();
       currentUtterance = null;
@@ -5159,36 +5000,28 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      wakeSpeechEngine(true);
+      wakeSpeechEngine();
       try { synth.getVoices(); } catch(e){}
 
-      const freshVoice = refreshVoiceObject(voice) || voice;
       const utterance = new SpeechSynthesisUtterance(
         cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
       );
-      utterance.voice = freshVoice;
+      utterance.voice = voice;
       utterance.rate = voiceSettings.rate || 0.95;
       utterance.pitch = voiceSettings.pitch || 1.0;
       utterance.volume = 1.0;
-      if (freshVoice && freshVoice.lang) utterance.lang = freshVoice.lang;
+      if (voice && voice.lang) utterance.lang = voice.lang;
 
       utterance.onerror = (ev) => {
         if (ev.error === 'canceled' || ev.error === 'interrupted') return;
         console.error('[TTS testSelected] error:', ev && ev.error);
-        if (isChromeBrowser() && (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed')) {
-          hardResetChromeSpeech().then(() => {
-            utterance.voice = null;
-            setTimeout(() => { try { synth.speak(utterance); } catch (e) { console.error(e); } }, chromeSpeechDelayMs());
-          });
-        }
       };
 
-      stopSpeaking();
-      hardResetChromeSpeech().then(() => {
-        setTimeout(() => {
-          try { synth.speak(utterance); } catch (e) { console.error(e); }
-        }, chromeSpeechDelayMs());
-      });
+      if (synth.speaking) synth.cancel();
+
+      setTimeout(() => {
+        try { synth.speak(utterance); } catch (e) { console.error(e); }
+      }, 60);
 
     }
 
