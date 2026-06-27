@@ -1,13 +1,23 @@
 /**
- * Pre-generated Bible audio — catalog + MP3 playback with browser TTS fallback.
+ * Bible audio — helloao BSB narrators, pre-generated MP3s, playback helpers.
  */
 (function (global) {
   'use strict';
 
   const PREGEN_PREFIX = 'mp3:';
+  const HELLOAO_PREFIX = 'helloao:';
+  const HELLOAO_AUDIO_ORIGIN = 'https://audio.bible.helloao.org/api';
+
+  const HELLOAO_BSB_NARRATORS = [
+    { slug: 'david', label: 'David' },
+    { slug: 'hays', label: 'Hays' },
+    { slug: 'souer', label: 'Souer' }
+  ];
+
   let catalog = null;
   let catalogPromise = null;
   let currentAudio = null;
+  let progressCallback = null;
 
   function loadCatalog() {
     if (catalog) return Promise.resolve(catalog);
@@ -29,12 +39,30 @@
     return String(voiceId || '').startsWith(PREGEN_PREFIX);
   }
 
+  function isHelloaoVoice(voiceId) {
+    return String(voiceId || '').startsWith(HELLOAO_PREFIX);
+  }
+
   function pregenSlug(voiceId) {
     return String(voiceId || '').replace(/^mp3:/, '');
   }
 
+  function helloaoSlug(voiceId) {
+    return String(voiceId || '').replace(/^helloao:/, '');
+  }
+
   function toPregenVoiceId(slug) {
     return `${PREGEN_PREFIX}${slug}`;
+  }
+
+  function toHelloaoVoiceId(slug) {
+    return `${HELLOAO_PREFIX}${slug}`;
+  }
+
+  function helloaoChapterUrl(translationId, bookCode, chapter, narratorSlug, links) {
+    if (links && links[narratorSlug]) return links[narratorSlug];
+    if (translationId !== 'BSB') return null;
+    return `${HELLOAO_AUDIO_ORIGIN}/BSB/${bookCode}/${chapter}/audio/${narratorSlug}.mp3`;
   }
 
   function verseUrl(translationId, voiceSlug, bookCode, chapter, verse) {
@@ -67,7 +95,14 @@
     return (catalog && catalog.voices) || [];
   }
 
+  function detachProgress() {
+    if (!currentAudio || !progressCallback) return;
+    currentAudio.removeEventListener('timeupdate', progressCallback);
+    progressCallback = null;
+  }
+
   function stopMp3() {
+    detachProgress();
     if (!currentAudio) return;
     currentAudio.pause();
     currentAudio.removeAttribute('src');
@@ -92,24 +127,56 @@
     return !!(currentAudio && !currentAudio.paused && !currentAudio.ended);
   }
 
-  function playMp3(url) {
+  function playMp3(url, handlers) {
     return new Promise((resolve, reject) => {
       stopMp3();
       const audio = new Audio(url);
       currentAudio = audio;
-      audio.onended = () => resolve('ended');
-      audio.onerror = () => reject(new Error('MP3 playback failed'));
+
+      if (handlers && typeof handlers.onTimeUpdate === 'function') {
+        progressCallback = () => {
+          const duration = audio.duration;
+          if (!duration || !Number.isFinite(duration)) return;
+          handlers.onTimeUpdate(audio.currentTime, duration);
+        };
+        audio.addEventListener('timeupdate', progressCallback);
+      }
+
+      audio.onended = () => {
+        detachProgress();
+        if (handlers && handlers.onEnd) handlers.onEnd();
+        resolve('ended');
+      };
+      audio.onerror = () => {
+        detachProgress();
+        const err = new Error('MP3 playback failed');
+        if (handlers && handlers.onError) handlers.onError(err);
+        reject(err);
+      };
+
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(reject);
+      if (p && typeof p.catch === 'function') {
+        p.catch((err) => {
+          detachProgress();
+          if (handlers && handlers.onError) handlers.onError(err);
+          reject(err);
+        });
+      }
     });
   }
 
   global.AudioEngine = {
     PREGEN_PREFIX,
+    HELLOAO_PREFIX,
+    HELLOAO_BSB_NARRATORS,
     loadCatalog,
     isPregenVoice,
+    isHelloaoVoice,
     pregenSlug,
+    helloaoSlug,
     toPregenVoiceId,
+    toHelloaoVoiceId,
+    helloaoChapterUrl,
     verseUrl,
     availabilityFor,
     hasAnyAudio,

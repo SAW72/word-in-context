@@ -243,7 +243,8 @@
             bookName: book.commonName || book.name || bookCode,
             translation: complete.translation?.englishName || translationMeta(id).name,
             translationId: id,
-            chapter: entry.chapter
+            chapter: entry.chapter,
+            chapterAudioLinks: entry.thisChapterAudioLinks || null
           };
         }
       }
@@ -258,7 +259,8 @@
       bookName: data.book?.commonName || data.book?.name || bookCode,
       translation: data.translation?.englishName || translationMeta(id).name,
       translationId: id,
-      chapter: data.chapter
+      chapter: data.chapter,
+      chapterAudioLinks: data.thisChapterAudioLinks || null
     };
   }
 

@@ -17,6 +17,7 @@
   let audioPaused = false;
   let audioMode = 'browser';
   let audioCatalogLoaded = false;
+  let chapterAudioLinks = null;
   let scrollHideTimer = null;
   let lastScrollY = 0;
 
@@ -112,6 +113,34 @@
     return AE && AE.isPregenVoice(getVoiceId());
   }
 
+  function useHelloaoAudio() {
+    return AE && AE.isHelloaoVoice(getVoiceId()) && currentTranslationId() === 'BSB';
+  }
+
+  function helloaoChapterUrl() {
+    if (!AE || !currentBook) return null;
+    return AE.helloaoChapterUrl(
+      currentTranslationId(),
+      currentBook.code,
+      currentChapter,
+      AE.helloaoSlug(getVoiceId()),
+      chapterAudioLinks
+    );
+  }
+
+  function ensureDefaultVoice() {
+    if (getVoiceId()) return;
+    if (AE && currentTranslationId() === 'BSB') {
+      setVoiceId(AE.toHelloaoVoiceId('david'));
+    }
+  }
+
+  function clearHelloaoVoiceIfNeeded() {
+    if (AE && AE.isHelloaoVoice(getVoiceId()) && currentTranslationId() !== 'BSB') {
+      setVoiceId('');
+    }
+  }
+
   function pregenVoiceSlug() {
     return AE ? AE.pregenSlug(getVoiceId()) : '';
   }
@@ -136,6 +165,35 @@
       return;
     }
     playSpeech(text, onEnd);
+  }
+
+  function startHelloaoChapter() {
+    const url = helloaoChapterUrl();
+    if (!url || !AE) return false;
+
+    stopAudio();
+    audioPlaying = true;
+    audioPaused = false;
+    audioMode = 'helloao-chapter';
+    els.btnPlay.textContent = '⏸';
+    const narrator = AE.HELLOAO_BSB_NARRATORS.find((n) => n.slug === AE.helloaoSlug(getVoiceId()));
+    els.audioLabel.textContent = narrator ? `${narrator.label} · chapter audio` : 'Playing chapter';
+
+    AE.playMp3(url, {
+      onTimeUpdate: (current, duration) => {
+        els.audioProgress.style.width = `${(current / duration) * 100}%`;
+      },
+      onEnd: () => {
+        stopAudio();
+        els.audioLabel.textContent = 'Chapter complete';
+      },
+      onError: () => {
+        els.audioLabel.textContent = 'Audio unavailable — try a system voice';
+        stopAudio();
+      }
+    }).catch(() => {});
+
+    return true;
   }
 
   function stopAudio() {
@@ -194,7 +252,7 @@
 
   function toggleAudio() {
     if (audioPlaying && !audioPaused) {
-      if (audioMode === 'mp3' && AE) {
+      if ((audioMode === 'mp3' || audioMode === 'helloao-chapter') && AE) {
         AE.pauseMp3();
       } else {
         synth.pause();
@@ -204,7 +262,7 @@
       return;
     }
     if (audioPaused) {
-      if (audioMode === 'mp3' && AE) {
+      if ((audioMode === 'mp3' || audioMode === 'helloao-chapter') && AE) {
         AE.resumeMp3();
       } else {
         synth.resume();
@@ -214,6 +272,9 @@
       return;
     }
     if (!chapterBlocks.length) return;
+
+    if (useHelloaoAudio() && startHelloaoChapter()) return;
+
     stopAudio();
     buildAudioQueue();
     audioPlaying = true;
@@ -245,6 +306,7 @@
       await BC.loadTranslationsCatalog();
       const payload = await BC.fetchChapter(book.code, chapter);
       chapterBlocks = BC.parseChapterContent(payload.chapter.content);
+      chapterAudioLinks = payload.chapterAudioLinks || null;
 
       const prose = document.createElement('article');
       prose.id = 'reader-prose';
@@ -518,12 +580,26 @@
         <div class="reader-settings-group">
           <div class="reader-settings-label">Narration voice</div>
           <select class="reader-voice-select" id="voice-select-reader"></select>
-          <p class="reader-voice-hint">${showCatalog ? '<strong>Studio voices</strong> — pre-generated Grok / cloned narration (best quality).<br>' : ''}<strong>Your Voice</strong> — saved from app Settings or Personal Voice on Mac.<br><strong>Premium Neural</strong> — Enhanced system voices (Chrome recommended).<br><strong>John (Narrator)</strong> — clear English voices tuned for Scripture.</p>
+          <p class="reader-voice-hint">${transId === 'BSB' ? '<strong>BSB Audio</strong> — free professional chapter narration (David, Hays, Souer). Tap ▶ to hear the whole chapter.<br>' : ''}${showCatalog ? '<strong>Studio voices</strong> — pre-generated Grok / cloned narration (best quality).<br>' : ''}<strong>Device voices</strong> — your phone or computer (works offline; best for single-verse 🔊).</p>
         </div>
       `;
 
       const sel = body.querySelector('#voice-select-reader');
       const currentVoice = getVoiceId();
+
+      if (transId === 'BSB' && AE) {
+        const og = document.createElement('optgroup');
+        og.label = '— BSB Audio (free) —';
+        AE.HELLOAO_BSB_NARRATORS.forEach((n) => {
+          const opt = document.createElement('option');
+          const voiceId = AE.toHelloaoVoiceId(n.slug);
+          opt.value = voiceId;
+          opt.textContent = n.label;
+          if (voiceId === currentVoice) opt.selected = true;
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
+      }
 
       if (pregenVoices.length) {
         const og = document.createElement('optgroup');
@@ -671,6 +747,8 @@
 
     els.navTrans.addEventListener('change', async () => {
       BC.setTranslationId(els.navTrans.value);
+      clearHelloaoVoiceIfNeeded();
+      ensureDefaultVoice();
       if (currentBook) await loadChapter(currentBook, currentChapter, null);
     });
 
@@ -696,6 +774,7 @@
       audioCatalogLoaded = true;
     }
     await populateTranslations();
+    ensureDefaultVoice();
     BC.loadCompleteBible().catch(() => {});
 
     const route = BC.parseRoute();
