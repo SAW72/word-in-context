@@ -859,6 +859,16 @@ function landingHtmlWithOgTags() {
 
 app.get('/copyright', (req, res) => res.redirect(301, '/attributions.html'));
 
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml');
+  res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
+});
+
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
 app.get('/', (req, res) => {
