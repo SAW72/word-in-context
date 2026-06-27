@@ -5267,7 +5267,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const targetValue = `local:${savedId}`;
       let option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
       if (!option) {
-        const normSaved = normalizeVoiceName(voiceSettings.voiceId);
+        const normSaved = normalizeVoiceName(savedId);
         option = Array.from(voiceSelect.options).find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
       }
       if (option) {
