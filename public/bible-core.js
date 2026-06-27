@@ -349,17 +349,30 @@
     wordStudy: true
   };
 
+  const DEFAULT_READER_AUDIO = {
+    audioMode: 'helloao',
+    speakVerseNumbers: false
+  };
+
   function getReaderSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem('reader_settings') || '{}');
       return {
         fontSize: 'md',
         lineHeight: 'relaxed',
+        ...DEFAULT_READER_AUDIO,
         ...saved,
+        audioMode: saved.audioMode === 'system' ? 'system' : 'helloao',
+        speakVerseNumbers: !!saved.speakVerseNumbers,
         tools: { ...DEFAULT_READER_TOOLS, ...(saved.tools || {}) }
       };
     } catch (e) {
-      return { fontSize: 'md', lineHeight: 'relaxed', tools: { ...DEFAULT_READER_TOOLS } };
+      return {
+        fontSize: 'md',
+        lineHeight: 'relaxed',
+        tools: { ...DEFAULT_READER_TOOLS },
+        ...DEFAULT_READER_AUDIO
+      };
     }
   }
 

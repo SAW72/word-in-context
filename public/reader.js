@@ -38,6 +38,7 @@
     navBody: document.getElementById('nav-body'),
     navTrans: document.getElementById('nav-trans-select'),
     btnPlay: document.getElementById('btn-audio-play'),
+    btnAudioMode: document.getElementById('btn-audio-mode'),
     audioLabel: document.getElementById('audio-label'),
     audioProgress: document.getElementById('audio-progress'),
     continueWrap: document.getElementById('continue-wrap'),
@@ -63,6 +64,115 @@
   function setVoiceId(name) {
     localStorage.setItem('reader_voice_id', name);
     localStorage.setItem('voice_id', name);
+    if (AE && AE.isHelloaoVoice(name)) {
+      localStorage.setItem('reader_last_helloao_voice', AE.helloaoSlug(name));
+    } else if (AE && AE.isPregenVoice(name)) {
+      localStorage.setItem('reader_last_pregen_voice', AE.pregenSlug(name));
+    } else if (name && (!AE || (!AE.isHelloaoVoice(name) && !AE.isPregenVoice(name)))) {
+      localStorage.setItem('reader_last_system_voice', name);
+    }
+    updateAudioChrome();
+  }
+
+  function getAudioMode() {
+    if (currentTranslationId() !== 'BSB') return 'system';
+    const mode = BC.getReaderSettings().audioMode;
+    return mode === 'system' ? 'system' : 'helloao';
+  }
+
+  function setAudioMode(mode) {
+    const next = mode === 'system' ? 'system' : 'helloao';
+    BC.saveReaderSettings({ audioMode: next });
+    stopAudio();
+
+    if (next === 'helloao' && AE && currentTranslationId() === 'BSB') {
+      const slug = localStorage.getItem('reader_last_helloao_voice') || 'david';
+      setVoiceId(AE.toHelloaoVoiceId(slug));
+    } else {
+      const saved = localStorage.getItem('reader_last_system_voice')
+        || localStorage.getItem('voice_name')
+        || localStorage.getItem('voice_id')
+        || '';
+      const voice = findVoiceByName(saved);
+      if (voice) {
+        setVoiceId(voice.name);
+      } else {
+        const cats = categorizeVoices();
+        const fallback = cats.saved || cats.enhanced[0] || cats.grokStyle[0] || cats.all[0];
+        if (fallback) setVoiceId(fallback.name);
+      }
+    }
+    updateAudioChrome();
+    if (sheetTab === 'settings') renderNavBody();
+  }
+
+  function toggleAudioMode() {
+    setAudioMode(getAudioMode() === 'helloao' ? 'system' : 'helloao');
+  }
+
+  function refreshSystemVoices() {
+    try {
+      synth.getVoices();
+      if (typeof synth.cancel === 'function') synth.cancel();
+    } catch (e) { /* ignore */ }
+    if (sheetTab === 'settings') renderNavBody();
+    updateAudioChrome();
+  }
+
+  function resolveSystemVoice() {
+    const id = getVoiceId();
+    if (AE && (AE.isHelloaoVoice(id) || AE.isPregenVoice(id))) {
+      const saved = localStorage.getItem('reader_last_system_voice')
+        || localStorage.getItem('voice_name')
+        || '';
+      return findVoiceByName(saved);
+    }
+    return findVoiceByName(id);
+  }
+
+  function voiceModeLabel() {
+    if (getAudioMode() === 'helloao' && AE) {
+      const slug = AE.helloaoSlug(getVoiceId());
+      const n = AE.HELLOAO_BSB_NARRATORS.find((x) => x.slug === slug);
+      return n ? `BSB · ${n.label}` : 'BSB Audio';
+    }
+    const v = resolveSystemVoice();
+    return v ? `Device · ${v.name.replace(/\s*\(System\)\s*$/i, '').slice(0, 18)}` : 'Device voice';
+  }
+
+  function updateAudioChrome() {
+    const isBsb = currentTranslationId() === 'BSB';
+    if (els.btnAudioMode) {
+      els.btnAudioMode.hidden = !isBsb;
+      if (isBsb) {
+        const helloao = getAudioMode() === 'helloao';
+        els.btnAudioMode.textContent = helloao ? 'BSB' : 'Device';
+        els.btnAudioMode.classList.toggle('active-mode', helloao);
+        els.btnAudioMode.title = helloao
+          ? 'Using BSB chapter audio — tap to switch to device voice'
+          : 'Using device voice — tap to switch to BSB audio';
+      }
+    }
+    if (!audioPlaying && els.audioLabel) {
+      const idle = isBsb && getAudioMode() === 'helloao'
+        ? 'Listen to chapter (BSB audio)'
+        : 'Listen to chapter';
+      if (els.audioLabel.textContent === 'Listen to chapter'
+        || els.audioLabel.textContent === 'Listen to chapter (BSB audio)'
+        || els.audioLabel.textContent === 'Chapter complete') {
+        els.audioLabel.textContent = idle;
+      }
+    }
+  }
+
+  function migrateAudioSettings() {
+    const s = BC.getReaderSettings();
+    if (s.audioMode === 'system' || s.audioMode === 'helloao') return;
+    if (AE && AE.isHelloaoVoice(getVoiceId())) {
+      BC.saveReaderSettings({ audioMode: 'helloao' });
+    } else {
+      BC.saveReaderSettings({ audioMode: 'system' });
+    }
   }
 
   function getVoices() {
@@ -208,7 +318,7 @@
     const utterance = new SpeechSynthesisUtterance(cleanForSpeech(text));
     utterance.rate = parseFloat(localStorage.getItem('voice_rate') || '0.95');
     utterance.pitch = parseFloat(localStorage.getItem('voice_pitch') || '1');
-    const voice = findVoiceByName(getVoiceId());
+    const voice = resolveSystemVoice();
     if (voice) utterance.voice = voice;
     utterance.onend = () => { if (onEnd) onEnd(); };
     utterance.onerror = (e) => {
@@ -227,7 +337,7 @@
   }
 
   function useHelloaoAudio() {
-    return AE && AE.isHelloaoVoice(getVoiceId()) && currentTranslationId() === 'BSB';
+    return AE && getAudioMode() === 'helloao' && currentTranslationId() === 'BSB';
   }
 
   function helloaoChapterUrl() {
@@ -242,16 +352,27 @@
   }
 
   function ensureDefaultVoice() {
-    if (getVoiceId()) return;
-    if (AE && currentTranslationId() === 'BSB') {
-      setVoiceId(AE.toHelloaoVoiceId('david'));
+    migrateAudioSettings();
+    if (getVoiceId()) {
+      updateAudioChrome();
+      return;
     }
+    if (getAudioMode() === 'helloao' && AE && currentTranslationId() === 'BSB') {
+      setVoiceId(AE.toHelloaoVoiceId(localStorage.getItem('reader_last_helloao_voice') || 'david'));
+    } else {
+      const voice = resolveSystemVoice() || categorizeVoices().all[0];
+      if (voice) setVoiceId(voice.name);
+    }
+    updateAudioChrome();
   }
 
   function clearHelloaoVoiceIfNeeded() {
-    if (AE && AE.isHelloaoVoice(getVoiceId()) && currentTranslationId() !== 'BSB') {
-      setVoiceId('');
+    if (currentTranslationId() === 'BSB') return;
+    if (getAudioMode() === 'helloao') {
+      BC.saveReaderSettings({ audioMode: 'system' });
+      setAudioMode('system');
     }
+    updateAudioChrome();
   }
 
   function pregenVoiceSlug() {
@@ -323,11 +444,12 @@
   }
 
   function buildAudioQueue() {
+    const speakNumbers = BC.getReaderSettings().speakVerseNumbers;
     audioQueue = chapterBlocks
       .filter((b) => b.type === 'verse')
       .map((b) => ({
         number: b.number,
-        text: `${b.number}. ${b.text}`,
+        text: speakNumbers ? `${b.number}. ${b.text}` : b.text,
         plain: b.text
       }));
   }
@@ -538,6 +660,7 @@
       }
 
       els.continueWrap.hidden = true;
+      updateAudioChrome();
     } catch (err) {
       els.scroll.innerHTML = `<div class="reader-status error">Could not load this chapter.<br><small>${escapeHtml(err.message || String(err))}</small></div>`;
     }
@@ -693,6 +816,8 @@
       const tools = getTools();
       const cats = categorizeVoices();
       const transId = currentTranslationId();
+      const audioMode = getAudioMode();
+      const speakNumbers = BC.getReaderSettings().speakVerseNumbers;
       const pregenVoices = AE ? AE.availablePregenVoices(transId) : [];
       const catalogVoices = AE ? AE.allCatalogVoices() : [];
       const showCatalog = catalogVoices.length > 0;
@@ -733,16 +858,33 @@
           </div>
         </div>
         <div class="reader-settings-group">
+          <div class="reader-settings-label">Audio source</div>
+          ${transId === 'BSB' ? `
+          <div class="reader-pill-row" id="audio-mode-pills">
+            <button type="button" class="reader-pill${audioMode === 'helloao' ? ' active' : ''}" data-audio-mode="helloao">BSB Audio</button>
+            <button type="button" class="reader-pill${audioMode === 'system' ? ' active' : ''}" data-audio-mode="system">Device voice</button>
+          </div>
+          <p class="reader-voice-hint" style="margin-top:8px">Now: <strong>${escapeHtml(voiceModeLabel())}</strong> — tap ▶ for chapter; 🔊 uses device voice unless BSB Audio is on.</p>
+          ` : '<p class="reader-voice-hint">BSB Audio is only for Berean Standard Bible. Other translations use your device voice.</p>'}
+        </div>
+        <div class="reader-settings-group">
           <div class="reader-settings-label">Narration voice</div>
           <select class="reader-voice-select" id="voice-select-reader"></select>
-          <p class="reader-voice-hint">${transId === 'BSB' ? '<strong>BSB Audio</strong> — free professional chapter narration (David, Hays, Souer). Tap ▶ to hear the whole chapter.<br>' : ''}${showCatalog ? '<strong>Studio voices</strong> — pre-generated Grok / cloned narration (best quality).<br>' : ''}<strong>Device voices</strong> — your phone or computer (works offline; best for single-verse 🔊).</p>
+          <button type="button" class="reader-pill" id="btn-refresh-voices" style="margin-top:8px;width:100%">Refresh device voices</button>
+          <div class="reader-tool-toggles" style="margin-top:10px">
+            <div class="reader-tool-row">
+              <label for="tool-speak-numbers">Speak verse numbers (device voice)</label>
+              <input type="checkbox" id="tool-speak-numbers" ${speakNumbers ? 'checked' : ''}>
+            </div>
+          </div>
+          <p class="reader-voice-hint">${transId === 'BSB' ? '<strong>BSB Audio</strong> — whole chapter MP3 (David, Hays, Souer).<br>' : ''}${showCatalog ? '<strong>Studio voices</strong> — pre-generated narration.<br>' : ''}<strong>Device voices</strong> — per-verse 🔊 and non-BSB chapters.</p>
         </div>
       `;
 
       const sel = body.querySelector('#voice-select-reader');
       const currentVoice = getVoiceId();
 
-      if (transId === 'BSB' && AE) {
+      if (transId === 'BSB' && AE && audioMode === 'helloao') {
         const og = document.createElement('optgroup');
         og.label = '— BSB Audio (free) —';
         AE.HELLOAO_BSB_NARRATORS.forEach((n) => {
@@ -783,35 +925,64 @@
         sel.appendChild(og);
       }
 
-      const groups = [
-        ['— Your saved voice —', cats.saved ? [cats.saved] : []],
-        ['— Personal / Cloned —', cats.personal],
-        ['— Premium Neural —', cats.enhanced],
-        ['— John (Narrator) —', cats.grokStyle],
-        ['— All English voices —', cats.other]
-      ];
-      groups.forEach(([label, list]) => {
-        if (!list.length) return;
-        const og = document.createElement('optgroup');
-        og.label = label;
-        list.forEach((v) => {
-          const opt = document.createElement('option');
-          opt.value = v.name;
-          opt.textContent = v.name;
-          if (v.name === currentVoice) opt.selected = true;
-          og.appendChild(opt);
+      if (audioMode === 'system' || transId !== 'BSB') {
+        const groups = [
+          ['— Your saved voice —', cats.saved ? [cats.saved] : []],
+          ['— Personal / Cloned —', cats.personal],
+          ['— Premium Neural —', cats.enhanced],
+          ['— John (Narrator) —', cats.grokStyle],
+          ['— All English voices —', cats.other]
+        ];
+        groups.forEach(([label, list]) => {
+          if (!list.length) return;
+          const og = document.createElement('optgroup');
+          og.label = label;
+          list.forEach((v) => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.textContent = v.name;
+            if (v.name === currentVoice || (AE && (AE.isHelloaoVoice(currentVoice) || AE.isPregenVoice(currentVoice)) && v === cats.saved)) {
+              opt.selected = true;
+            }
+            og.appendChild(opt);
+          });
+          sel.appendChild(og);
         });
-        sel.appendChild(og);
+        if (!sel.options.length && cats.all.length) {
+          cats.all.forEach((v) => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.textContent = v.name;
+            sel.appendChild(opt);
+          });
+        }
+      }
+
+      sel.addEventListener('change', () => {
+        const val = sel.value;
+        setVoiceId(val);
+        if (AE && AE.isHelloaoVoice(val) && transId === 'BSB') {
+          BC.saveReaderSettings({ audioMode: 'helloao' });
+          updateAudioChrome();
+        } else if (!AE || (!AE.isPregenVoice(val))) {
+          BC.saveReaderSettings({ audioMode: 'system' });
+          updateAudioChrome();
+        }
       });
-      if (!sel.options.length && cats.all.length) {
-        cats.all.forEach((v) => {
-          const opt = document.createElement('option');
-          opt.value = v.name;
-          opt.textContent = v.name;
-          sel.appendChild(opt);
+
+      body.querySelectorAll('[data-audio-mode]').forEach((btn) => {
+        btn.addEventListener('click', () => setAudioMode(btn.getAttribute('data-audio-mode')));
+      });
+
+      const refreshBtn = body.querySelector('#btn-refresh-voices');
+      if (refreshBtn) refreshBtn.addEventListener('click', refreshSystemVoices);
+
+      const speakNumInput = body.querySelector('#tool-speak-numbers');
+      if (speakNumInput) {
+        speakNumInput.addEventListener('change', () => {
+          BC.saveReaderSettings({ speakVerseNumbers: speakNumInput.checked });
         });
       }
-      sel.addEventListener('change', () => setVoiceId(sel.value));
 
       const saveTools = () => {
         BC.saveReaderSettings({
@@ -906,6 +1077,7 @@
     document.getElementById('btn-settings').addEventListener('click', () => openNav('settings'));
     document.getElementById('btn-voice-picker').addEventListener('click', () => openNav('settings'));
     els.btnPlay.addEventListener('click', toggleAudio);
+    if (els.btnAudioMode) els.btnAudioMode.addEventListener('click', toggleAudioMode);
 
     document.querySelectorAll('.nav-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -931,7 +1103,10 @@
     });
 
     if (synth.onvoiceschanged !== undefined) {
-      synth.onvoiceschanged = () => { /* voice list refresh */ };
+      synth.onvoiceschanged = () => {
+        if (sheetTab === 'settings') renderNavBody();
+        updateAudioChrome();
+      };
     }
     try { synth.getVoices(); } catch (e) {}
   }

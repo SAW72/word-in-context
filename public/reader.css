@@ -816,7 +816,8 @@ body.reader-immersive .reader-audio-bar {
   transition: width 0.2s linear;
 }
 
-.reader-audio-voice-btn {
+.reader-audio-voice-btn,
+.reader-audio-mode-btn {
   font-size: 11px;
   font-weight: 600;
   padding: 8px 12px;
@@ -828,8 +829,15 @@ body.reader-immersive .reader-audio-bar {
   white-space: nowrap;
 }
 
-.reader-audio-voice-btn:hover {
+.reader-audio-voice-btn:hover,
+.reader-audio-mode-btn:hover {
   border-color: var(--gold);
+  color: var(--gold);
+}
+
+.reader-audio-mode-btn.active-mode {
+  border-color: var(--gold);
+  background: var(--gold-soft);
   color: var(--gold);
 }
 
