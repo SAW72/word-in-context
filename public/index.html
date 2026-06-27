@@ -1906,7 +1906,7 @@
 
       <div class="main-tabs" role="tablist" aria-label="App sections">
         <button type="button" class="main-tab active" id="tab-chat" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
-        <button type="button" class="main-tab" id="tab-library" role="tab" aria-selected="false" aria-controls="library-panel">Library</button>
+        <button type="button" class="main-tab" id="tab-library" role="tab" aria-selected="false" aria-controls="library-panel">Read</button>
       </div>
 
       <div class="chat-panel" id="chat-panel" role="tabpanel">
@@ -2884,10 +2884,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const tabLibrary = document.getElementById('tab-library');
       if (tabChat) tabChat.addEventListener('click', () => switchMainView('chat'));
       if (tabLibrary) tabLibrary.addEventListener('click', () => {
-        switchMainView('library');
-        updateLibraryMeta();
-        preloadOfflineBible();
-        renderLibraryBooks(document.getElementById('library-search')?.value || '');
+        window.location.href = '/read';
       });
     }
 

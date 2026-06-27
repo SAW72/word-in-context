@@ -870,6 +870,11 @@ app.get('/app', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Dedicated Bible reader — free full Bible, premium typography & audio
+app.get('/read', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'reader.html'));
+});
+
 // Admin control panel - explicit route so /admin serves the panel (password protected inside via ADMIN_PASSWORD env)
 // Must be before static middleware.
 app.get('/admin', (req, res) => {

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Read the entire Bible free — beautiful typography, audio, bookmarks, and progress. The Word in Context.">
+  <meta name="theme-color" content="#c9a227">
+  <title>Read — The Word in Context</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/reader.css">
+</head>
+<body>
+  <div id="reader-app">
+    <header class="reader-header" id="reader-header">
+      <button type="button" class="reader-icon-btn" id="btn-nav" aria-label="Books and chapters">☰</button>
+      <div class="reader-title-block">
+        <button type="button" id="btn-title" aria-label="Open navigation">
+          <span class="reader-book-title" id="header-book">John</span>
+          <span class="reader-chapter-sub" id="header-chapter">Chapter 1</span>
+        </button>
+      </div>
+      <div class="reader-header-actions">
+        <a href="/app" class="reader-link">Chat</a>
+        <button type="button" class="reader-icon-btn" id="btn-theme" aria-label="Toggle dark mode">◐</button>
+        <button type="button" class="reader-icon-btn" id="btn-settings" aria-label="Reading settings">⚙</button>
+      </div>
+    </header>
+
+    <div class="reader-continue" id="continue-wrap" hidden>
+      <div class="reader-continue-card" id="continue-card" role="button" tabindex="0">
+        <div>
+          <div class="reader-continue-label">Continue reading</div>
+          <div class="reader-continue-ref" id="continue-ref">John 1</div>
+        </div>
+        <span aria-hidden="true">→</span>
+      </div>
+    </div>
+
+    <main class="reader-main" id="reader-main">
+      <div class="reader-scroll" id="reader-scroll">
+        <div class="reader-status" id="reader-loading">Loading Scripture…</div>
+      </div>
+    </main>
+
+    <footer class="reader-audio-bar" id="audio-bar">
+      <button type="button" class="reader-audio-play" id="btn-audio-play" aria-label="Play chapter">▶</button>
+      <div class="reader-audio-info">
+        <div class="reader-audio-title" id="audio-label">Listen to chapter</div>
+        <div class="reader-audio-progress"><div class="reader-audio-progress-fill" id="audio-progress"></div></div>
+      </div>
+      <button type="button" class="reader-audio-voice-btn" id="btn-voice-picker">Voice</button>
+    </footer>
+  </div>
+
+  <div class="nav-overlay" id="nav-overlay"></div>
+  <aside class="nav-sheet" id="nav-sheet" aria-hidden="true">
+    <div class="nav-sheet-header">
+      <span class="nav-sheet-title" id="sheet-title">Navigate</span>
+      <button type="button" class="reader-icon-btn" id="btn-close-nav" aria-label="Close">✕</button>
+    </div>
+    <div class="nav-tabs" id="nav-tabs">
+      <button type="button" class="nav-tab active" data-tab="books">Books</button>
+      <button type="button" class="nav-tab" data-tab="chapters" id="tab-chapters" disabled>Chapters</button>
+      <button type="button" class="nav-tab" data-tab="bookmarks">Saved</button>
+      <button type="button" class="nav-tab" data-tab="settings">Audio</button>
+    </div>
+    <div class="nav-sheet-body" id="nav-body"></div>
+    <div class="nav-trans-row">
+      <label for="nav-trans-select">Translation (entire Bible — free)</label>
+      <select id="nav-trans-select" aria-label="Bible translation"></select>
+    </div>
+  </aside>
+
+  <script src="/bible-core.js"></script>
+  <script src="/reader.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

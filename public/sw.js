@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-42';
+const CACHE_VERSION = 'wic-pwa-43';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -8,6 +8,11 @@ const BIBLE_ORIGIN = 'https://bible.helloao.org';
 const SHELL_URLS = [
   '/',
   '/app',
+  '/read',
+  '/reader.html',
+  '/reader.css',
+  '/reader.js',
+  '/bible-core.js',
   '/admin',
   '/index.html',
   '/landing.html',
