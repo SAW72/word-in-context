@@ -3,6 +3,7 @@
 
   const BC = window.BibleCore;
   const AE = window.AudioEngine;
+  const SC = window.StudyCore;
   if (!BC) return;
 
   const synth = window.speechSynthesis;
@@ -18,6 +19,9 @@
   let audioMode = 'browser';
   let audioCatalogLoaded = false;
   let chapterAudioLinks = null;
+  let chapterPayload = null;
+  let selectedVerseNum = null;
+  let openStudyVerseNum = null;
   let scrollHideTimer = null;
   let lastScrollY = 0;
 
@@ -72,6 +76,115 @@
     return voices.find((v) => v.name === name)
       || voices.find((v) => v.name === norm)
       || voices.find((v) => v.name.toLowerCase().includes(norm.toLowerCase()));
+  }
+
+  function getTools() {
+    return BC.getReaderSettings().tools || {
+      speaker: true,
+      bookmark: true,
+      highlight: true,
+      wordStudy: true
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function escapeAttr(s) {
+    return escapeHtml(s).replace(/'/g, '&#39;');
+  }
+
+  function clearVerseSelection() {
+    selectedVerseNum = null;
+    openStudyVerseNum = null;
+    document.querySelectorAll('.reader-verse.selected-verse').forEach((el) => el.classList.remove('selected-verse'));
+    document.querySelectorAll('.reader-study-panel').forEach((el) => { el.hidden = true; });
+  }
+
+  function renderStudyPanel(panelEl, study) {
+    const wordsHtml = study.lexWords.length
+      ? study.lexWords.map((w) => {
+        const note = w.note ? `<div class="reader-study-word-note">${escapeHtml(w.note)}</div>` : '';
+        return `<div class="reader-study-word"><strong>${escapeHtml(w.translit)}</strong> — ${escapeHtml(w.gloss)}${note}</div>`;
+      }).join('')
+      : `<p>No major ${escapeHtml(study.langLabel)} lexicon matches yet. The full original text is shown above.</p>`;
+
+    const original = study.originalText
+      ? `<div class="reader-study-original" dir="auto">${escapeHtml(study.originalText)}</div>`
+      : `<p>${escapeHtml(study.langLabel)} text unavailable offline for this verse. Open once while online to cache.</p>`;
+
+    panelEl.innerHTML = `
+      <div class="reader-study-ref">${escapeHtml(study.ref)} · ${escapeHtml(study.translationShort)}</div>
+      <div class="reader-study-section">
+        <h4>${escapeHtml(study.langLabel)} · ${escapeHtml(study.originalLabel)}</h4>
+        ${original}
+      </div>
+      <div class="reader-study-section">
+        <h4>Key words</h4>
+        ${wordsHtml}
+      </div>
+      <div class="reader-study-section">
+        <h4>Context</h4>
+        <div class="reader-study-context">${escapeHtml(study.contextNarrative)}</div>
+      </div>
+    `;
+    panelEl.classList.remove('loading');
+    panelEl.hidden = false;
+  }
+
+  async function openVerseStudy(block, blockEl) {
+    if (!SC) return;
+    const panelEl = blockEl.querySelector('.reader-study-panel');
+    if (!panelEl || !chapterPayload || !currentBook) return;
+
+    if (openStudyVerseNum === block.number && !panelEl.hidden) {
+      panelEl.hidden = true;
+      openStudyVerseNum = null;
+      return;
+    }
+
+    document.querySelectorAll('.reader-study-panel').forEach((el) => { el.hidden = true; });
+    openStudyVerseNum = block.number;
+    panelEl.hidden = false;
+    panelEl.classList.add('loading');
+    panelEl.innerHTML = 'Loading word study…';
+
+    try {
+      const trans = BC.translationMeta(BC.getTranslationId());
+      const study = await SC.loadVerseStudy({
+        bookCode: currentBook.code,
+        chapterNum: currentChapter,
+        verseNum: block.number,
+        english: block.text,
+        bookName: chapterPayload.bookName,
+        translationShort: trans.short || trans.id,
+        chapterBlocks
+      });
+      renderStudyPanel(panelEl, study);
+      panelEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      panelEl.classList.remove('loading');
+      panelEl.innerHTML = `<div class="reader-study-ref">Study unavailable</div><p>${escapeHtml(err.message || String(err))}</p>`;
+    }
+  }
+
+  function handleVerseTap(block, blockEl) {
+    const tools = getTools();
+    if (!tools.highlight && !tools.wordStudy) return;
+
+    const verseEl = blockEl.querySelector('.reader-verse');
+    if (!verseEl) return;
+
+    if (tools.highlight) {
+      document.querySelectorAll('.reader-verse.selected-verse').forEach((el) => el.classList.remove('selected-verse'));
+      verseEl.classList.add('selected-verse');
+      selectedVerseNum = block.number;
+    }
+
+    if (tools.wordStudy) {
+      openVerseStudy(block, blockEl);
+    }
   }
 
   function categorizeVoices() {
@@ -294,6 +407,7 @@
   async function loadChapter(book, chapter, verse) {
     currentBook = book;
     currentChapter = chapter;
+    clearVerseSelection();
     stopAudio();
     BC.setRoute(book.code, chapter, verse);
     BC.saveProgress(book.code, chapter, verse || 1);
@@ -305,8 +419,10 @@
     try {
       await BC.loadTranslationsCatalog();
       const payload = await BC.fetchChapter(book.code, chapter);
+      chapterPayload = payload;
       chapterBlocks = BC.parseChapterContent(payload.chapter.content);
       chapterAudioLinks = payload.chapterAudioLinks || null;
+      const tools = getTools();
 
       const prose = document.createElement('article');
       prose.id = 'reader-prose';
@@ -326,20 +442,43 @@
           return;
         }
         const ref = `${payload.bookName} ${chapter}:${block.number}`;
-        const wrap = document.createElement('span');
-        wrap.className = 'reader-verse-wrap';
-        wrap.innerHTML = `
-          <span class="reader-verse" data-verse="${block.number}" id="v${block.number}">
-            <sup class="reader-verse-num">${block.number}</sup>
-            <span class="reader-verse-text">${escapeHtml(block.text)}</span>
+        const blockEl = document.createElement('div');
+        blockEl.className = 'reader-verse-block';
+        blockEl.dataset.verse = String(block.number);
+
+        const actionParts = [];
+        if (tools.bookmark) {
+          actionParts.push(`<button type="button" class="reader-verse-btn bookmark-btn" title="Bookmark" data-ref="${escapeAttr(ref)}" data-text="${escapeAttr(block.text)}">${BC.isBookmarked(ref) ? '★' : '☆'}</button>`);
+        }
+        if (tools.speaker) {
+          actionParts.push(`<button type="button" class="reader-verse-btn speak-verse-btn" title="Speak verse" data-text="${escapeAttr(block.text)}">🔊</button>`);
+        }
+
+        const tapClass = (tools.highlight || tools.wordStudy) ? ' tappable' : '';
+        const actionsHtml = actionParts.length
+          ? `<span class="reader-verse-actions">${actionParts.join('')}</span>`
+          : '';
+
+        blockEl.innerHTML = `
+          <span class="reader-verse-wrap">
+            <span class="reader-verse${tapClass}" data-verse="${block.number}" id="v${block.number}">
+              <sup class="reader-verse-num">${block.number}</sup>
+              <span class="reader-verse-text">${escapeHtml(block.text)}</span>
+            </span>
+            ${actionsHtml}
           </span>
-          <span class="reader-verse-actions">
-            <button type="button" class="reader-verse-btn bookmark-btn" title="Bookmark" data-ref="${escapeAttr(ref)}" data-text="${escapeAttr(block.text)}">${BC.isBookmarked(ref) ? '★' : '☆'}</button>
-            <button type="button" class="reader-verse-btn speak-verse-btn" title="Speak verse" data-text="${escapeAttr(block.text)}">🔊</button>
-          </span>
+          <div class="reader-study-panel" hidden></div>
         `;
-        prose.appendChild(wrap);
-        prose.appendChild(document.createTextNode(' '));
+
+        const verseEl = blockEl.querySelector('.reader-verse');
+        if (verseEl && (tools.highlight || tools.wordStudy)) {
+          verseEl.addEventListener('click', (e) => {
+            if (e.target.closest('.reader-verse-btn')) return;
+            handleVerseTap(block, blockEl);
+          });
+        }
+
+        prose.appendChild(blockEl);
       });
 
       const nav = document.createElement('div');
@@ -425,14 +564,6 @@
     }
     loadChapter(book, ch, null);
     els.main.scrollTop = 0;
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  function escapeAttr(s) {
-    return escapeHtml(s).replace(/'/g, '&#39;');
   }
 
   function openNav(tab) {
@@ -559,12 +690,36 @@
 
     if (sheetTab === 'settings') {
       const s = BC.getReaderSettings();
+      const tools = getTools();
       const cats = categorizeVoices();
       const transId = currentTranslationId();
       const pregenVoices = AE ? AE.availablePregenVoices(transId) : [];
       const catalogVoices = AE ? AE.allCatalogVoices() : [];
       const showCatalog = catalogVoices.length > 0;
       body.innerHTML = `
+        <div class="reader-settings-group">
+          <div class="reader-settings-label">Reading tools</div>
+          <div class="reader-tool-toggles">
+            <div class="reader-tool-row">
+              <label for="tool-speaker">Speaker (🔊 per verse)</label>
+              <input type="checkbox" id="tool-speaker" ${tools.speaker ? 'checked' : ''}>
+            </div>
+            <div class="reader-tool-row">
+              <label for="tool-bookmark">Bookmarks (★)</label>
+              <input type="checkbox" id="tool-bookmark" ${tools.bookmark ? 'checked' : ''}>
+            </div>
+            <div class="reader-tool-row">
+              <label for="tool-highlight">Verse highlight (tap)</label>
+              <input type="checkbox" id="tool-highlight" ${tools.highlight ? 'checked' : ''}>
+            </div>
+            <div class="reader-tool-row">
+              <label for="tool-word-study">Word study (tap verse)</label>
+              <input type="checkbox" id="tool-word-study" ${tools.wordStudy ? 'checked' : ''}>
+            </div>
+          </div>
+          <a href="/app?view=library" class="reader-library-link">Open full Library study mode →</a>
+          <p class="reader-voice-hint">Tap any verse for Greek/Hebrew words and context. Library mode adds Ask AI, John and extra buttons.</p>
+        </div>
         <div class="reader-settings-group">
           <div class="reader-settings-label">Text size</div>
           <div class="reader-pill-row" id="font-size-pills">
@@ -657,6 +812,22 @@
         });
       }
       sel.addEventListener('change', () => setVoiceId(sel.value));
+
+      const saveTools = () => {
+        BC.saveReaderSettings({
+          tools: {
+            speaker: !!body.querySelector('#tool-speaker')?.checked,
+            bookmark: !!body.querySelector('#tool-bookmark')?.checked,
+            highlight: !!body.querySelector('#tool-highlight')?.checked,
+            wordStudy: !!body.querySelector('#tool-word-study')?.checked
+          }
+        });
+        if (currentBook) loadChapter(currentBook, currentChapter, selectedVerseNum);
+      };
+      ['#tool-speaker', '#tool-bookmark', '#tool-highlight', '#tool-word-study'].forEach((selId) => {
+        const input = body.querySelector(selId);
+        if (input) input.addEventListener('change', saveTools);
+      });
 
       body.querySelectorAll('[data-size]').forEach((btn) => {
         btn.addEventListener('click', () => {

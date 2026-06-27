@@ -339,11 +339,24 @@
     if (location.hash !== next) history.replaceState(null, '', next);
   }
 
+  const DEFAULT_READER_TOOLS = {
+    speaker: true,
+    bookmark: true,
+    highlight: true,
+    wordStudy: true
+  };
+
   function getReaderSettings() {
     try {
-      return { fontSize: 'md', lineHeight: 'relaxed', ...JSON.parse(localStorage.getItem('reader_settings') || '{}') };
+      const saved = JSON.parse(localStorage.getItem('reader_settings') || '{}');
+      return {
+        fontSize: 'md',
+        lineHeight: 'relaxed',
+        ...saved,
+        tools: { ...DEFAULT_READER_TOOLS, ...(saved.tools || {}) }
+      };
     } catch (e) {
-      return { fontSize: 'md', lineHeight: 'relaxed' };
+      return { fontSize: 'md', lineHeight: 'relaxed', tools: { ...DEFAULT_READER_TOOLS } };
     }
   }
 

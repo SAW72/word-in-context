@@ -24,6 +24,7 @@
         </button>
       </div>
       <div class="reader-header-actions">
+        <a href="/app?view=library" class="reader-link">Library</a>
         <a href="/app" class="reader-link">Chat</a>
         <button type="button" class="reader-icon-btn" id="btn-theme" aria-label="Toggle dark mode">◐</button>
         <button type="button" class="reader-icon-btn" id="btn-settings" aria-label="Reading settings">⚙</button>
@@ -66,7 +67,7 @@
       <button type="button" class="nav-tab active" data-tab="books">Books</button>
       <button type="button" class="nav-tab" data-tab="chapters" id="tab-chapters" disabled>Chapters</button>
       <button type="button" class="nav-tab" data-tab="bookmarks">Saved</button>
-      <button type="button" class="nav-tab" data-tab="settings">Audio</button>
+      <button type="button" class="nav-tab" data-tab="settings">Settings</button>
     </div>
     <div class="nav-sheet-body" id="nav-body"></div>
     <div class="nav-trans-row">
@@ -76,6 +77,7 @@
   </aside>
 
   <script src="/bible-core.js"></script>
+  <script src="/study-core.js"></script>
   <script src="/audio-engine.js"></script>
   <script src="/reader.js"></script>
   <script>

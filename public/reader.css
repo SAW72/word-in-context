@@ -6,8 +6,11 @@
   --sans: 'Source Sans 3', system-ui, -apple-system, sans-serif;
   --serif: 'Literata', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   --reader-max: 42rem;
-  --header-h: 52px;
-  --audio-h: 64px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-bar: 52px;
+  --header-h: calc(var(--header-bar) + var(--safe-top));
+  --audio-h: calc(64px + var(--safe-bottom));
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -68,8 +71,8 @@ body.reader-immersive .reader-audio-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: var(--header-h);
-  padding: 0 12px 0 8px;
+  min-height: var(--header-h);
+  padding: var(--safe-top) 12px 0 8px;
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
@@ -258,8 +261,18 @@ body.reader-immersive .reader-audio-bar {
   border-radius: 2px;
 }
 
-.reader-verse-wrap {
+.reader-verse.selected-verse .reader-verse-text {
+  background: var(--gold-soft);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+
+.reader-verse-block {
   margin-bottom: 0.65em;
+}
+
+.reader-verse-wrap {
+  display: inline;
 }
 
 .reader-verse-actions {
@@ -361,6 +374,7 @@ body.reader-immersive .reader-audio-bar {
   transition: transform 0.35s var(--ease);
   display: flex;
   flex-direction: column;
+  padding-top: var(--safe-top);
 }
 
 .nav-sheet.open {
@@ -608,6 +622,133 @@ body.reader-immersive .reader-audio-bar {
   line-height: 1.45;
 }
 
+.reader-tool-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+
+.reader-tool-row label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reader-tool-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--gold);
+}
+
+.reader-library-link {
+  display: block;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--gold-soft);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.reader-library-link:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.reader-study-panel {
+  margin: 8px 0 12px 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--border));
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+.reader-study-panel[hidden] {
+  display: none !important;
+}
+
+.reader-study-panel.loading {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.reader-study-ref {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+
+.reader-study-section {
+  margin-bottom: 14px;
+}
+
+.reader-study-section:last-child {
+  margin-bottom: 0;
+}
+
+.reader-study-section h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.reader-study-original {
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.reader-study-word {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-study-word:last-child {
+  border-bottom: none;
+}
+
+.reader-study-word strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.reader-study-context {
+  color: var(--text-soft);
+  white-space: pre-wrap;
+}
+
+.reader-verse.tappable {
+  cursor: pointer;
+}
+
 /* Audio bar */
 .reader-audio-bar {
   position: fixed;
@@ -751,8 +892,5 @@ body.reader-immersive .reader-audio-bar {
 @media (max-width: 480px) {
   .reader-verse-actions {
     opacity: 1;
-  }
-  .reader-header-actions .reader-link {
-    display: none;
   }
 }

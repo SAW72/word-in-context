@@ -284,6 +284,13 @@
       color: #c9a227;
       border-bottom-color: #c9a227;
     }
+    .main-tab-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      box-sizing: border-box;
+    }
     .chat-panel,
     .library-panel {
       flex: 1;
@@ -1906,7 +1913,8 @@
 
       <div class="main-tabs" role="tablist" aria-label="App sections">
         <button type="button" class="main-tab active" id="tab-chat" role="tab" aria-selected="true" aria-controls="chat-panel">Chat</button>
-        <button type="button" class="main-tab" id="tab-library" role="tab" aria-selected="false" aria-controls="library-panel">Read</button>
+        <button type="button" class="main-tab" id="tab-library" role="tab" aria-selected="false" aria-controls="library-panel">Library</button>
+        <a href="/read" class="main-tab main-tab-link" id="tab-read-link" role="tab">Read</a>
       </div>
 
       <div class="chat-panel" id="chat-panel" role="tabpanel">
@@ -1970,6 +1978,7 @@
           <div class="library-ask-john">
             <span class="library-ask-john-label">Need help?</span>
             <button type="button" class="library-ask-john-btn" data-john-popup data-john-popup-mode="help" aria-label="Ask AI, John for help using the Library">Ask AI, John</button>
+            <a href="/read" class="library-ask-john-btn" style="text-decoration:none;display:inline-block;margin-left:6px;">Read →</a>
           </div>
           <button type="button" class="library-back-btn" id="library-back-btn" style="display:none;">← Books</button>
           <div class="library-title" id="library-view-title">Bible Library</div>
@@ -2883,9 +2892,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const tabChat = document.getElementById('tab-chat');
       const tabLibrary = document.getElementById('tab-library');
       if (tabChat) tabChat.addEventListener('click', () => switchMainView('chat'));
-      if (tabLibrary) tabLibrary.addEventListener('click', () => {
-        window.location.href = '/read';
-      });
+      if (tabLibrary) tabLibrary.addEventListener('click', () => switchMainView('library'));
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('view') === 'library') {
+        switchMainView('library');
+      }
     }
 
     function migrateLibraryTransStorage() {
