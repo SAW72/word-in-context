@@ -13,6 +13,9 @@ users.db
 *.swp
 *~
 
+# Generated Bible audio (large MP3s — produce locally, deploy to disk/CDN)
+audio/generated/**/*.mp3
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

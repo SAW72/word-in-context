@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "description": "Narration voice profiles for pre-generated Bible audio. Enable voices/translations here, then: npm run audio:generate -- --translation BSB --voice grok-leo. Add translations later by setting enabled:true and re-running the generator.",
+  "voices": [
+    {
+      "slug": "spencer-clone",
+      "label": "Spencer (Cloned)",
+      "provider": "xai",
+      "voiceId": "REPLACE_WITH_XAI_CUSTOM_VOICE_ID",
+      "language": "en",
+      "speed": 0.95,
+      "enabled": false
+    },
+    {
+      "slug": "grok-leo",
+      "label": "Grok — Leo",
+      "provider": "xai",
+      "voiceId": "leo",
+      "language": "en",
+      "speed": 1.0,
+      "enabled": true
+    },
+    {
+      "slug": "grok-rex",
+      "label": "Grok — Rex",
+      "provider": "xai",
+      "voiceId": "rex",
+      "language": "en",
+      "speed": 1.0,
+      "enabled": true
+    },
+    {
+      "slug": "grok-ara",
+      "label": "Grok — Ara",
+      "provider": "xai",
+      "voiceId": "ara",
+      "language": "en",
+      "speed": 1.0,
+      "enabled": true
+    },
+    {
+      "slug": "grok-sal",
+      "label": "Grok — Sal",
+      "provider": "xai",
+      "voiceId": "sal",
+      "language": "en",
+      "speed": 1.0,
+      "enabled": true
+    },
+    {
+      "slug": "grok-eve",
+      "label": "Grok — Eve",
+      "provider": "xai",
+      "voiceId": "eve",
+      "language": "en",
+      "speed": 1.0,
+      "enabled": true
+    }
+  ],
+  "translations": {
+    "BSB": {
+      "label": "Berean Standard Bible",
+      "language": "en",
+      "bibleApiId": "BSB",
+      "enabled": true
+    },
+    "eng_asv": {
+      "label": "American Standard Version",
+      "language": "en",
+      "bibleApiId": "eng_asv",
+      "enabled": false
+    },
+    "eng_ylt": {
+      "label": "Young's Literal Translation",
+      "language": "en",
+      "bibleApiId": "eng_ylt",
+      "enabled": false
+    },
+    "ENGWEBP": {
+      "label": "World English Bible",
+      "language": "en",
+      "bibleApiId": "ENGWEBP",
+      "enabled": false
+    }
+  }
+}

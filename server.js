@@ -875,6 +875,79 @@ app.get('/read', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'reader.html'));
 });
 
+// Pre-generated Bible audio (MP3s produced by scripts/generate-bible-audio.mjs)
+const AUDIO_DIR = process.env.AUDIO_STORAGE_PATH
+  ? path.dirname(process.env.AUDIO_STORAGE_PATH)
+  : path.join(__dirname, 'audio');
+const AUDIO_GENERATED_DIR = process.env.AUDIO_STORAGE_PATH || path.join(AUDIO_DIR, 'generated');
+const AUDIO_VOICES_PATH = path.join(AUDIO_DIR, 'voices.json');
+const AUDIO_REGISTRY_PATH = path.join(AUDIO_DIR, 'registry.json');
+
+function loadAudioJson(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    console.warn('[audio] could not read', filePath, e.message);
+    return fallback;
+  }
+}
+
+function buildAudioCatalog() {
+  const voicesConfig = loadAudioJson(AUDIO_VOICES_PATH, { voices: [], translations: {} });
+  const registry = loadAudioJson(AUDIO_REGISTRY_PATH, { translations: {} });
+
+  const voices = (voicesConfig.voices || [])
+    .filter((v) => v.enabled)
+    .map((v) => ({
+      slug: v.slug,
+      label: v.label,
+      provider: v.provider || 'xai',
+      language: v.language || 'en'
+    }));
+
+  const translations = Object.entries(voicesConfig.translations || {})
+    .filter(([, meta]) => meta.enabled)
+    .map(([id, meta]) => ({
+      id,
+      label: meta.label || id,
+      language: meta.language || 'en'
+    }));
+
+  const availability = [];
+  const regTranslations = registry.translations || {};
+  for (const [translationId, tData] of Object.entries(regTranslations)) {
+    const voiceMap = tData.voices || {};
+    for (const [voiceSlug, vData] of Object.entries(voiceMap)) {
+      availability.push({
+        translationId,
+        voiceSlug,
+        verseCount: vData.verseCount || 0,
+        updatedAt: registry.updatedAt || null
+      });
+    }
+  }
+
+  return {
+    version: 1,
+    publicBasePath: '/audio/generated',
+    voices,
+    translations,
+    availability,
+    urlPattern: '/audio/generated/{translationId}/{voiceSlug}/{bookCode}/{chapter}/{verse}.mp3'
+  };
+}
+
+app.get('/api/audio/catalog', (req, res) => {
+  res.json(buildAudioCatalog());
+});
+
+app.use('/audio/generated', express.static(AUDIO_GENERATED_DIR, {
+  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
+  immutable: process.env.NODE_ENV === 'production',
+  fallthrough: true
+}));
+
 // Admin control panel - explicit route so /admin serves the panel (password protected inside via ADMIN_PASSWORD env)
 // Must be before static middleware.
 app.get('/admin', (req, res) => {

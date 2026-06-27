@@ -2,6 +2,7 @@
   'use strict';
 
   const BC = window.BibleCore;
+  const AE = window.AudioEngine;
   if (!BC) return;
 
   const synth = window.speechSynthesis;
@@ -14,6 +15,8 @@
   let audioIndex = 0;
   let audioPlaying = false;
   let audioPaused = false;
+  let audioMode = 'browser';
+  let audioCatalogLoaded = false;
   let scrollHideTimer = null;
   let lastScrollY = 0;
 
@@ -101,10 +104,46 @@
     return utterance;
   }
 
+  function currentTranslationId() {
+    return BC.getTranslationId();
+  }
+
+  function usePregenAudio() {
+    return AE && AE.isPregenVoice(getVoiceId());
+  }
+
+  function pregenVoiceSlug() {
+    return AE ? AE.pregenSlug(getVoiceId()) : '';
+  }
+
+  function verseMp3Url(bookCode, chapter, verse) {
+    if (!AE) return '';
+    return AE.verseUrl(currentTranslationId(), pregenVoiceSlug(), bookCode, chapter, verse);
+  }
+
+  function playSpeech(text, onEnd) {
+    audioMode = 'browser';
+    speakText(text, onEnd);
+  }
+
+  function playVerseAudio(bookCode, chapter, verse, text, onEnd) {
+    if (usePregenAudio() && currentBook) {
+      const url = verseMp3Url(bookCode, chapter, verse);
+      audioMode = 'mp3';
+      AE.playMp3(url)
+        .then(() => { if (onEnd) onEnd(); })
+        .catch(() => playSpeech(text, onEnd));
+      return;
+    }
+    playSpeech(text, onEnd);
+  }
+
   function stopAudio() {
     synth.cancel();
+    if (AE) AE.stopMp3();
     audioPlaying = false;
     audioPaused = false;
+    audioMode = 'browser';
     audioQueue = [];
     audioIndex = 0;
     els.btnPlay.textContent = '▶';
@@ -115,7 +154,11 @@
   function buildAudioQueue() {
     audioQueue = chapterBlocks
       .filter((b) => b.type === 'verse')
-      .map((b) => ({ number: b.number, text: `${b.number}. ${b.text}` }));
+      .map((b) => ({
+        number: b.number,
+        text: `${b.number}. ${b.text}`,
+        plain: b.text
+      }));
   }
 
   function playNextInQueue() {
@@ -137,21 +180,35 @@
       verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
-    speakText(item.text, () => {
+    const onDone = () => {
       audioIndex += 1;
       playNextInQueue();
-    });
+    };
+
+    if (usePregenAudio() && currentBook) {
+      playVerseAudio(currentBook.code, currentChapter, item.number, item.text, onDone);
+      return;
+    }
+    playSpeech(item.text, onDone);
   }
 
   function toggleAudio() {
     if (audioPlaying && !audioPaused) {
-      synth.pause();
+      if (audioMode === 'mp3' && AE) {
+        AE.pauseMp3();
+      } else {
+        synth.pause();
+      }
       audioPaused = true;
       els.btnPlay.textContent = '▶';
       return;
     }
     if (audioPaused) {
-      synth.resume();
+      if (audioMode === 'mp3' && AE) {
+        AE.resumeMp3();
+      } else {
+        synth.resume();
+      }
       audioPaused = false;
       els.btnPlay.textContent = '⏸';
       return;
@@ -264,7 +321,13 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           stopAudio();
-          speakText(btn.getAttribute('data-text'));
+          const verseNum = Number(btn.closest('.reader-verse-wrap')?.querySelector('.reader-verse')?.getAttribute('data-verse'));
+          const text = btn.getAttribute('data-text');
+          if (currentBook && verseNum) {
+            playVerseAudio(currentBook.code, currentChapter, verseNum, text);
+          } else {
+            playSpeech(text);
+          }
         });
       });
 
@@ -435,6 +498,10 @@
     if (sheetTab === 'settings') {
       const s = BC.getReaderSettings();
       const cats = categorizeVoices();
+      const transId = currentTranslationId();
+      const pregenVoices = AE ? AE.availablePregenVoices(transId) : [];
+      const catalogVoices = AE ? AE.allCatalogVoices() : [];
+      const showCatalog = catalogVoices.length > 0;
       body.innerHTML = `
         <div class="reader-settings-group">
           <div class="reader-settings-label">Text size</div>
@@ -451,11 +518,40 @@
         <div class="reader-settings-group">
           <div class="reader-settings-label">Narration voice</div>
           <select class="reader-voice-select" id="voice-select-reader"></select>
-          <p class="reader-voice-hint"><strong>Your Voice</strong> — saved from app Settings or Personal Voice on Mac.<br><strong>Premium Neural</strong> — Enhanced system voices (Chrome recommended).<br><strong>John (Narrator)</strong> — clear English voices tuned for Scripture.</p>
+          <p class="reader-voice-hint">${showCatalog ? '<strong>Studio voices</strong> — pre-generated Grok / cloned narration (best quality).<br>' : ''}<strong>Your Voice</strong> — saved from app Settings or Personal Voice on Mac.<br><strong>Premium Neural</strong> — Enhanced system voices (Chrome recommended).<br><strong>John (Narrator)</strong> — clear English voices tuned for Scripture.</p>
         </div>
       `;
 
       const sel = body.querySelector('#voice-select-reader');
+      const currentVoice = getVoiceId();
+
+      if (pregenVoices.length) {
+        const og = document.createElement('optgroup');
+        og.label = `— Studio (${transId}) —`;
+        pregenVoices.forEach((v) => {
+          const opt = document.createElement('option');
+          const voiceId = AE.toPregenVoiceId(v.slug);
+          opt.value = voiceId;
+          const avail = AE.availabilityFor(transId, v.slug);
+          const countLabel = avail && avail.verseCount ? ` · ${avail.verseCount.toLocaleString()} verses` : '';
+          opt.textContent = `${v.label}${countLabel}`;
+          if (voiceId === currentVoice) opt.selected = true;
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
+      } else if (showCatalog) {
+        const og = document.createElement('optgroup');
+        og.label = '— Studio (generate audio to enable) —';
+        catalogVoices.forEach((v) => {
+          const opt = document.createElement('option');
+          opt.value = AE.toPregenVoiceId(v.slug);
+          opt.textContent = v.label;
+          opt.disabled = true;
+          og.appendChild(opt);
+        });
+        sel.appendChild(og);
+      }
+
       const groups = [
         ['— Your saved voice —', cats.saved ? [cats.saved] : []],
         ['— Personal / Cloned —', cats.personal],
@@ -471,7 +567,7 @@
           const opt = document.createElement('option');
           opt.value = v.name;
           opt.textContent = v.name;
-          if (v.name === getVoiceId()) opt.selected = true;
+          if (v.name === currentVoice) opt.selected = true;
           og.appendChild(opt);
         });
         sel.appendChild(og);
@@ -595,6 +691,10 @@
     applyTheme();
     bindEvents();
     setupScrollChrome();
+    if (AE) {
+      await AE.loadCatalog().catch(() => {});
+      audioCatalogLoaded = true;
+    }
     await populateTranslations();
     BC.loadCompleteBible().catch(() => {});
 

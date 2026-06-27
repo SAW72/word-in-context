@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "audio:generate": "node scripts/generate-bible-audio.mjs",
+    "audio:dry-run": "node scripts/generate-bible-audio.mjs --dry-run"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
