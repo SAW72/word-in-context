@@ -298,16 +298,16 @@
   }
 
   function categorizeVoices() {
-    const voices = getVoices().filter((v) => (v.lang || '').toLowerCase().startsWith('en'));
-    const saved = findVoiceByName(getVoiceId());
-    const personal = voices.filter((v) => /personal|cloned/i.test(v.name));
-    const enhanced = voices.filter((v) => /enhanced|premium|neural|google uk|google us/i.test(v.name));
-    const grokStyle = voices.filter((v) =>
-      /daniel|samantha|alex|karen|fred|aaron|nicky/i.test(v.name) && !enhanced.includes(v)
-    );
-    const used = new Set([saved, ...personal, ...enhanced, ...grokStyle].filter(Boolean));
-    const other = voices.filter((v) => !used.has(v));
-    return { saved, personal, enhanced, grokStyle, other, all: voices };
+    const voices = getVoices();
+    const VP = window.VoicePicker;
+    const savedId = AE && (AE.isHelloaoVoice(getVoiceId()) || AE.isPregenVoice(getVoiceId()))
+      ? (localStorage.getItem('reader_last_system_voice') || '')
+      : getVoiceId();
+    if (VP) {
+      return VP.categorizeEnglishVoices(voices, savedId, findVoiceByName);
+    }
+    const english = voices.filter((v) => (v.lang || '').toLowerCase().startsWith('en'));
+    return { saved: findVoiceByName(savedId), personal: [], enhanced: [], grokStyle: [], other: english, all: english };
   }
 
   function cleanForSpeech(text) {

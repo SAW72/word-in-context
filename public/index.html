@@ -2018,14 +2018,15 @@
       </div>
 
       <p class="settings-muted-note">
-        Voices come from your <strong>browser</strong> only (no app filter). Use the 🔊 buttons below to test any voice before saving.
+        <strong>Chat</strong> speaks AI replies with <strong>device voices</strong> below. <strong>BSB Audio</strong> and <strong>Studio</strong> voices are for the <a href="/read" style="color:#c9a227;">Bible reader</a> — listed here so you see the same options as Read.
       </p>
 
-      <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Choose Voice
+      <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Narration voice (Chat)
         <span class="settings-voice-hint">
-          <strong>iPhone:</strong> every browser (Safari, Chrome, Edge) only gets the same <strong>basic system voices</strong> — try <strong>Daniel</strong> (male) or <strong>Karen</strong> (female). Enhanced/Premium downloads do not work in web apps.<br>
-          <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices from Spoken Content settings.<br>
-          <strong>Zoom / video calls:</strong> turn off <strong>Hands-free</strong>, use <strong>headphones</strong>, and tap 🔊 on replies — Zoom often holds the mic/speaker and browser voices go silent.
+          <strong>Your saved voice</strong> · <strong>Premium Neural</strong> · <strong>John (Narrator)</strong> — same groups as the Read app.<br>
+          <strong>iPhone:</strong> try <strong>Daniel</strong> or <strong>Karen</strong> under John (Narrator).<br>
+          <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices.<br>
+          <strong>Zoom:</strong> turn off Hands-free, use headphones, tap 🔊 on replies.
         </span>
         <select id="voice-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:4px;font-size:14px;"></select>
         <a href="#" onclick="reloadSystemVoices(); return false;" style="font-size:11px; color:#c9a227; text-decoration:underline;">Reload system voices</a>
@@ -2268,6 +2269,8 @@
     </div>
   </div>
 
+  <script src="/audio-engine.js"></script>
+  <script src="/voice-picker.js"></script>
   <script src="/auth-api.js"></script>
   <script>
     // ====================== SUPPRESS EXTENSION NOISE ======================
@@ -4726,7 +4729,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function resolveSpeechVoice(langHint = null) {
-      let voiceId = voiceSettings.voiceId;
+      let voiceId = resolveChatVoiceId(voiceSettings.voiceId);
       const voiceModalEl = document.getElementById('voice-modal');
       const voiceSelectEl = document.getElementById('voice-select');
       if (voiceModalEl && voiceModalEl.style.display === 'flex' && voiceSelectEl && voiceSelectEl.value && voiceSelectEl.value.startsWith('local:')) {
@@ -4942,33 +4945,46 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Robust helper to find the matching SpeechSynthesisVoice for a stored voiceId.
     // Uses exact, case-insensitive, includes, normalized names (strip Enhanced/System suffixes common on Mac/iOS),
     // and special case for UK male.
+    function resolveChatVoiceId(id) {
+      if (!id) return '';
+      const raw = String(id).replace(/^local:/, '');
+      if (window.VoicePicker && VoicePicker.isReaderOnlyVoiceId(raw)) {
+        return localStorage.getItem('reader_last_system_voice')
+          || localStorage.getItem('voice_name')
+          || '';
+      }
+      return raw;
+    }
+
     function findLocalVoiceById(id) {
       if (!id) return null;
       const voices = synth.getVoices();
       if (!voices || voices.length === 0) return null;
 
-      const normId = normalizeVoiceName(id);
+      const resolvedId = resolveChatVoiceId(id);
+      if (!resolvedId) return null;
+      const normId = normalizeVoiceName(resolvedId);
 
-      let v = voices.find(v => v.name === id);
+      let v = voices.find(v => v.name === resolvedId);
       if (v) return v;
 
       v = voices.find(v => normalizeVoiceName(v.name) === normId);
       if (v) return v;
 
-      v = voices.find(v => v.name.toLowerCase() === id.toLowerCase());
+      v = voices.find(v => v.name.toLowerCase() === resolvedId.toLowerCase());
       if (v) return v;
 
       v = voices.find(v => normalizeVoiceName(v.name).toLowerCase() === normId.toLowerCase());
       if (v) return v;
 
-      v = voices.find(v => v.name.toLowerCase().includes(id.toLowerCase()));
+      v = voices.find(v => v.name.toLowerCase().includes(resolvedId.toLowerCase()));
       if (v) return v;
 
       v = voices.find(v => normalizeVoiceName(v.name).toLowerCase().includes(normId.toLowerCase()));
       if (v) return v;
 
       // Special handling for UK male preference
-      if (id.toLowerCase().includes('uk') && id.toLowerCase().includes('male')) {
+      if (resolvedId.toLowerCase().includes('uk') && resolvedId.toLowerCase().includes('male')) {
         v = voices.find(v => 
           v.name.toLowerCase().includes('google') && 
           v.name.toLowerCase().includes('uk') && 
@@ -5175,53 +5191,80 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         return;
       }
 
-      voiceSelect.innerHTML = '';
-
-      sortVoicesForDisplay(voices).forEach(voice => {
-        const option = document.createElement('option');
-        option.value = `local:${voice.name}`;
+      const savedId = resolveChatVoiceId(voiceSettings.voiceId);
+      const labelFor = (voice) => {
         const display = getDisplayVoiceName(voice.name, voice);
         const isRecommendedIOS = isIOSDevice() && /daniel|karen/i.test(voice.name || '');
-        option.textContent = isRecommendedIOS ? `★ ${display}` : display;
-        voiceSelect.appendChild(option);
-      });
+        return isRecommendedIOS ? `★ ${display}` : display;
+      };
 
-      const options = Array.from(voiceSelect.options);
-      const optionValues = new Set(options.map(o => o.value));
-      let pickValue = '';
+      const renderVoiceOptions = (catalog) => {
+        if (!voiceSelect.isConnected) return;
+        const cats = window.VoicePicker
+          ? VoicePicker.categorizeEnglishVoices(voices, savedId, (name) => findLocalVoiceById(name))
+          : { saved: null, personal: [], enhanced: [], grokStyle: [], other: sortVoicesForDisplay(voices), all: voices };
 
-      // While the modal is open, never clobber the user's in-progress dropdown pick.
-      if (preserveValue && optionValues.has(preserveValue)) {
-        pickValue = preserveValue;
-      } else if (voiceSettings.voiceId && voiceSettings.voiceSource === 'local') {
-        const exact = `local:${voiceSettings.voiceId}`;
-        if (optionValues.has(exact)) {
-          pickValue = exact;
+        voiceSelect.innerHTML = '';
+
+        if (window.VoicePicker) {
+          VoicePicker.appendReaderAudioGroups(voiceSelect, { disabled: true, catalog: catalog || null });
+          VoicePicker.appendDeviceVoiceGroups(voiceSelect, cats, {
+            getValue: (v) => `local:${v.name}`,
+            getLabel: labelFor,
+            selectedValue: ''
+          });
         } else {
-          const normSaved = normalizeVoiceName(voiceSettings.voiceId);
-          const match = options.find(o => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
-          if (match) pickValue = match.value;
+          sortVoicesForDisplay(voices).forEach((voice) => {
+            const option = document.createElement('option');
+            option.value = `local:${voice.name}`;
+            option.textContent = labelFor(voice);
+            voiceSelect.appendChild(option);
+          });
         }
-      }
 
-      if (pickValue) {
-        voiceSelect.value = pickValue;
-        selectedVoice = findLocalVoiceById(pickValue.replace('local:', ''));
+        const options = Array.from(voiceSelect.options).filter((o) => o.value && !o.disabled);
+        const optionValues = new Set(options.map((o) => o.value));
+        let pickValue = '';
+
+        if (preserveValue && optionValues.has(preserveValue)) {
+          pickValue = preserveValue;
+        } else if (savedId && voiceSettings.voiceSource === 'local') {
+          const exact = `local:${savedId}`;
+          if (optionValues.has(exact)) {
+            pickValue = exact;
+          } else {
+            const normSaved = normalizeVoiceName(savedId);
+            const match = options.find((o) => normalizeVoiceName(o.value.replace(/^local:/, '')) === normSaved);
+            if (match) pickValue = match.value;
+          }
+        }
+
+        if (pickValue) {
+          voiceSelect.value = pickValue;
+          selectedVoice = findLocalVoiceById(pickValue.replace('local:', ''));
+        }
+        updateVoiceDiagnostics();
+      };
+
+      if (window.AudioEngine && window.AudioEngine.loadCatalog) {
+        AudioEngine.loadCatalog().then(renderVoiceOptions).catch(() => renderVoiceOptions(null));
+      } else {
+        renderVoiceOptions(null);
       }
-      updateVoiceDiagnostics();
     }
 
     // Helper to apply the saved voice selection after voices have loaded
     function applySavedVoiceSelection() {
       const voiceSelect = document.getElementById('voice-select');
-      if (!voiceSelect || !voiceSettings.voiceId) return;
+      const savedId = resolveChatVoiceId(voiceSettings.voiceId);
+      if (!voiceSelect || !savedId) return;
 
       if (voiceSelect.options.length === 0) {
         setTimeout(applySavedVoiceSelection, 500);
         return;
       }
 
-      const targetValue = `local:${voiceSettings.voiceId}`;
+      const targetValue = `local:${savedId}`;
       let option = Array.from(voiceSelect.options).find(o => o.value === targetValue);
       if (!option) {
         const normSaved = normalizeVoiceName(voiceSettings.voiceId);
@@ -5229,7 +5272,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       }
       if (option) {
         voiceSelect.value = option.value;
-        selectedVoice = findLocalVoiceById(voiceSettings.voiceId);
+        selectedVoice = findLocalVoiceById(savedId);
       } else {
         // Voices still loading — retry without forcing the first/top voice (Lee, UK Male, etc.)
         setTimeout(applySavedVoiceSelection, 500);
