@@ -478,7 +478,7 @@ const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew
 CORE COMMITMENTS — never violate these:
 
 Translation Policy
-Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below for a specific reference, quote that exact wording verbatim and cite the translation named in that block. For any other passage you discuss, quote from the allowed translations above. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew, Aramaic, or Greek.
+Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), King James Version (KJV), NET Bible (NET), Darby Translation (DBY), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below for a specific reference, quote that exact wording verbatim and cite the translation named in that block. For any other passage you discuss, quote from the allowed translations above. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew, Aramaic, or Greek.
 
 Conversation Scope
 Each new user question sets the topic for your reply. You may discuss any Scripture, book, chapter, verse, theme, or topic the user asks about — across the entire Bible, in any allowed English translation and in Greek, Hebrew, or Aramaic where relevant. You are never limited to only the verses in grounding blocks below. If the user previously discussed one passage and now asks a different question (for example, moving from Revelation 21:8 to "healing verses in the Bible"), answer the new question fully and bring in every relevant passage. Grounding blocks are supplementary anchors for specific references, not a cage around the conversation.
@@ -1887,7 +1887,7 @@ app.post('/api/chat', (req, res, next) => {
 
     // User-selected default English translation from Voice Settings (client sends defaultTranslation).
     // Only translations actually available on bible.helloao.org (no NASB/ESV/NKJV there).
-    const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
+    const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_kjv', 'eng_net', 'eng_dby', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
     const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'BSB';
 
     // === Scripture grounding: fetch live text for refs in the CURRENT question ===
@@ -2014,6 +2014,9 @@ app.post('/api/chat', (req, res, next) => {
     // Translation display names for citations and UI
     const transDisplayNames = {
       'BSB': 'Berean Standard Bible',
+      'eng_kjv': 'King James Version (KJV)',
+      'eng_net': 'NET Bible (NET)',
+      'eng_dby': 'Darby Translation (DBY)',
       'eng_asv': 'American Standard Version (ASV)',
       'eng_ylt': "Young's Literal Translation (YLT)",
       'ENGWEBP': 'World English Bible (WEB)',

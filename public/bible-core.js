@@ -81,6 +81,9 @@
 
   const ENGLISH_TRANS = [
     { id: 'BSB', name: 'Berean Standard Bible', short: 'BSB' },
+    { id: 'eng_kjv', name: 'King James Version', short: 'KJV' },
+    { id: 'eng_net', name: 'NET Bible', short: 'NET' },
+    { id: 'eng_dby', name: 'Darby Translation', short: 'DBY' },
     { id: 'eng_asv', name: 'American Standard Version', short: 'ASV' },
     { id: 'eng_ylt', name: "Young's Literal Translation", short: 'YLT' },
     { id: 'ENGWEBP', name: 'World English Bible', short: 'WEB' }
