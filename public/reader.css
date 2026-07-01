@@ -124,6 +124,17 @@ body.reader-immersive .reader-audio-bar {
   text-align: center;
 }
 
+.reader-site-title {
+  margin: 0 0 2px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  line-height: 1.2;
+}
+
 .reader-title-block button {
   background: none;
   border: none;

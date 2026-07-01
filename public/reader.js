@@ -551,7 +551,7 @@
       prose.className = 'reader-prose size-md lh-relaxed';
       prose.innerHTML = `
         <div class="reader-free-badge">✦ Entire Bible · Free to read</div>
-        <h1 class="reader-chapter-heading">${payload.bookName} ${chapter}</h1>
+        <h2 class="reader-chapter-heading">${payload.bookName} ${chapter}</h2>
         <p class="reader-trans-label">${payload.translation}</p>
       `;
 
