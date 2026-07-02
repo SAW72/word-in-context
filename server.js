@@ -95,6 +95,23 @@ const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787'
 const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincontext.org').replace(/\/$/, '');
 // Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
+// Bump when static JS/CSS/images change; keep ?v= in HTML/JS in sync (or set ASSET_VERSION env on Render).
+const ASSET_VERSION = process.env.ASSET_VERSION || '2';
+const CACHE_ONE_YEAR = 'public, max-age=31536000, immutable';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+function isLongCacheStaticPath(p) {
+  if (p === '/sw.js' || /\/sw\.js$/i.test(p)) return false;
+  if (/\.html?$/i.test(p)) return false;
+  if (/\/icons\//.test(p) || /\/audio\/generated\//.test(p) || /\/data\//.test(p)) return true;
+  return /\.(css|js|mjs|woff2?|png|jpe?g|gif|webp|svg|ico|mp3|webmanifest|json)$/i.test(p);
+}
+
+function setNoCacheHeaders(res) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+}
 
 function shareOgImageUrl() {
   return `${SHARE_SITE_URL}/icons/share-og.png?v=${SHARE_OG_VERSION}`;
@@ -836,14 +853,12 @@ app.use((req, res, next) => {
   if (req.path === '/sw.js') {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Service-Worker-Allowed', '/');
-  } else if (req.path === '/manifest.webmanifest' || req.path.startsWith('/icons/')) {
-    res.set('Cache-Control', 'public, max-age=86400');
-  } else if (/\.(css|js|mjs|woff2?)$/.test(req.path)) {
-    res.set('Cache-Control', 'public, max-age=604800');
+  } else if (IS_PRODUCTION && isLongCacheStaticPath(req.path)) {
+    res.set('Cache-Control', CACHE_ONE_YEAR);
+  } else if (!IS_PRODUCTION) {
+    setNoCacheHeaders(res);
   } else {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
+    setNoCacheHeaders(res);
   }
 
   // Permissive for localhost dev only. Prevents our own code + common extension noise from
@@ -874,7 +889,8 @@ function landingHtmlWithOgTags() {
     testerTrialDays: TESTER_TRIAL_DAYS,
     demoLimit: DEMO_LIMIT,
     siteUrl: SHARE_SITE_URL,
-  })};</script>`;
+    assetVersion: ASSET_VERSION,
+  })};window.__WIC_ASSET_V__=${JSON.stringify(ASSET_VERSION)};</script>`;
   const ogTags = `
   <link rel="canonical" href="${SHARE_SITE_URL}/">
   <meta property="og:title" content="The Word in Context">
@@ -992,9 +1008,12 @@ app.get('/api/audio/catalog', (req, res) => {
 });
 
 app.use('/audio/generated', express.static(AUDIO_GENERATED_DIR, {
-  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0,
-  immutable: process.env.NODE_ENV === 'production',
-  fallthrough: true
+  maxAge: IS_PRODUCTION ? '365d' : 0,
+  immutable: IS_PRODUCTION,
+  fallthrough: true,
+  setHeaders(res) {
+    if (IS_PRODUCTION) res.setHeader('Cache-Control', CACHE_ONE_YEAR);
+  },
 }));
 
 // Admin control panel - explicit route so /admin serves the panel (password protected inside via ADMIN_PASSWORD env)
@@ -1075,7 +1094,22 @@ app.get('/share/:id', (req, res) => {
 });
 
 // Static assets (for any future images/css if split)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: IS_PRODUCTION ? '365d' : 0,
+  immutable: IS_PRODUCTION,
+  setHeaders(res, filePath) {
+    if (!IS_PRODUCTION) return;
+    if (path.basename(filePath) === 'sw.js') {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return;
+    }
+    if (isLongCacheStaticPath(filePath)) {
+      res.setHeader('Cache-Control', CACHE_ONE_YEAR);
+    } else {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    }
+  },
+}));
 
 app.get('/favicon.ico', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-192.png'));

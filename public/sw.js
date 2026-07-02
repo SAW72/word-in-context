@@ -1,41 +1,38 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-49';
+const CACHE_VERSION = 'wic-pwa-50';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
 const BIBLE_ORIGIN = 'https://bible.helloao.org';
 
+const ASSET_V = '2';
 const SHELL_URLS = [
   '/',
   '/app',
   '/read',
   '/reader.html',
-  '/reader.css',
-  '/reader.js',
-  '/audio-engine.js',
-  '/voice-picker.js',
-  '/study-core.js',
-  '/bible-core.js',
+  `/reader.css?v=${ASSET_V}`,
+  `/reader.js?v=${ASSET_V}`,
+  `/audio-engine.js?v=${ASSET_V}`,
+  `/voice-picker.js?v=${ASSET_V}`,
+  `/study-core.js?v=${ASSET_V}`,
+  `/bible-core.js?v=${ASSET_V}`,
   '/admin',
   '/index.html',
   '/landing.html',
   '/instructions.html',
   '/admin.html',
-  '/manifest.webmanifest',
-  '/manifest.webmanifest?v=cross4',
-  '/pwa.js',
-  '/pwa.css',
-  '/john-popup.js',
-  '/auth-api.js',
-  '/icons/icon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-192.png?v=cross4',
-  '/icons/icon-512.png',
-  '/icons/icon-512.png?v=cross4',
-  '/icons/icon-maskable-512.png',
-  '/icons/icon-maskable-512.png?v=cross4',
+  `/manifest.webmanifest?v=${ASSET_V}`,
+  `/pwa.js?v=${ASSET_V}`,
+  `/pwa.css?v=${ASSET_V}`,
+  `/john-popup.js?v=${ASSET_V}`,
+  `/auth-api.js?v=${ASSET_V}`,
+  `/icons/icon.svg?v=${ASSET_V}`,
+  `/icons/icon-192.png?v=${ASSET_V}`,
+  `/icons/icon-512.png?v=${ASSET_V}`,
+  `/icons/icon-maskable-512.png?v=${ASSET_V}`,
   '/icons/share-og.png',
-  '/data/study-lexicon.json',
+  `/data/study-lexicon.json?v=${ASSET_V}`,
 ];
 
 function biblePrecacheUrls() {

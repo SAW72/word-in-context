@@ -48,7 +48,7 @@
   async function loadStudyLexicon() {
     if (studyLexicon) return studyLexicon;
     if (studyLexiconPromise) return studyLexiconPromise;
-    studyLexiconPromise = fetch('/data/study-lexicon.json')
+    studyLexiconPromise = fetch('/data/study-lexicon.json?v=2')
       .then((res) => {
         if (!res.ok) throw new Error('Lexicon unavailable');
         return res.json();

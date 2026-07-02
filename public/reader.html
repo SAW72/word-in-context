@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#c9a227">
   <link rel="canonical" href="https://www.thewordincontext.org/read">
   <title>Read the Bible — The Word in Context</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest?v=2">
+  <link rel="icon" href="/icons/icon.svg?v=2" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <style>
@@ -60,8 +60,8 @@
     .reader-main { flex: 1; min-height: 0; }
     .reader-status { padding: 24px 16px; text-align: center; color: var(--text-soft); }
   </style>
-  <link rel="stylesheet" href="/reader.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="/reader.css"></noscript>
+  <link rel="stylesheet" href="/reader.css?v=2" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/reader.css?v=2"></noscript>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap"></noscript>
@@ -135,11 +135,11 @@
     </div>
   </aside>
 
-  <script src="/bible-core.js"></script>
-  <script src="/study-core.js"></script>
-  <script src="/audio-engine.js"></script>
-  <script src="/voice-picker.js"></script>
-  <script src="/reader.js"></script>
+  <script src="/bible-core.js?v=2"></script>
+  <script src="/study-core.js?v=2"></script>
+  <script src="/audio-engine.js?v=2"></script>
+  <script src="/voice-picker.js?v=2"></script>
+  <script src="/reader.js?v=2"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
