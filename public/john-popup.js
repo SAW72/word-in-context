@@ -5,7 +5,7 @@
   'use strict';
 
   const WELCOME = {
-    demo: `Hi — ask AI, John. Ask about any passage, Greek or Hebrew word, or biblical theme. Responses are AI-generated — test them against Scripture. Type your question or tap the microphone to speak. Demo mode includes a limited number of responses.`,
+    demo: `Hi — ask AI, John one question. Try any passage, Greek or Hebrew word, or biblical theme. Responses are AI-generated — test them against Scripture. Type your question or tap the microphone. After your free preview, start a trial for unlimited hands-free study.`,
     help: `Hi — ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
     sources: `Hi — ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
   };
@@ -16,8 +16,8 @@
     sources: '📚 Ask AI, John — Sources'
   };
 
-  let demoLimit = 10;
-  let demoUsed = 0;
+  let demoLimit = 1;
+  let teaserRemaining = 1;
   let conversation = [];
   let isOpen = false;
   let isSending = false;
@@ -39,23 +39,23 @@
     }
   }
 
-  function syncDemoCounter() {
-    const today = new Date().toISOString().slice(0, 10);
-    try {
-      if (localStorage.getItem('demo_last_date') !== today) {
-        localStorage.setItem('demo_responses_used', '0');
-        localStorage.setItem('demo_last_date', today);
-      }
-      demoUsed = parseInt(localStorage.getItem('demo_responses_used') || '0', 10);
-    } catch (e) {
-      demoUsed = 0;
-    }
+  function isLandingTeaser() {
+    return currentMode === 'demo' && !getAuthToken();
   }
 
-  function bumpDemoCounter() {
-    demoUsed++;
+  async function syncTeaserStatus() {
+    if (!isLandingTeaser()) {
+      teaserRemaining = demoLimit;
+      updateDemoStatus();
+      return;
+    }
     try {
-      localStorage.setItem('demo_responses_used', String(demoUsed));
+      const res = await fetch('/api/teaser-status');
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.demoLimit === 'number' && data.demoLimit > 0) demoLimit = data.demoLimit;
+        if (typeof data.demoRemaining === 'number') teaserRemaining = data.demoRemaining;
+      }
     } catch (e) {}
     updateDemoStatus();
   }
@@ -258,6 +258,32 @@
         flex-shrink: 0;
       }
       .john-popup-send:disabled { opacity: 0.5; cursor: not-allowed; }
+      .john-popup-signup-cta {
+        padding: 10px 14px 12px;
+        border-top: 1px solid var(--john-popup-border, #e8d9c2);
+        background: var(--john-popup-messages-bg, #fdfaf3);
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+        font-size: 13px;
+      }
+      .john-popup-signup-cta.visible { display: flex; }
+      .john-popup-signup-cta a {
+        display: inline-block;
+        background: #c9a227;
+        color: #1a252f;
+        text-decoration: none;
+        font-weight: 700;
+        padding: 10px 16px;
+        border-radius: 8px;
+      }
+      .john-popup-signup-cta a.secondary {
+        background: transparent;
+        color: var(--john-popup-text, #333);
+        border: 1px solid #c9a227;
+        font-weight: 600;
+      }
       @media (min-width: 640px) {
         .john-popup-overlay { align-items: center; padding: 20px; }
         .john-popup-panel { border-radius: 16px; max-height: min(78vh, 580px); }
@@ -280,6 +306,11 @@
         </div>
         <div class="john-popup-messages" id="john-popup-messages"></div>
         <div class="john-popup-status" id="john-popup-status"></div>
+        <div class="john-popup-signup-cta" id="john-popup-signup-cta">
+          <span id="john-popup-signup-text">Ready for unlimited study with John?</span>
+          <a href="/#signup" id="john-popup-signup-primary">Start 7-day free trial</a>
+          <a href="/#signup" class="secondary" id="john-popup-signup-tester">Or 14-day tester (no card)</a>
+        </div>
         <div class="john-popup-input-row">
           <button type="button" class="john-popup-mic" id="john-popup-mic" aria-label="Speak your question">🎤</button>
           <input type="text" class="john-popup-input" id="john-popup-input" placeholder="Ask AI, John…" autocomplete="off" name="john-popup-question">
@@ -413,16 +444,31 @@
     synth.speak(u);
   }
 
+  function setSignupCtaVisible(visible) {
+    const cta = document.getElementById('john-popup-signup-cta');
+    if (cta) cta.classList.toggle('visible', !!visible);
+  }
+
   function updateDemoStatus() {
     const el = document.getElementById('john-popup-status');
     if (!el) return;
     const token = getAuthToken();
-    if (token) {
+    if (token || currentMode !== 'demo') {
       el.textContent = '';
+      setSignupCtaVisible(false);
       return;
     }
-    el.textContent = 'Sign up required — start a free trial on the landing page';
-    el.style.color = '#c9a227';
+    if (teaserRemaining > 0) {
+      el.textContent = teaserRemaining === 1
+        ? 'Free preview: 1 question left today'
+        : `Free preview: ${teaserRemaining} questions left today`;
+      el.style.color = '#c9a227';
+      setSignupCtaVisible(false);
+    } else {
+      el.textContent = 'Free preview used — sign up for unlimited access';
+      el.style.color = '#c94e4e';
+      setSignupCtaVisible(true);
+    }
   }
 
   function setInputEnabled(enabled) {
@@ -450,16 +496,47 @@
   }
 
   function showSignupRequired() {
-    appendMessage('Create a free account to chat with John. Start a 7-day trial or get 14-day tester access on the landing page — then log in here.', 'assistant');
+    appendMessage('The full app requires a free account. Start a 7-day trial or 14-day tester access on the landing page, then log in.', 'assistant');
     setInputEnabled(false);
+    setSignupCtaVisible(true);
     updateDemoStatus();
+  }
+
+  function showTeaserExhausted() {
+    appendMessage('That was your free preview for today. Start a 7-day free trial or create a 14-day tester account (no card) for unlimited hands-free study with John.', 'assistant');
+    setInputEnabled(false);
+    setSignupCtaVisible(true);
+    updateDemoStatus();
+  }
+
+  function canSendTeaser() {
+    return isLandingTeaser() && teaserRemaining > 0;
+  }
+
+  function refreshInputState() {
+    const token = getAuthToken();
+    if (token) {
+      setInputEnabled(true);
+      return;
+    }
+    if (currentMode === 'demo') {
+      setInputEnabled(teaserRemaining > 0);
+      return;
+    }
+    setInputEnabled(false);
   }
 
   async function submit(userText) {
     if (!userText || isSending) return;
     const token = getAuthToken();
-    if (!token) {
+    const landingTeaser = isLandingTeaser();
+
+    if (!token && !landingTeaser) {
       showSignupRequired();
+      return;
+    }
+    if (landingTeaser && teaserRemaining <= 0) {
+      showTeaserExhausted();
       return;
     }
 
@@ -482,7 +559,8 @@
         headers,
         body: JSON.stringify({
           messages: conversation,
-          defaultTranslation: getDefaultTrans()
+          defaultTranslation: getDefaultTrans(),
+          landingTeaser: landingTeaser
         })
       });
 
@@ -501,6 +579,9 @@
         const err = data?.error || `Error ${res.status}`;
         if (res.status === 401 || data?.requiresAuth) {
           showSignupRequired();
+        } else if (res.status === 429 && (data?.teaserExhausted || data?.demoRemaining === 0)) {
+          teaserRemaining = 0;
+          showTeaserExhausted();
         } else {
           appendMessage(err, 'assistant');
         }
@@ -511,7 +592,14 @@
       const reply = data.reply || 'No response.';
       conversation.push({ role: 'assistant', content: reply });
       appendMessage(reply, 'assistant');
+      if (landingTeaser && typeof data.demoRemaining === 'number') {
+        teaserRemaining = data.demoRemaining;
+      }
       updateDemoStatus();
+      if (landingTeaser && teaserRemaining <= 0) {
+        setInputEnabled(false);
+        setSignupCtaVisible(true);
+      }
     } catch (err) {
       removeLoading();
       if (loadingEl && loadingEl.parentNode) loadingEl.remove();
@@ -519,7 +607,7 @@
       conversation.pop();
     } finally {
       isSending = false;
-      if (getAuthToken()) setInputEnabled(true);
+      refreshInputState();
       const inputEl = document.getElementById('john-popup-input');
       if (inputEl && isOpen) inputEl.focus();
     }
@@ -531,23 +619,25 @@
     if (container) container.innerHTML = '';
     const welcome = WELCOME[currentMode] || WELCOME.demo;
     appendMessage(welcome, 'assistant');
-    setInputEnabled(!!getAuthToken());
+    refreshInputState();
     updateDemoStatus();
   }
 
-  function open(mode) {
+  async function open(mode) {
     if (!initialized) init({ mode: mode || currentMode });
     const newMode = mode || currentMode;
     const modeChanged = newMode !== currentMode;
     currentMode = newMode;
     ensureDOM();
-    syncDemoCounter();
+    await syncTeaserStatus();
     const overlay = document.getElementById('john-popup-overlay');
     if (!overlay) return;
     updatePopupTitle();
     if (!conversation.length || modeChanged) resetChat();
-    else updateDemoStatus();
-    if (!getAuthToken()) setInputEnabled(false);
+    else {
+      updateDemoStatus();
+      refreshInputState();
+    }
     overlay.classList.add('open');
     isOpen = true;
     document.body.style.overflow = 'hidden';
@@ -571,14 +661,13 @@
     injectStyles();
     ensureDOM();
     recognition = setupRecognition();
-    syncDemoCounter();
-
     fetch('/api/config').then((r) => r.json()).then((cfg) => {
       if (cfg && typeof cfg.demoLimit === 'number' && cfg.demoLimit > 0) {
         demoLimit = cfg.demoLimit;
         updateDemoStatus();
       }
     }).catch(() => {});
+    syncTeaserStatus();
 
     document.querySelectorAll('[data-john-popup]').forEach((el) => {
       el.addEventListener('click', (e) => {

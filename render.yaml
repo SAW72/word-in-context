@@ -23,7 +23,7 @@ services:
       - key: TESTER_TRIAL_DAYS
         value: "14"
       - key: DEMO_LIMIT
-        value: "5"
+        value: "1"
       # Use www — bare thewordincontext.org redirects to www (checkout success + magic links must match).
       - key: RENDER_EXTERNAL_URL
         value: https://www.thewordincontext.org

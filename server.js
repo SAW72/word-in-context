@@ -87,7 +87,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
 
 // Configurable for easy tuning without code changes (set in Render env)
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
-const DEMO_LIMIT = parseInt(process.env.DEMO_LIMIT || '10', 10);
+// Landing-page "Ask John" teaser only (full /app chat requires login). Default: 1 free question per IP per day.
+const DEMO_LIMIT = Math.max(1, parseInt(process.env.DEMO_LIMIT || '1', 10));
 const TESTER_TRIAL_DAYS = parseInt(process.env.TESTER_TRIAL_DAYS || '14', 10);
 const APP_BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'http://localhost:8787').replace(/\/$/, '');
 // Public links in shares/OG must use the canonical site (not *.onrender.com).
@@ -454,22 +455,48 @@ function getBlockedContentReason(text) {
   return null;
 }
 
-// Very lightweight in-memory demo throttle (protects the xAI key from scrapers/bots hitting /app?demo=1)
-// No extra deps. For production you can later add express-rate-limit + helmet.
+// Bot throttle for anonymous landing teaser requests (not the per-day question cap).
 const demoUsage = new Map(); // ip -> array of timestamps (last hour)
+function getClientIp(req) {
+  return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+}
 function checkDemoThrottle(ip) {
   const now = Date.now();
   const hour = 60 * 60 * 1000;
   if (!ip) return true;
   let times = demoUsage.get(ip) || [];
   times = times.filter(t => now - t < hour);
-  if (times.length >= 50) { // max 50 demo chats per IP per hour (very generous for real users, stops bots)
+  if (times.length >= 20) {
     demoUsage.set(ip, times);
     return false;
   }
   times.push(now);
   demoUsage.set(ip, times);
   return true;
+}
+
+// Server-enforced landing teaser: DEMO_LIMIT successful replies per IP per calendar day (UTC).
+const landingTeaserUsage = new Map(); // ip -> { day: 'YYYY-MM-DD', count: number }
+function landingTeaserDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+function getLandingTeaserRecord(ip) {
+  const day = landingTeaserDayKey();
+  let rec = landingTeaserUsage.get(ip);
+  if (!rec || rec.day !== day) {
+    rec = { day, count: 0 };
+  }
+  return rec;
+}
+function landingTeaserRemaining(ip) {
+  const rec = getLandingTeaserRecord(ip);
+  return Math.max(0, DEMO_LIMIT - rec.count);
+}
+function consumeLandingTeaser(ip) {
+  const rec = getLandingTeaserRecord(ip);
+  rec.count += 1;
+  landingTeaserUsage.set(ip, rec);
+  return landingTeaserRemaining(ip);
 }
 
 // === Strong System Prompt for "The Word in Context" ===
@@ -1384,6 +1411,17 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Landing teaser status for current visitor (IP-based, server source of truth).
+app.get('/api/teaser-status', (req, res) => {
+  const ip = getClientIp(req);
+  const remaining = landingTeaserRemaining(ip);
+  res.json({
+    demoLimit: DEMO_LIMIT,
+    demoRemaining: remaining,
+    landingTeaserOnly: true,
+  });
+});
+
 app.post('/api/share', express.json({ limit: '32kb' }), (req, res) => {
   const body = req.body || {};
   const type = String(body.type || '').trim();
@@ -1863,17 +1901,44 @@ app.get('/login', (req, res) => {
 });
 
 // === Main chat endpoint (secure proxy) ===
-// Requires login — no anonymous/demo chat (signup-focused funnel).
+// Authenticated users: full app chat. Anonymous: only landing teaser (landingTeaser: true), server-capped.
 app.post('/api/chat', (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: 'Create a free account to chat with John. Start a 7-day trial or get 14-day tester access.',
-      signupUrl: '/#signup',
-      requiresAuth: true,
-    });
+  const hasToken = authHeader && authHeader.startsWith('Bearer ');
+  const landingTeaser = !!(req.body && req.body.landingTeaser);
+
+  if (hasToken) {
+    return requireAuth(req, res, next);
   }
-  requireAuth(req, res, next);
+
+  if (landingTeaser) {
+    const ip = getClientIp(req);
+    const remaining = landingTeaserRemaining(ip);
+    if (remaining <= 0) {
+      return res.status(429).json({
+        error: 'Your free preview question is used for today. Start a 7-day trial or 14-day tester account for unlimited study.',
+        signupUrl: '/#signup',
+        demoRemaining: 0,
+        demoLimit: DEMO_LIMIT,
+        teaserExhausted: true,
+      });
+    }
+    if (!checkDemoThrottle(ip)) {
+      return res.status(429).json({
+        error: 'Too many requests. Please wait a moment and try again.',
+        demoRemaining: remaining,
+        demoLimit: DEMO_LIMIT,
+      });
+    }
+    req.landingTeaser = true;
+    return next();
+  }
+
+  return res.status(401).json({
+    error: 'Log in or start a free trial to use the full app.',
+    signupUrl: '/#signup',
+    requiresAuth: true,
+  });
 }, async (req, res) => {
   try {
     const { messages, defaultTranslation } = req.body;
@@ -2113,7 +2178,13 @@ app.post('/api/chat', (req, res, next) => {
       }
     }
 
-    res.json({ reply, sources });
+    const payload = { reply, sources };
+    if (req.landingTeaser) {
+      const ip = getClientIp(req);
+      payload.demoRemaining = consumeLandingTeaser(ip);
+      payload.demoLimit = DEMO_LIMIT;
+    }
+    res.json(payload);
   } catch (err) {
     console.error('xAI proxy error:', err?.status || '', err?.message || err);
     const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 503;

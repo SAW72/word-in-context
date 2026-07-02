@@ -789,10 +789,11 @@
   <div class="hero">
     <div class="container">
       <h1>Understand the Bible the way it was meant to be read.</h1>
-      <button type="button" class="btn btn-talk-john" onclick="promptSignupForJohn()" aria-label="Sign up to talk with AI, John">
+      <button type="button" class="btn btn-talk-john" data-john-popup data-john-popup-mode="demo" aria-label="Ask AI, John — one free preview question">
         <span class="mic-icon" aria-hidden="true">🎙️</span>
         Ask AI, John
       </button>
+      <p class="hero-sub" style="font-size:14px; opacity:0.75; margin-top:10px;">One free preview question — then start your trial for unlimited study</p>
       <p class="hero-sub">Discover what Jesus really taught and what the disciples actually meant — in their original context.</p>
       <p class="hero-sub">No more relying on someone else’s interpretation.</p>
       <p class="motto">Read Scripture in context. Listen to His voice. Live free.</p>
@@ -847,7 +848,7 @@
         <div class="price">$0<span>/mo</span></div>
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
           <li><strong>Read the entire Bible free</strong> — beautiful reader at /read</li>
-          <li>Full access to your device's excellent built-in voices (unlimited &amp; free)</li>
+          <li><strong>One free preview question</strong> on the landing page (try John before signup)</li>
           <li><strong>Tester access (email signup)</strong>: 14 days full AI chat, no card, ends automatically</li>
           <li>Public Bible sources</li>
         </ul>
@@ -1056,13 +1057,6 @@
     }
 
     // === Login Modal functions ===
-    function promptSignupForJohn() {
-      const signup = document.getElementById('signup');
-      if (signup) signup.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      const trialEmail = document.getElementById('trial-email');
-      if (trialEmail) setTimeout(() => trialEmail.focus(), 400);
-    }
-
     function showLoginModal() {
       const modal = document.getElementById('login-modal');
       if (modal) {
@@ -1240,6 +1234,7 @@
     }
     addPasswordToggles();
   </script>
+  <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>
