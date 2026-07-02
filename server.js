@@ -1907,10 +1907,7 @@ app.post('/api/chat', (req, res, next) => {
   const hasToken = authHeader && authHeader.startsWith('Bearer ');
   const landingTeaser = !!(req.body && req.body.landingTeaser);
 
-  if (hasToken) {
-    return requireAuth(req, res, next);
-  }
-
+  // Landing popup teaser always uses the capped path — ignore stale browser tokens.
   if (landingTeaser) {
     const ip = getClientIp(req);
     const remaining = landingTeaserRemaining(ip);
@@ -1932,6 +1929,10 @@ app.post('/api/chat', (req, res, next) => {
     }
     req.landingTeaser = true;
     return next();
+  }
+
+  if (hasToken) {
+    return requireAuth(req, res, next);
   }
 
   return res.status(401).json({

@@ -39,12 +39,13 @@
     }
   }
 
+  // Demo mode on the landing page is always the capped teaser — never use stored auth tokens.
   function isLandingTeaser() {
-    return currentMode === 'demo' && !getAuthToken();
+    return currentMode === 'demo';
   }
 
   async function syncTeaserStatus() {
-    if (!isLandingTeaser()) {
+    if (currentMode !== 'demo') {
       teaserRemaining = demoLimit;
       updateDemoStatus();
       return;
@@ -452,20 +453,22 @@
   function updateDemoStatus() {
     const el = document.getElementById('john-popup-status');
     if (!el) return;
-    const token = getAuthToken();
-    if (token || currentMode !== 'demo') {
+    if (currentMode !== 'demo') {
       el.textContent = '';
       setSignupCtaVisible(false);
       return;
     }
+    const loggedInHint = getAuthToken()
+      ? ' Already have an account? Open the app and log in for unlimited chat.'
+      : '';
     if (teaserRemaining > 0) {
-      el.textContent = teaserRemaining === 1
+      el.textContent = (teaserRemaining === 1
         ? 'Free preview: 1 question left today'
-        : `Free preview: ${teaserRemaining} questions left today`;
+        : `Free preview: ${teaserRemaining} questions left today`) + loggedInHint;
       el.style.color = '#c9a227';
       setSignupCtaVisible(false);
     } else {
-      el.textContent = 'Free preview used — sign up for unlimited access';
+      el.textContent = 'Free preview used — sign up for unlimited access' + loggedInHint;
       el.style.color = '#c94e4e';
       setSignupCtaVisible(true);
     }
@@ -514,13 +517,12 @@
   }
 
   function refreshInputState() {
-    const token = getAuthToken();
-    if (token) {
-      setInputEnabled(true);
-      return;
-    }
     if (currentMode === 'demo') {
       setInputEnabled(teaserRemaining > 0);
+      return;
+    }
+    if (getAuthToken()) {
+      setInputEnabled(true);
       return;
     }
     setInputEnabled(false);
@@ -528,10 +530,9 @@
 
   async function submit(userText) {
     if (!userText || isSending) return;
-    const token = getAuthToken();
     const landingTeaser = isLandingTeaser();
 
-    if (!token && !landingTeaser) {
+    if (!landingTeaser && !getAuthToken()) {
       showSignupRequired();
       return;
     }
@@ -552,7 +553,10 @@
 
     try {
       const headers = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = 'Bearer ' + token;
+      // Demo popup never sends auth — full chat is only in /app after login.
+      if (!landingTeaser && getAuthToken()) {
+        headers.Authorization = 'Bearer ' + getAuthToken();
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST',
