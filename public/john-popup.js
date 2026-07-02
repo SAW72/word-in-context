@@ -421,11 +421,8 @@
       el.textContent = '';
       return;
     }
-    const left = Math.max(0, demoLimit - demoUsed);
-    el.textContent = left > 0
-      ? `Demo: ${left} response${left === 1 ? '' : 's'} left`
-      : 'Demo limit reached — start a free trial for full access';
-    el.style.color = left === 0 ? '#c94e4e' : '#c9a227';
+    el.textContent = 'Sign up required — start a free trial on the landing page';
+    el.style.color = '#c9a227';
   }
 
   function setInputEnabled(enabled) {
@@ -452,12 +449,17 @@
     if (titleEl) titleEl.textContent = POPUP_TITLES[currentMode] || POPUP_TITLES.demo;
   }
 
+  function showSignupRequired() {
+    appendMessage('Create a free account to chat with John. Start a 7-day trial or get 14-day tester access on the landing page — then log in here.', 'assistant');
+    setInputEnabled(false);
+    updateDemoStatus();
+  }
+
   async function submit(userText) {
     if (!userText || isSending) return;
     const token = getAuthToken();
-    if (!token && demoUsed >= demoLimit) {
-      appendMessage(`Demo limit reached (${demoLimit} responses). Start a free trial on the landing page for unlimited access.`, 'assistant');
-      setInputEnabled(false);
+    if (!token) {
+      showSignupRequired();
       return;
     }
 
@@ -470,8 +472,6 @@
     appendMessage(userText, 'user');
     conversation.push({ role: 'user', content: buildApiUserMessage(userText) });
     const loadingEl = appendMessage('Thinking…', 'assistant', 'loading');
-
-    if (!token) bumpDemoCounter();
 
     try {
       const headers = { 'Content-Type': 'application/json' };
@@ -499,11 +499,10 @@
 
       if (!res.ok) {
         const err = data?.error || `Error ${res.status}`;
-        appendMessage(err, 'assistant');
-        if (!token && res.status === 429 && typeof data.demoRemaining === 'number') {
-          demoUsed = demoLimit - data.demoRemaining;
-          try { localStorage.setItem('demo_responses_used', String(demoUsed)); } catch (e) {}
-          updateDemoStatus();
+        if (res.status === 401 || data?.requiresAuth) {
+          showSignupRequired();
+        } else {
+          appendMessage(err, 'assistant');
         }
         conversation.pop();
         return;
@@ -512,13 +511,7 @@
       const reply = data.reply || 'No response.';
       conversation.push({ role: 'assistant', content: reply });
       appendMessage(reply, 'assistant');
-
-      if (!token && typeof data.demoRemaining === 'number') {
-        demoUsed = demoLimit - data.demoRemaining;
-        try { localStorage.setItem('demo_responses_used', String(demoUsed)); } catch (e) {}
-      }
       updateDemoStatus();
-      if (!token && demoUsed >= demoLimit) setInputEnabled(false);
     } catch (err) {
       removeLoading();
       if (loadingEl && loadingEl.parentNode) loadingEl.remove();
@@ -526,7 +519,7 @@
       conversation.pop();
     } finally {
       isSending = false;
-      if (getAuthToken() || demoUsed < demoLimit) setInputEnabled(true);
+      if (getAuthToken()) setInputEnabled(true);
       const inputEl = document.getElementById('john-popup-input');
       if (inputEl && isOpen) inputEl.focus();
     }
@@ -538,7 +531,7 @@
     if (container) container.innerHTML = '';
     const welcome = WELCOME[currentMode] || WELCOME.demo;
     appendMessage(welcome, 'assistant');
-    setInputEnabled(getAuthToken() || demoUsed < demoLimit);
+    setInputEnabled(!!getAuthToken());
     updateDemoStatus();
   }
 
@@ -554,6 +547,7 @@
     updatePopupTitle();
     if (!conversation.length || modeChanged) resetChat();
     else updateDemoStatus();
+    if (!getAuthToken()) setInputEnabled(false);
     overlay.classList.add('open');
     isOpen = true;
     document.body.style.overflow = 'hidden';

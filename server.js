@@ -1863,28 +1863,19 @@ app.get('/login', (req, res) => {
 });
 
 // === Main chat endpoint (secure proxy) ===
-// Supports both authenticated users (full trial/sub access via JWT) AND limited demo mode
-// for the "Try the App" button on landing (no token = demo, client-enforced small limit).
-// Demo requests bypass user DB/trial checks but still get full Bible-grounded Grok replies.
+// Requires login — no anonymous/demo chat (signup-focused funnel).
 app.post('/api/chat', (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    // Demo / try-the-app limited mode (no login token). Client limits to a few responses.
-    req.demo = true;
-    return next();
+    return res.status(401).json({
+      error: 'Create a free account to chat with John. Start a 7-day trial or get 14-day tester access.',
+      signupUrl: '/#signup',
+      requiresAuth: true,
+    });
   }
-  // Has token: run the full auth + trial/sub access checks
   requireAuth(req, res, next);
 }, async (req, res) => {
   try {
-    if (req.demo) {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      if (!checkDemoThrottle(ip)) {
-        console.warn('[demo] throttle hit for', ip);
-        return res.status(429).json({ error: 'Too many demo requests from this IP. Please try the full trial.' });
-      }
-      console.log('[demo] limited demo chat request (client should enforce small response cap)');
-    }
     const { messages, defaultTranslation } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {

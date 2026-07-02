@@ -778,7 +778,8 @@
         <div class="nav-actions">
           <a href="#features" class="nav-link">Features</a>
           <a href="#pricing" class="nav-link">Pricing</a>
-          <a href="/app?demo=1" class="btn header-btn">Try demo</a>
+          <a href="/read" class="btn header-btn">Read Bible</a>
+          <a href="#signup" class="btn header-btn">Start free trial</a>
           <button onclick="showLoginModal()" class="btn header-btn" style="background:#fff; color:#1a252f; border:1px solid #c9a227;">Log in</button>
         </div>
       </nav>
@@ -788,7 +789,7 @@
   <div class="hero">
     <div class="container">
       <h1>Understand the Bible the way it was meant to be read.</h1>
-      <button type="button" class="btn btn-talk-john" data-john-popup data-john-popup-mode="demo" aria-label="Ask AI, John — open chat pop-out">
+      <button type="button" class="btn btn-talk-john" onclick="promptSignupForJohn()" aria-label="Sign up to talk with AI, John">
         <span class="mic-icon" aria-hidden="true">🎙️</span>
         Ask AI, John
       </button>
@@ -797,7 +798,7 @@
       <p class="motto">Read Scripture in context. Listen to His voice. Live free.</p>
       <div class="hero-cta">
         <a href="#signup" class="btn btn-primary">Start 7-Day Free Trial</a>
-        <a href="/app?demo=1" class="btn btn-outline">Try the App (limited demo)</a>
+        <a href="/read" class="btn btn-outline">Read the Bible Free</a>
       </div>
       <p class="ai-disclaimer-hero" style="max-width:640px; margin:20px auto 0; padding:10px 16px; background:rgba(255,248,230,0.12); border:1px solid rgba(201,162,39,0.35); border-radius:8px; font-size:14px; line-height:1.5; color:#f5e8d3;">
         <strong>AI study tool</strong> — not a pastor, not divine guidance. Test every answer against Scripture.
@@ -845,12 +846,12 @@
         <h3>Free / Tester</h3>
         <div class="price">$0<span>/mo</span></div>
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
-          <li>Full access to your device's excellent built-in voices (unlimited & free)</li>
-          <li>Quick demo: limited to a few responses (no signup, default 10)</li>
-          <li><strong>Tester access (email signup)</strong>: 14 days full unlimited access, no card, ends automatically</li>
+          <li><strong>Read the entire Bible free</strong> — beautiful reader at /read</li>
+          <li>Full access to your device's excellent built-in voices (unlimited &amp; free)</li>
+          <li><strong>Tester access (email signup)</strong>: 14 days full AI chat, no card, ends automatically</li>
           <li>Public Bible sources</li>
         </ul>
-        <a href="/app?demo=1" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Try limited demo (instant)</a>
+        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Create 14-day tester account</a>
         <small style="display:block; font-size:11px; opacity:0.7;">Testers: dedicated Sign Up &amp; Login form below (14 days, card-free, works for returning logins too).</small>
       </div>
       <div class="plan popular">
@@ -968,7 +969,7 @@
 
   <footer>
     <div class="container">
-      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/attributions.html" style="color:#c9a227;">Copyright &amp; attributions</a> • <a href="/app?demo=1" style="color:#c9a227;">Try the app (demo)</a> • <a href="mailto:hello@stewardoftheking.com" style="color:#c9a227;">Contact Us</a><br>
+      Made with ❤️ for serious Bible students • <a href="https://bible.helloao.org" style="color:#c9a227;">Live Bible data</a> • <a href="/attributions.html" style="color:#c9a227;">Copyright &amp; attributions</a> • <a href="/read" style="color:#c9a227;">Read the Bible free</a> • <a href="mailto:hello@stewardoftheking.com" style="color:#c9a227;">Contact Us</a><br>
       <small style="color:#f5e8d3;">© 2026 • Steward of the King LLC • No ads • Your data stays yours</small><br>
       <small style="color:#f5e8d3; opacity:0.85;">
         Spread the word in your church, Bible study, or online communities — word of mouth from real users is how we grow.
@@ -1055,6 +1056,13 @@
     }
 
     // === Login Modal functions ===
+    function promptSignupForJohn() {
+      const signup = document.getElementById('signup');
+      if (signup) signup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const trialEmail = document.getElementById('trial-email');
+      if (trialEmail) setTimeout(() => trialEmail.focus(), 400);
+    }
+
     function showLoginModal() {
       const modal = document.getElementById('login-modal');
       if (modal) {
@@ -1232,7 +1240,6 @@
     }
     addPasswordToggles();
   </script>
-  <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>
 </body>
 </html>

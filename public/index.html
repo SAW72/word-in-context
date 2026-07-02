@@ -1935,10 +1935,12 @@
           <span id="current-chat-title" style="font-size: 11px; font-weight: 500;"></span>
         </div>
 
-        <!-- Demo mode banner (shown only when no valid login token). -->
+        <!-- Signup required banner (shown when not logged in). -->
         <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
-          <strong>Demo mode</strong> — limited responses for trying the app.
-          If you already signed up for the 7-day trial or 14-day tester access, click the <strong>Log in</strong> button in the header above (or go to the landing page) and use the email + password you chose during signup.
+          <strong>Sign up to chat with John.</strong>
+          Start a <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">7-day free trial</a> or
+          <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">14-day tester account</a> (no card).
+          Already signed up? Click <strong>Log in</strong> in the header. The <a href="/read" style="color:#664d03;font-weight:600;">Bible reader</a> is always free.
         </div>
 
         <div class="messages" id="messages"></div>
@@ -2412,85 +2414,72 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let handsFreeEnabled = localStorage.getItem('handsfree_enabled') === 'true';
     let continuousMode = false;
 
-    // Demo / free tier limiting (for "Try the App" button — unauthenticated visitors get just a few responses)
-    // Defaults overridden at runtime from /api/config (env-driven on server)
-    let DEMO_RESPONSE_LIMIT = 5;
     let TRIAL_DAYS = 7;
     let SITE_SHARE_URL = 'https://www.thewordincontext.org';
-    const today = new Date().toISOString().slice(0,10);
-    if (localStorage.getItem('demo_last_date') !== today) {
-      localStorage.setItem('demo_responses_used', '0');
-      localStorage.setItem('demo_last_date', today);
-    }
-    let demoResponsesUsed = parseInt(localStorage.getItem('demo_responses_used') || '0');
 
-    // Support ?demo=1 from landing "Try the App" links.
-    // IMPORTANT: We no longer reset the counter on refresh/?demo=1.
-    // The daily reset (above) + server-side hard limit are the only things that control abuse.
+    // Legacy ?demo=1 links → clean URL (demo removed; signup required for chat)
     const urlParams = new URLSearchParams(window.location.search);
-    const demoParam = urlParams.get('demo');
-    const forceDemoMode = demoParam != null && (demoParam === '1' || demoParam === '' || demoParam === 'true');
-
-    if (forceDemoMode) {
-      // Demo restrictions: no sidebar, no history, limited questions only
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar) sidebar.style.display = 'none';
-      // Clear any loaded history
-      conversation = [];
-      const msgs = document.getElementById('messages');
-      if (msgs) msgs.innerHTML = '';
+    if (urlParams.has('demo')) {
+      urlParams.delete('demo');
+      const clean = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
     }
 
     function getEffectiveAuthToken() {
-      if (forceDemoMode) return null;
       return localStorage.getItem('auth_token');
     }
 
-    function enforceDemoLimit() {
+    function enforceAuthRequired() {
       const token = getEffectiveAuthToken();
-      if (token) return;
-      const over = demoResponsesUsed >= DEMO_RESPONSE_LIMIT;
       const input = document.getElementById('user-input');
       const send = document.getElementById('send-btn');
       const mic = document.getElementById('mic-btn');
       const banner = document.getElementById('demo-banner');
-      if (over) {
+      const statusEl = document.getElementById('demo-status');
+      if (token) {
+        if (banner) banner.style.display = 'none';
+        if (statusEl) statusEl.style.display = 'none';
         if (input) {
-          input.disabled = true;
-          input.placeholder = 'Demo limit reached — start a free trial for unlimited access';
+          input.disabled = false;
+          input.placeholder = input.getAttribute('data-placeholder-desktop') || 'Ask about any passage, word, or verse in The Word...';
         }
-        if (send) send.disabled = true;
+        if (send) send.disabled = false;
         if (mic) {
-          mic.disabled = true;
-          mic.style.opacity = '0.35';
-          mic.title = 'Demo limit reached';
+          mic.disabled = false;
+          mic.style.opacity = '';
+          mic.title = 'Click or hold to speak';
         }
-        if (banner) {
-          banner.style.display = 'block';
-          banner.style.background = '#f8d7da';
-          banner.style.color = '#721c24';
-          banner.innerHTML = `Demo limit reached (${DEMO_RESPONSE_LIMIT} responses). <a href="/" style="color:#721c24;font-weight:600;text-decoration:underline;">Start your ${TRIAL_DAYS}-day free trial</a> for full access + original language study.`;
-        }
-        // Also surface a clear prompt in chat if not already
-        showDemoSignupPrompt();
-      } else if (banner) {
-        banner.style.display = 'block';
-        banner.style.background = '#fff3cd';
-        banner.style.color = '#664d03';
-        const left = Math.max(0, DEMO_RESPONSE_LIMIT - demoResponsesUsed);
-        banner.innerHTML = `Demo mode — ${left} response${left === 1 ? '' : 's'} left for trying the app. <a href="/" style="color:#664d03;font-weight:600;text-decoration:underline;">Start ${TRIAL_DAYS}-day free trial</a> for unlimited.`;
+        return;
       }
+      if (input) {
+        input.disabled = true;
+        input.placeholder = 'Sign up or log in to chat with John';
+      }
+      if (send) send.disabled = true;
+      if (mic) {
+        mic.disabled = true;
+        mic.style.opacity = '0.35';
+        mic.title = 'Sign up required';
+      }
+      if (banner) banner.style.display = 'block';
+      if (statusEl) statusEl.style.display = 'none';
     }
 
-    function showDemoSignupPrompt() {
-      // Avoid spamming multiple prompts
+    function showSignupPrompt() {
       if (document.querySelector('.demo-signup-prompt')) return;
       const div = document.createElement('div');
       div.className = 'demo-signup-prompt';
       div.style.cssText = 'margin:12px 0; padding:10px 14px; background:#f8f1e3; border:1px solid #c9a227; border-radius:8px; font-size:13px;';
-      div.innerHTML = `Demo limited to ${DEMO_RESPONSE_LIMIT} responses. <a href="/" target="_blank" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day free trial</a> (or log in) for full hands-free study with no limits.`;
+      div.innerHTML = `Chat with John requires a free account. <a href="/#signup" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day trial</a> or create a 14-day tester account (no card). Already signed up? Click <strong>Log in</strong> above.`;
       messagesContainer.appendChild(div);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function openLoginModal() {
+      const modal = document.getElementById('subscribe-modal');
+      const upgradeBtn = document.getElementById('upgrade-btn');
+      if (upgradeBtn) upgradeBtn.click();
+      else if (modal) modal.style.display = 'flex';
     }
 
     let pendingTranscript = null;
@@ -5511,9 +5500,18 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
       pendingTranscript = null;
       if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
-      isAwaitingResponse = true;
       wakeWordActiveUntil = 0;
       longPauseUntil = 0;
+
+      const token = getEffectiveAuthToken();
+      if (!token) {
+        showSignupPrompt();
+        openLoginModal();
+        enforceAuthRequired();
+        return;
+      }
+
+      isAwaitingResponse = true;
 
       // Normalize typed input as well for Bible refs (e.g. "John two" -> "John 2")
       // so extraction and grounding works for typed questions too.
@@ -5535,26 +5533,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       const loadingMsg = addMessage("Thinking...", false, true);
       userInput.value = "";
-
-      // Demo limit for unauthenticated "Try the App" (hard-capped server-side per IP per day + client UX)
-      const token = getEffectiveAuthToken();
-      if (!token) {
-        if (demoResponsesUsed >= DEMO_RESPONSE_LIMIT) {
-          removeLoadingMessage();
-          addMessage("Demo limit reached (" + DEMO_RESPONSE_LIMIT + " responses). Start a " + TRIAL_DAYS + "-day free trial on the landing page for unlimited access.", false);
-          conversation.pop();
-          autoSaveCurrentChat();
-          updateHeaderForCurrentChat();
-          renderSidebarChats(currentSearchTerm || '');
-          enforceDemoLimit();
-          // no modal popup for demo - the red banner + in-chat prompt + disabled inputs are sufficient
-          return;
-        }
-        demoResponsesUsed++;
-        localStorage.setItem('demo_responses_used', demoResponsesUsed);
-        updateDemoStatus();
-        enforceDemoLimit();
-      }
 
       try {
         const headers = { 'Content-Type': 'application/json' };
@@ -5599,16 +5577,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           autoSaveCurrentChat();
           updateHeaderForCurrentChat();
           renderSidebarChats(currentSearchTerm || '');
-          // Sync demo remaining from server on 429 so refresh doesn't bypass the limit
-          const tokenForSync = getEffectiveAuthToken();
-          if (response.status === 429 && !tokenForSync && data && typeof data.demoRemaining === 'number') {
-            demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
-            localStorage.setItem('demo_responses_used', demoResponsesUsed);
-            updateDemoStatus();
-            enforceDemoLimit();
-          }
-          if ((response.status === 401 || response.status === 403) && token) {
-            // Only auto-prompt login modal for real accounts; demo uses the banner + Account button
+          if ((response.status === 401 || response.status === 403)) {
+            if (!token) {
+              showSignupPrompt();
+              openLoginModal();
+              enforceAuthRequired();
+            } else {
             const modal = document.getElementById('subscribe-modal');
             if (modal) {
               modal.style.display = 'flex';
@@ -5653,6 +5627,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
                   if (setPwSection) setPwSection.style.display = 'none';
                 });
             }
+            }
           }
           return;
         }
@@ -5674,18 +5649,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       renderSidebarChats(currentSearchTerm || '');
         isAwaitingResponse = false;
 
-        // If this was a demo response, sync the authoritative remaining count from server
-        // (prevents refresh abuse and keeps UI accurate)
-        const tokenAfter = getEffectiveAuthToken();
-        if (!tokenAfter && data && typeof data.demoRemaining === 'number') {
-          demoResponsesUsed = DEMO_RESPONSE_LIMIT - data.demoRemaining;
-          localStorage.setItem('demo_responses_used', demoResponsesUsed);
-          updateDemoStatus();
-          enforceDemoLimit();
-        }
-
-        // Refresh demo banner count / disabled state (in case this was a demo response)
-        enforceDemoLimit();
+        enforceAuthRequired();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
           // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
@@ -7087,7 +7051,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function saveChats() {
-      if (forceDemoMode) return; // demo has no persistent history or sidebar
       try { localStorage.setItem('winc_chats', JSON.stringify(chats)); } catch (e) {}
     }
 
@@ -7497,25 +7460,14 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
 
     // ====================== INITIALIZATION ======================
     function init() {
-      if (!forceDemoMode) {
-        loadChats();
+      loadChats();
 
-        // ensure we have a current chat
-        if (!currentChatId || !getCurrentChat()) {
-          if (chats.length > 0) {
-            // load most recent
-            currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
-          } else {
-            createNewChat();
-          }
+      if (!currentChatId || !getCurrentChat()) {
+        if (chats.length > 0) {
+          currentChatId = chats.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0].id;
+        } else {
+          createNewChat();
         }
-      } else {
-        // Demo: no history, start fresh empty
-        chats = [];
-        currentChatId = null;
-        conversation = [];
-        const msgs = document.getElementById('messages');
-        if (msgs) msgs.innerHTML = '';
       }
 
       // load messages for current chat into memory
@@ -7642,11 +7594,8 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         if (typeof d.hasSTT === 'boolean') serverHasSTT = d.hasSTT;
       }).catch(() => {});
 
-      // Load dynamic config (demo limit + trial days) from server so we can tune via env without rebuild
+      // Load dynamic config (trial days, site URL) from server
       fetch('/api/config').then(r => r.json()).then(cfg => {
-        if (cfg && typeof cfg.demoLimit === 'number' && cfg.demoLimit > 0) {
-          DEMO_RESPONSE_LIMIT = cfg.demoLimit;
-        }
         if (cfg && typeof cfg.trialDays === 'number' && cfg.trialDays > 0) {
           TRIAL_DAYS = cfg.trialDays;
         }
@@ -7656,26 +7605,15 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
         if (cfg && typeof cfg.siteUrl === 'string' && cfg.siteUrl) {
           SITE_SHARE_URL = productionShareUrl(cfg.siteUrl.replace(/\/$/, ''));
         }
-        updateDemoStatus();
-        enforceDemoLimit();
+        enforceAuthRequired();
       }).catch(() => {
-        // fallback to defaults already set
-        updateDemoStatus();
-        enforceDemoLimit();
+        enforceAuthRequired();
       });
 
-      const authToken = getEffectiveAuthToken();
-      if (authToken) {
-        // Clear demo counter once logged in with real account (but not when ?demo=1 is forcing demo view)
-        if (!forceDemoMode) {
-          localStorage.removeItem('demo_responses_used');
-          demoResponsesUsed = 0;
-        }
+      enforceAuthRequired();
+      if (!getEffectiveAuthToken()) {
+        showSignupPrompt();
       }
-
-      // Initial call (config fetch above will also call, this covers sync path)
-      updateDemoStatus();
-      enforceDemoLimit();
       handleAppDeepLinkHash();
     }
 
@@ -7690,20 +7628,6 @@ Note: In demo mode (no login), limited to a few responses (see DEMO_LIMIT) befor
           if (modal) modal.style.display = 'flex';
         }, 150);
       }
-    }
-
-    function updateDemoStatus() {
-      const el = document.getElementById('demo-status');
-      if (!el) return;
-      const token = getEffectiveAuthToken();
-      if (token) {
-        el.style.display = 'none';
-        return;
-      }
-      const left = Math.max(0, DEMO_RESPONSE_LIMIT - demoResponsesUsed);
-      el.style.display = 'inline';
-      el.textContent = `Demo: ${left} response${left === 1 ? '' : 's'} left`;
-      el.style.color = (left === 0 ? '#c94e4e' : '#c9a227');
     }
 
     init();
