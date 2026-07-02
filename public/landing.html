@@ -14,7 +14,8 @@
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=cross4">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=cross4">
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=cross4">
-  <link rel="stylesheet" href="/pwa.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <title>The Word in Context • Voice-First Bible Study with Grok</title>
   <script>
     (function () {
@@ -28,9 +29,6 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@800&display=swap" rel="stylesheet">
   <style>
     :root {
       --gold: #c9a227;
@@ -59,7 +57,7 @@
     }
 
     body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
       background: #f5e8d3;
       color: #2c3e50;
@@ -137,7 +135,7 @@
     }
 
     .hero h1 {
-      font-family: 'Montserrat', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 72px;
       margin: 0 0 24px;
       line-height: 1.05;
@@ -769,6 +767,11 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/pwa.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="/pwa.css"></noscript>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap"></noscript>
 </head>
 <body>
   <header>
@@ -980,8 +983,61 @@
     </div>
   </footer>
 
-  <script src="/auth-api.js"></script>
+  <script src="/auth-api.js" defer></script>
   <script>
+    function showLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        const trialEmail = document.getElementById('trial-email');
+        const testerEmail = document.getElementById('tester-email');
+        const modalEmail = document.getElementById('modal-login-email');
+        if (modalEmail) {
+          if (trialEmail && trialEmail.value) modalEmail.value = trialEmail.value;
+          else if (testerEmail && testerEmail.value) modalEmail.value = testerEmail.value;
+          setTimeout(() => modalEmail.focus(), 50);
+        }
+        setTimeout(addPasswordToggles, 50);
+      }
+    }
+
+    function closeLoginModal() {
+      const modal = document.getElementById('login-modal');
+      if (modal) modal.style.display = 'none';
+      const err = document.getElementById('modal-login-error');
+      const suc = document.getElementById('modal-login-success');
+      if (err) err.style.display = 'none';
+      if (suc) suc.style.display = 'none';
+    }
+
+    function addPasswordToggles() {
+      const pwInputs = document.querySelectorAll('input[type="password"]');
+      pwInputs.forEach(input => {
+        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
+        const wrapper = document.createElement('span');
+        wrapper.className = 'password-wrapper';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+        const toggle = document.createElement('span');
+        toggle.className = 'password-toggle';
+        toggle.textContent = '🙈';
+        toggle.setAttribute('aria-label', 'Show password');
+        wrapper.appendChild(toggle);
+        toggle.addEventListener('click', () => {
+          if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '👁';
+            toggle.setAttribute('aria-label', 'Hide password');
+          } else {
+            input.type = 'password';
+            toggle.textContent = '🙈';
+            toggle.setAttribute('aria-label', 'Show password');
+          }
+        });
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
     // === 7-Day Trial (Whop checkout) — creates account locally, then redirects to Whop. No auto-login. ===
     const trialForm = document.getElementById('trial-form');
     if (trialForm) {
@@ -1054,35 +1110,6 @@
           }
         }
       });
-    }
-
-    // === Login Modal functions ===
-    function showLoginModal() {
-      const modal = document.getElementById('login-modal');
-      if (modal) {
-        modal.style.display = 'flex';
-        // Pre-fill email if user was looking at a signup form
-        const trialEmail = document.getElementById('trial-email');
-        const testerEmail = document.getElementById('tester-email');
-        const modalEmail = document.getElementById('modal-login-email');
-        if (modalEmail) {
-          if (trialEmail && trialEmail.value) modalEmail.value = trialEmail.value;
-          else if (testerEmail && testerEmail.value) modalEmail.value = testerEmail.value;
-          setTimeout(() => modalEmail.focus(), 50);
-        }
-        // Ensure password eye toggle is attached (in case of timing)
-        setTimeout(addPasswordToggles, 50);
-      }
-    }
-
-    function closeLoginModal() {
-      const modal = document.getElementById('login-modal');
-      if (modal) modal.style.display = 'none';
-      // clear messages
-      const err = document.getElementById('modal-login-error');
-      const suc = document.getElementById('modal-login-success');
-      if (err) err.style.display = 'none';
-      if (suc) suc.style.display = 'none';
     }
 
     // Unified password login inside the modal (works for both 7-day trial and 14-day tester accounts)
@@ -1202,37 +1229,8 @@
       // Optional: you can add a small note about tester days if desired
     }).catch(() => {});
 
-    // Add eye-icon show/hide password for all password fields on landing + modal
-    function addPasswordToggles() {
-      const pwInputs = document.querySelectorAll('input[type="password"]');
-      pwInputs.forEach(input => {
-        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
-
-        const wrapper = document.createElement('span');
-        wrapper.className = 'password-wrapper';
-        input.parentNode.insertBefore(wrapper, input);
-        wrapper.appendChild(input);
-
-        const toggle = document.createElement('span');
-        toggle.className = 'password-toggle';
-        toggle.textContent = '🙈';
-        toggle.setAttribute('aria-label', 'Show password');
-        wrapper.appendChild(toggle);
-
-        toggle.addEventListener('click', () => {
-          if (input.type === 'password') {
-            input.type = 'text';
-            toggle.textContent = '👁';
-            toggle.setAttribute('aria-label', 'Hide password');
-          } else {
-            input.type = 'password';
-            toggle.textContent = '🙈';
-            toggle.setAttribute('aria-label', 'Show password');
-          }
-        });
-      });
-    }
     addPasswordToggles();
+    });
   </script>
   <script src="/john-popup.js" defer></script>
   <script src="/pwa.js" defer></script>

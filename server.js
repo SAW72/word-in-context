@@ -838,6 +838,8 @@ app.use((req, res, next) => {
     res.set('Service-Worker-Allowed', '/');
   } else if (req.path === '/manifest.webmanifest' || req.path.startsWith('/icons/')) {
     res.set('Cache-Control', 'public, max-age=86400');
+  } else if (/\.(css|js|mjs|woff2?)$/.test(req.path)) {
+    res.set('Cache-Control', 'public, max-age=604800');
   } else {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
