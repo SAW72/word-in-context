@@ -14,8 +14,6 @@
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=cross4">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=cross4">
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=cross4">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <title>The Word in Context • Voice-First Bible Study with Grok</title>
   <script>
     (function () {
@@ -767,11 +765,6 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/pwa.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="/pwa.css"></noscript>
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@800&amp;display=swap"></noscript>
 </head>
 <body>
   <header>
@@ -792,7 +785,7 @@
   <div class="hero">
     <div class="container">
       <h1>Understand the Bible the way it was meant to be read.</h1>
-      <button type="button" class="btn btn-talk-john" data-john-popup data-john-popup-mode="demo" aria-label="Ask AI, John — one free preview question">
+      <button type="button" class="btn btn-talk-john" id="btn-ask-john" aria-label="Ask AI, John — one free preview question">
         <span class="mic-icon" aria-hidden="true">🎙️</span>
         Ask AI, John
       </button>
@@ -983,8 +976,39 @@
     </div>
   </footer>
 
-  <script src="/auth-api.js" defer></script>
   <script>
+    async function apiPost(path, body) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('You appear to be offline. Connect to the internet and try again.');
+      }
+      let res;
+      try {
+        res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (_) {
+        const host = (typeof location !== 'undefined' && location.hostname) || '';
+        const onLocal = host === 'localhost' || host === '127.0.0.1';
+        if (onLocal) {
+          throw new Error('Cannot reach the local server. Run npm start in the project folder, then reload.');
+        }
+        throw new Error('Cannot reach the server. Open https://www.thewordincontext.org and try again.');
+      }
+      const text = await res.text();
+      let data = {};
+      if (text) {
+        try { data = JSON.parse(text); } catch (_) {
+          const hint = res.status >= 500
+            ? `Server error (${res.status}). Wait a moment and try again.`
+            : 'Unexpected server response. Hard-refresh the page (Cmd+Shift+R) and try again.';
+          throw new Error(hint);
+        }
+      }
+      return { res, data };
+    }
+
     function showLoginModal() {
       const modal = document.getElementById('login-modal');
       if (modal) {
@@ -1218,21 +1242,44 @@
       });
     }
 
-    // Pull current trial lengths from server for dynamic button text
-    fetch('/api/config').then(r => r.json()).then(c => {
-      const normalDays = c.trialDays || 7;
-      const testerDays = c.testerTrialDays || 14;
-
-      const trialBtn = document.querySelector('#trial-form button');
-      if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
-
-      // Optional: you can add a small note about tester days if desired
-    }).catch(() => {});
+    const cfg = window.__WIC_CONFIG__ || {};
+    const normalDays = cfg.trialDays || 7;
+    const trialBtn = document.querySelector('#trial-form button');
+    if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
 
     addPasswordToggles();
+
+    const askJohnBtn = document.getElementById('btn-ask-john');
+    if (askJohnBtn) {
+      askJohnBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        function openJohn() {
+          if (window.JohnPopup) window.JohnPopup.open('demo');
+        }
+        if (window.JohnPopup) {
+          openJohn();
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = '/john-popup.js';
+        s.onload = openJohn;
+        document.body.appendChild(s);
+      });
+    }
+    });
+
+    window.addEventListener('load', function() {
+      const run = function() {
+        const s = document.createElement('script');
+        s.src = '/pwa.js';
+        document.body.appendChild(s);
+      };
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(run, { timeout: 3000 });
+      } else {
+        setTimeout(run, 1500);
+      }
     });
   </script>
-  <script src="/john-popup.js" defer></script>
-  <script src="/pwa.js" defer></script>
 </body>
 </html>

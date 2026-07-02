@@ -861,10 +861,20 @@ app.use((req, res, next) => {
 });
 
 let landingHtmlWithOg = null;
+let landingHtmlMtime = 0;
 function landingHtmlWithOgTags() {
-  if (landingHtmlWithOg) return landingHtmlWithOg;
-  const raw = fs.readFileSync(path.join(__dirname, 'public', 'landing.html'), 'utf8');
+  const landingPath = path.join(__dirname, 'public', 'landing.html');
+  const mtime = fs.statSync(landingPath).mtimeMs;
+  if (landingHtmlWithOg && landingHtmlMtime === mtime) return landingHtmlWithOg;
+  landingHtmlMtime = mtime;
+  const raw = fs.readFileSync(landingPath, 'utf8');
   const ogImage = shareOgImageUrl();
+  const configScript = `<script>window.__WIC_CONFIG__=${JSON.stringify({
+    trialDays: TRIAL_DAYS,
+    testerTrialDays: TESTER_TRIAL_DAYS,
+    demoLimit: DEMO_LIMIT,
+    siteUrl: SHARE_SITE_URL,
+  })};</script>`;
   const ogTags = `
   <link rel="canonical" href="${SHARE_SITE_URL}/">
   <meta property="og:title" content="The Word in Context">
@@ -882,7 +892,7 @@ function landingHtmlWithOgTags() {
   <meta name="twitter:title" content="The Word in Context">
   <meta name="twitter:description" content="Voice-first offline Bible study with AI">
   <meta name="twitter:image" content="${escapeHtml(ogImage)}">`;
-  landingHtmlWithOg = raw.replace('</head>', `${ogTags}\n</head>`);
+  landingHtmlWithOg = raw.replace('</head>', `${configScript}\n${ogTags}\n</head>`);
   return landingHtmlWithOg;
 }
 

@@ -1,5 +1,31 @@
 /* Word in Context — PWA install prompt + service worker registration */
 (function () {
+  function ensurePwaStyles() {
+    if (document.getElementById('pwa-inline-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'pwa-inline-styles';
+    style.textContent = `
+html.ios.standalone-app{--safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px)}
+html.ios.standalone-app body{min-height:100dvh;min-height:-webkit-fill-available}
+html.ios.standalone-app #pwa-offline-badge.visible{padding-top:calc(6px + var(--safe-top))}
+#pwa-install-banner{position:fixed;left:12px;right:12px;bottom:12px;z-index:10000;display:none;align-items:center;gap:12px;padding:14px 16px;background:#2c3e50;color:#f8f5f2;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.35;animation:pwa-slide-up .35s ease-out}
+#pwa-install-banner.visible{display:flex}
+#pwa-install-banner .pwa-icon{width:44px;height:44px;border-radius:10px;flex-shrink:0}
+#pwa-install-banner .pwa-copy{flex:1;min-width:0}
+#pwa-install-banner .pwa-copy strong{display:block;font-size:15px;margin-bottom:2px}
+#pwa-install-banner .pwa-copy span{opacity:.88;font-size:12px}
+#pwa-install-banner .pwa-actions{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+#pwa-install-banner button{border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+#pwa-install-install{background:#c9a227;color:#1a252f}
+#pwa-install-dismiss{background:transparent;color:#f8f5f2;opacity:.75;font-weight:500;padding:4px 8px}
+#pwa-offline-badge{position:fixed;top:0;left:0;right:0;z-index:9999;display:none;text-align:center;padding:6px 12px;background:#8b5e3c;color:#fff;font-size:12px;font-weight:600;letter-spacing:.03em;font-family:system-ui,-apple-system,sans-serif}
+#pwa-offline-badge.visible{display:block}
+@keyframes pwa-slide-up{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media (max-width:480px){#pwa-install-banner{flex-wrap:wrap;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px))}#pwa-install-banner .pwa-actions{flex-direction:row;width:100%;justify-content:flex-end}}
+`;
+    document.head.appendChild(style);
+  }
+
   const INSTALL_KEY = 'wic_pwa_install_dismissed';
   const INSTALLED_KEY = 'wic_pwa_installed';
   let deferredPrompt = null;
@@ -29,6 +55,7 @@
 
   function createBanner() {
     if (document.getElementById('pwa-install-banner')) return;
+    ensurePwaStyles();
 
     const banner = document.createElement('div');
     banner.id = 'pwa-install-banner';
@@ -83,6 +110,7 @@
 
   function setupOfflineBadge() {
     if (document.getElementById('pwa-offline-badge')) return;
+    ensurePwaStyles();
     const badge = document.createElement('div');
     badge.id = 'pwa-offline-badge';
     badge.textContent = 'Offline Mode';

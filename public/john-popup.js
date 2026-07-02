@@ -665,12 +665,18 @@
     injectStyles();
     ensureDOM();
     recognition = setupRecognition();
-    fetch('/api/config').then((r) => r.json()).then((cfg) => {
-      if (cfg && typeof cfg.demoLimit === 'number' && cfg.demoLimit > 0) {
-        demoLimit = cfg.demoLimit;
-        updateDemoStatus();
-      }
-    }).catch(() => {});
+    const cfg = (typeof window !== 'undefined' && window.__WIC_CONFIG__) || null;
+    if (cfg && typeof cfg.demoLimit === 'number' && cfg.demoLimit > 0) {
+      demoLimit = cfg.demoLimit;
+      updateDemoStatus();
+    } else {
+      fetch('/api/config').then((r) => r.json()).then((c) => {
+        if (c && typeof c.demoLimit === 'number' && c.demoLimit > 0) {
+          demoLimit = c.demoLimit;
+          updateDemoStatus();
+        }
+      }).catch(() => {});
+    }
     syncTeaserStatus();
 
     document.querySelectorAll('[data-john-popup]').forEach((el) => {
