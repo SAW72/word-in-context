@@ -2396,6 +2396,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     let mediaRecorder = null;
     let audioChunks = [];
     let lastUtteranceAudioBlob = null;
+    // When false, hands-free must not auto-restart (page hidden/closing, or hard release).
+    // Without this, recognition.onend restarts the mic after we try to free it.
+    let micAllowed = true;
 
     // For live server-improved STT during hands-free (debounced to avoid spam)
     let liveSttTimer = null;
@@ -5905,7 +5908,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         stopListeningUI();
 
         if (errType === "no-speech" || errType === "aborted") {
-          if (handsFreeEnabled && !startingRecognition) {
+          if (micAllowed && handsFreeEnabled && !startingRecognition && document.visibilityState !== 'hidden') {
             const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
             if (!isOutputting) {
               // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
@@ -5939,7 +5942,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           // For network errors, recreate the recognizer after a short delay to get a clean state
           if (isNetwork) {
             setTimeout(() => {
-              if (handsFreeEnabled && recognition) {
+              if (micAllowed && handsFreeEnabled && recognition && document.visibilityState !== 'hidden') {
                 try {
                   resetSpeechRecognition();
                 } catch (e) {}
@@ -5954,6 +5957,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       recognition.onend = () => {
         stopListeningUI();
+        if (!micAllowed || document.visibilityState === 'hidden') return;
         const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
           // Slightly longer delay on natural end to reduce thrashing when there's silence.
@@ -5964,6 +5968,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function startListening() {
+      if (!micAllowed) return;
       if (!recognition) {
         alert("Voice input is not supported in this browser. Use Chrome, Edge, or Safari.");
         return;
@@ -6004,6 +6009,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       // fire (which it will) and let the onend handler decide whether to restart. This prevents
       // thundering herds of overlapping start attempts.
       setTimeout(() => {
+        if (!micAllowed || document.visibilityState === 'hidden') {
+          startingRecognition = false;
+          return;
+        }
         if (isListening) {
           startingRecognition = false;
           return;
@@ -6076,8 +6085,17 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // window is kept (we clear chunks on start of a new command turn).
     async function startAudioCaptureForCurrentUtterance() {
       try {
+        if (!micAllowed || document.visibilityState === 'hidden') return;
         if (!mediaStream) {
           mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+          // Page may have been backgrounded while the permission prompt was open.
+          if (!micAllowed || document.visibilityState === 'hidden') {
+            try {
+              mediaStream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
+            } catch (e) {}
+            mediaStream = null;
+            return;
+          }
         }
         // Stop any previous recorder cleanly
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -6129,6 +6147,85 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       if (liveSttTimer) {
         clearTimeout(liveSttTimer);
         liveSttTimer = null;
+      }
+    }
+
+    // Fully release OS microphone hardware (MediaStream tracks + SpeechRecognition + timers).
+    // stopListeningUI / recognition.stop alone leave getUserMedia tracks live, so the system
+    // mic indicator stays on after closing the tab, backgrounding the PWA, or turning HF off.
+    function releaseMicrophoneHardware() {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+      if (commitTimeout) {
+        clearTimeout(commitTimeout);
+        commitTimeout = null;
+      }
+      if (liveSttTimer) {
+        clearTimeout(liveSttTimer);
+        liveSttTimer = null;
+      }
+
+      if (mediaRecorder) {
+        try {
+          if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        } catch (e) {}
+        try {
+          mediaRecorder.ondataavailable = null;
+          mediaRecorder.onstop = null;
+        } catch (e) {}
+        mediaRecorder = null;
+      }
+
+      if (mediaStream) {
+        try {
+          mediaStream.getTracks().forEach((track) => {
+            try { track.stop(); } catch (e) {}
+          });
+        } catch (e) {}
+        mediaStream = null;
+      }
+      audioChunks = [];
+      lastUtteranceAudioBlob = null;
+
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {
+          try { recognition.stop(); } catch (e2) {}
+        }
+      }
+
+      isListening = false;
+      startingRecognition = false;
+      currentTranscript = '';
+      if (micBtn) {
+        micBtn.classList.remove('listening');
+        micBtn.textContent = '🎙️';
+      }
+      const liveContainer = document.getElementById('live-transcript-container');
+      if (liveContainer) liveContainer.style.display = 'none';
+      const liveEl = document.getElementById('live-transcript');
+      if (liveEl) liveEl.textContent = '';
+    }
+
+    function suspendMicrophoneForLifecycle() {
+      micAllowed = false;
+      releaseMicrophoneHardware();
+      try {
+        if (typeof synth !== 'undefined' && synth) synth.cancel();
+      } catch (e) {}
+      if (hostedAudio) {
+        try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
+        hostedAudio = null;
+      }
+    }
+
+    function resumeMicrophoneAfterLifecycle() {
+      micAllowed = true;
+      if (handsFreeEnabled && !isListening && !isAwaitingResponse && !startingRecognition) {
+        scheduleHandsFreeRestart(500);
       }
     }
 
@@ -6211,11 +6308,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Centralized restart scheduler for hands-free to avoid overlapping timers that cause
     // "Recognition already started" + laggy / noisy behavior.
     function scheduleHandsFreeRestart(delayMs = 800) {
+      if (!micAllowed || !handsFreeEnabled) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (restartTimer) {
         clearTimeout(restartTimer);
       }
       restartTimer = setTimeout(() => {
         restartTimer = null;
+        if (!micAllowed || document.visibilityState === 'hidden') return;
         if (handsFreeEnabled && !isListening && !isAwaitingResponse && !startingRecognition) {
           if (isSpeechOutputting()) {
             scheduleHandsFreeRestart(500);
@@ -7015,6 +7115,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
       if (handsFreeEnabled) {
         continuousMode = true;
+        micAllowed = true;
         micBtn.style.background = '#c9a227';
         micBtn.style.color = 'white';
         micBtn.title = "Click to interrupt (Hands-free active)";
@@ -7025,10 +7126,11 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         micBtn.style.background = '#e8e0d5';
         micBtn.style.color = '#2c3e50';
         micBtn.title = "Click or hold to speak";
-        if (isListening) recognition.stop();
+        // Hard-release getUserMedia tracks + recognition so the OS mic indicator clears.
+        releaseMicrophoneHardware();
         isAwaitingResponse = false;
         wakeWordActiveUntil = 0;
-      longPauseUntil = 0;
+        longPauseUntil = 0;
         window._srErrorShown = {}; // reset so helpful error messages can appear again next time
       }
       if (typeof updateHandsFreeLabel === 'function') {
@@ -7501,6 +7603,23 @@ Note: AI chat requires a free account. The Bible reader at /read is always free.
       // Make TTS work on the first user click anywhere (send, mic, messages, etc.)
       // so you don't have to specifically open Voice Settings first.
       setupGlobalTTSWake();
+
+      // Release mic when the tab/PWA is closed, frozen, or backgrounded.
+      // Without this, hands-free leaves getUserMedia tracks open and the OS keeps the mic "connected".
+      window.addEventListener('pagehide', suspendMicrophoneForLifecycle);
+      window.addEventListener('beforeunload', suspendMicrophoneForLifecycle);
+      window.addEventListener('freeze', suspendMicrophoneForLifecycle);
+      window.addEventListener('pageshow', (e) => {
+        // bfcache restore or normal show after pagehide
+        resumeMicrophoneAfterLifecycle();
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          suspendMicrophoneForLifecycle();
+        } else {
+          resumeMicrophoneAfterLifecycle();
+        }
+      });
 
       if (handsFreeEnabled) {
         micBtn.style.background = '#c9a227';

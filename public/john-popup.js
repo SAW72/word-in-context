@@ -658,6 +658,11 @@
     document.body.style.overflow = '';
   }
 
+  function releasePopupMicForLifecycle() {
+    stopMic();
+    try { synth.cancel(); } catch (e) {}
+  }
+
   function init(options) {
     if (initialized) return;
     initialized = true;
@@ -678,6 +683,13 @@
       }).catch(() => {});
     }
     syncTeaserStatus();
+
+    // Ensure landing popup mic is released when the page/PWA is closed or backgrounded.
+    window.addEventListener('pagehide', releasePopupMicForLifecycle);
+    window.addEventListener('beforeunload', releasePopupMicForLifecycle);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') releasePopupMicForLifecycle();
+    });
 
     document.querySelectorAll('[data-john-popup]').forEach((el) => {
       el.addEventListener('click', (e) => {
