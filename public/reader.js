@@ -453,6 +453,24 @@
       return;
     }
 
+    // Refresh config in case admin just toggled
+    try {
+      const cfg = await fetch('/api/config').then((r) => r.json());
+      if (cfg && cfg.shareTts) window.__shareTtsConfig = cfg.shareTts;
+    } catch (e) {}
+    const stts = window.__shareTtsConfig || {};
+    if (stts.enabled === false) {
+      showShareToast('Voice video is turned off by the site admin', false);
+      return;
+    }
+    if (stts.requireAuth) {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        showShareToast('Sign in to create voice videos', false);
+        return;
+      }
+    }
+
     const SV = window.ShareVideo;
     const verses = getSelectedVerseObjects();
     if (!verses.length) {
@@ -641,7 +659,12 @@
     });
 
     addSection('Voice');
-    addItem('Create voice video', '🎬', () => createAndShareVoiceVideo(), 'featured');
+    // Voice video shown when server config allows it (admin toggle + key + daily limit).
+    // shareTtsConfig loaded at init; default optimistic so menu works if config is slow.
+    const stts = window.__shareTtsConfig || { enabled: true };
+    if (stts.enabled !== false) {
+      addItem('Create voice video', '🎬', () => createAndShareVoiceVideo(), 'featured');
+    }
     addItem('Speak aloud now', '🔊', () => speakSelectedAloud());
 
     document.body.appendChild(backdrop);
@@ -1706,6 +1729,12 @@
     applyTheme();
     bindEvents();
     setupScrollChrome();
+    // Voice-video feature flags (admin toggle)
+    fetch('/api/config').then((r) => r.json()).then((cfg) => {
+      if (cfg && cfg.shareTts) window.__shareTtsConfig = cfg.shareTts;
+    }).catch(() => {
+      window.__shareTtsConfig = { enabled: true };
+    });
     if (AE) {
       await AE.loadCatalog().catch(() => {});
       audioCatalogLoaded = true;

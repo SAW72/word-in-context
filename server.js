@@ -73,6 +73,13 @@ try {
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
 } catch (err) {
@@ -1480,6 +1487,7 @@ app.get('/api/config', (req, res) => {
     hasSTT: false,
     siteUrl: SHARE_SITE_URL,
     paymentProvider: paymentProvider(),
+    shareTts: getPublicShareTtsConfig(),
   });
 });
 
@@ -1520,12 +1528,123 @@ app.post('/api/share', express.json({ limit: '32kb' }), (req, res) => {
   res.json({ id, url: `${SHARE_SITE_URL}/share/${id}` });
 });
 
-// === Share voice-over TTS (limited; for Bible reader "voice video" only) ===
-// Keeps general /api/tts disabled so chat stays free local voices. This path is rate-limited
-// so sharing a few passages (e.g. Psalm 32) is practical without open-ended TTS cost.
-const SHARE_TTS_MAX_CHARS = Math.max(500, parseInt(process.env.SHARE_TTS_MAX_CHARS || '4000', 10));
-const SHARE_TTS_DAILY_LIMIT = Math.max(1, parseInt(process.env.SHARE_TTS_DAILY_LIMIT || '12', 10));
-const SHARE_TTS_VOICE = (process.env.SHARE_TTS_VOICE || 'leo').trim() || 'leo';
+// === Share voice-over TTS (Bible reader voice video) — controllable + rate-limited ===
+// Env defaults; admin can override live via /admin (stored in SQLite app_settings).
+const BUILTIN_SHARE_VOICES = [
+  { id: 'leo', label: 'Leo (confident male)' },
+  { id: 'rex', label: 'Rex (clear male)' },
+  { id: 'ara', label: 'Ara (warm female)' },
+  { id: 'sal', label: 'Sal (smooth)' },
+  { id: 'eve', label: 'Eve (default female)' },
+];
+
+function envBool(name, defaultVal) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') return defaultVal;
+  return /^(1|true|yes|on)$/i.test(String(raw).trim());
+}
+
+function envInt(name, defaultVal) {
+  const n = parseInt(process.env[name], 10);
+  return Number.isFinite(n) ? n : defaultVal;
+}
+
+const SHARE_TTS_ENV_DEFAULTS = {
+  enabled: envBool('SHARE_TTS_ENABLED', true),
+  requireAuth: envBool('SHARE_TTS_REQUIRE_AUTH', false),
+  // 0 = fully disabled by quota (master switch still preferred via enabled)
+  dailyLimit: Math.max(0, envInt('SHARE_TTS_DAILY_LIMIT', 12)),
+  maxChars: Math.max(200, envInt('SHARE_TTS_MAX_CHARS', 4000)),
+  // Built-in voice id OR your xAI cloned/custom voice id from console
+  voice: (process.env.SHARE_TTS_VOICE || 'leo').trim() || 'leo',
+};
+
+function getAppSetting(key) {
+  try {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key);
+    return row ? row.value : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setAppSetting(key, value) {
+  db.prepare(`
+    INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+  `).run(key, String(value));
+}
+
+function parseStoredShareTtsOverrides() {
+  try {
+    const raw = getAppSetting('share_tts');
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/** Effective share-TTS settings (env defaults + admin overrides). */
+function getShareTtsSettings() {
+  const o = parseStoredShareTtsOverrides();
+  const enabled = typeof o.enabled === 'boolean' ? o.enabled : SHARE_TTS_ENV_DEFAULTS.enabled;
+  const requireAuth = typeof o.requireAuth === 'boolean' ? o.requireAuth : SHARE_TTS_ENV_DEFAULTS.requireAuth;
+  let dailyLimit = Number.isFinite(Number(o.dailyLimit))
+    ? Math.max(0, parseInt(o.dailyLimit, 10))
+    : SHARE_TTS_ENV_DEFAULTS.dailyLimit;
+  let maxChars = Number.isFinite(Number(o.maxChars))
+    ? Math.max(200, parseInt(o.maxChars, 10))
+    : SHARE_TTS_ENV_DEFAULTS.maxChars;
+  const voice = String(o.voice || SHARE_TTS_ENV_DEFAULTS.voice || 'leo').trim() || 'leo';
+  return {
+    enabled,
+    requireAuth,
+    dailyLimit,
+    maxChars,
+    voice,
+    // true when feature can actually run (switch on + key present + daily limit > 0)
+    available: !!(enabled && dailyLimit > 0 && xaiKeyLooksConfigured()),
+    hasXaiKey: xaiKeyLooksConfigured(),
+    builtinVoices: BUILTIN_SHARE_VOICES,
+  };
+}
+
+function getPublicShareTtsConfig() {
+  const s = getShareTtsSettings();
+  return {
+    enabled: s.available, // client hides menu when false
+    requireAuth: s.requireAuth,
+    maxChars: s.maxChars,
+    dailyLimit: s.dailyLimit,
+    // Do not expose full custom/cloned IDs publicly if they look like long hashes;
+    // still fine to expose short built-in names.
+    voiceLabel: BUILTIN_SHARE_VOICES.find((v) => v.id === s.voice.toLowerCase())?.label
+      || (s.voice.length <= 12 ? s.voice : 'Custom voice'),
+    builtinVoices: BUILTIN_SHARE_VOICES,
+  };
+}
+
+function saveShareTtsOverrides(partial) {
+  const current = parseStoredShareTtsOverrides();
+  const next = { ...current };
+  if (typeof partial.enabled === 'boolean') next.enabled = partial.enabled;
+  if (typeof partial.requireAuth === 'boolean') next.requireAuth = partial.requireAuth;
+  if (partial.dailyLimit !== undefined && partial.dailyLimit !== null && partial.dailyLimit !== '') {
+    next.dailyLimit = Math.max(0, parseInt(partial.dailyLimit, 10) || 0);
+  }
+  if (partial.maxChars !== undefined && partial.maxChars !== null && partial.maxChars !== '') {
+    next.maxChars = Math.max(200, parseInt(partial.maxChars, 10) || 200);
+  }
+  if (partial.voice !== undefined && partial.voice !== null) {
+    const v = String(partial.voice).trim();
+    if (v) next.voice = v.slice(0, 128);
+  }
+  setAppSetting('share_tts', JSON.stringify(next));
+  return getShareTtsSettings();
+}
+
 const shareTtsByIp = new Map(); // ip -> { day: 'YYYY-MM-DD', count: number }
 
 function shareTtsDayKey() {
@@ -1547,35 +1666,72 @@ function checkShareTtsQuota(ip) {
   return row;
 }
 
+function optionalUserFromAuthHeader(req) {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return null;
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload?.email) return null;
+    return db.prepare('SELECT * FROM users WHERE email = ?').get(normalizeEmail(payload.email)) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function resolveShareTtsVoiceId(_requested, settingsVoice) {
+  // Admin/env voice only — clients cannot pick voices (cost control + clone support).
+  return String(settingsVoice || 'leo').trim() || 'leo';
+}
+
 app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => {
   try {
-    if (!xaiKeyLooksConfigured()) {
-      return res.status(503).json({
-        error: 'Voice video is not configured on the server yet (missing XAI_API_KEY). You can still share as text.'
+    const settings = getShareTtsSettings();
+
+    if (!settings.enabled) {
+      return res.status(403).json({
+        error: 'Voice video is turned off by the site admin. You can still share as text.',
       });
+    }
+    if (settings.dailyLimit <= 0) {
+      return res.status(403).json({
+        error: 'Voice video daily limit is 0 (disabled). Share as text instead.',
+      });
+    }
+    if (!settings.hasXaiKey) {
+      return res.status(503).json({
+        error: 'Voice video is not configured on the server yet (missing XAI_API_KEY). You can still share as text.',
+      });
+    }
+
+    if (settings.requireAuth) {
+      const user = optionalUserFromAuthHeader(req);
+      if (!user || !userHasAccess(user)) {
+        return res.status(401).json({
+          error: 'Sign in with an active account to create voice videos.',
+          requireAuth: true,
+        });
+      }
     }
 
     const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length < 8) {
       return res.status(400).json({ error: 'Text is too short to narrate.' });
     }
-    if (text.length > SHARE_TTS_MAX_CHARS) {
+    if (text.length > settings.maxChars) {
       return res.status(400).json({
-        error: `Selection is too long for one voice video (max ${SHARE_TTS_MAX_CHARS} characters). Select fewer verses.`
+        error: `Selection is too long for one voice video (max ${settings.maxChars} characters). Select fewer verses.`,
       });
     }
 
     const ip = getShareTtsClientIp(req);
     const quota = checkShareTtsQuota(ip);
-    if (quota.count >= SHARE_TTS_DAILY_LIMIT) {
+    if (quota.count >= settings.dailyLimit) {
       return res.status(429).json({
-        error: `Daily voice-video limit reached (${SHARE_TTS_DAILY_LIMIT}/day). Share as text, or try again tomorrow.`
+        error: `Daily voice-video limit reached (${settings.dailyLimit}/day). Share as text, or try again tomorrow.`,
       });
     }
 
-    const voiceId = String(req.body?.voice || SHARE_TTS_VOICE).trim() || SHARE_TTS_VOICE;
-    const allowed = new Set(['leo', 'rex', 'ara', 'sal', 'eve', 'Leo', 'Rex', 'Ara', 'Sal', 'Eve']);
-    const voice = allowed.has(voiceId) ? voiceId.toLowerCase() : SHARE_TTS_VOICE.toLowerCase();
+    const voice = resolveShareTtsVoiceId(req.body?.voice, settings.voice);
 
     const ttsRes = await fetch('https://api.x.ai/v1/tts', {
       method: 'POST',
@@ -1610,7 +1766,7 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-Share-TTS-Remaining', String(Math.max(0, SHARE_TTS_DAILY_LIMIT - quota.count)));
+    res.setHeader('X-Share-TTS-Remaining', String(Math.max(0, settings.dailyLimit - quota.count)));
     return res.send(buf);
   } catch (err) {
     console.error('[share-tts]', err && err.message);
@@ -1618,13 +1774,35 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
   }
 });
 
+// Admin: read / update voice-video controls (live, no redeploy)
+app.get('/api/admin/share-tts', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json(getShareTtsSettings());
+});
+
+app.post('/api/admin/share-tts', express.json({ limit: '8kb' }), (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const body = req.body || {};
+    const updated = saveShareTtsOverrides({
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+      requireAuth: typeof body.requireAuth === 'boolean' ? body.requireAuth : undefined,
+      dailyLimit: body.dailyLimit,
+      maxChars: body.maxChars,
+      voice: body.voice,
+    });
+    res.json({ ok: true, settings: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Failed to save settings' });
+  }
+});
+
 // === TTS: browser built-in system voices only (window.speechSynthesis) for in-app chat ===
 app.get('/api/debug/tts', (req, res) => {
+  const s = getShareTtsSettings();
   res.json({
     chatTts: 'disabled (browser speechSynthesis only)',
-    shareTts: xaiKeyLooksConfigured() ? 'enabled (/api/share-tts, rate-limited)' : 'unavailable (no XAI_API_KEY)',
-    shareTtsDailyLimit: SHARE_TTS_DAILY_LIMIT,
-    shareTtsMaxChars: SHARE_TTS_MAX_CHARS,
+    shareTts: s,
   });
 });
 

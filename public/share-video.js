@@ -378,9 +378,14 @@
   }
 
   async function fetchShareTts(text, signal) {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (token) headers.Authorization = 'Bearer ' + token;
+    } catch (e) {}
     const res = await fetch('/api/share-tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ text }),
       signal
     });

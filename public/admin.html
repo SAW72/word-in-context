@@ -93,6 +93,45 @@
     </div>
 
     <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">Voice video (Bible reader share)</h3>
+      <p class="small">Control narrated verse videos. Costs ~$15 per 1M characters on xAI TTS (usually a few cents per video). Chat still uses free device voices.</p>
+      <div style="display:grid; gap:10px; max-width:520px;">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="stts-enabled"> <strong>Enable voice video</strong> (master on/off)
+        </label>
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="stts-require-auth"> Require signed-in user (trial/paid)
+        </label>
+        <label>Daily limit per visitor (IP) — <code>0</code> disables generation
+          <input type="number" id="stts-daily" min="0" max="500" style="width:100%; padding:8px; margin-top:4px;">
+        </label>
+        <label>Max characters per video
+          <input type="number" id="stts-maxchars" min="200" max="15000" style="width:100%; padding:8px; margin-top:4px;">
+        </label>
+        <label>Voice
+          <select id="stts-voice-preset" style="width:100%; padding:8px; margin-top:4px;">
+            <option value="leo">Leo — confident male</option>
+            <option value="rex">Rex — clear male</option>
+            <option value="ara">Ara — warm female</option>
+            <option value="sal">Sal — smooth</option>
+            <option value="eve">Eve — default female</option>
+            <option value="__custom">Custom / cloned voice ID…</option>
+          </select>
+        </label>
+        <label id="stts-custom-wrap" style="display:none;">Cloned / custom xAI voice ID
+          <input type="text" id="stts-voice-custom" placeholder="paste voice id from xAI console" style="width:100%; padding:8px; margin-top:4px;">
+          <span class="small">Create a clone in the <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> → Voice library → copy Voice ID. Paste it here.</span>
+        </label>
+        <div class="small" id="stts-status-line">Loading…</div>
+        <div>
+          <button type="button" class="btn" id="stts-save-btn">Save voice-video settings</button>
+          <button type="button" class="btn gray" id="stts-reload-btn">Reload</button>
+        </div>
+        <div id="stts-save-status" class="status"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">Bulk Group / Church Grant</h3>
       <p class="small">Grant access to a whole congregation or group under one church name. One email per line.</p>
       <input type="text" id="bulk-group" placeholder="Grace Community Church" style="width:100%; padding:8px; margin-bottom:8px;">
@@ -127,6 +166,7 @@
         document.getElementById('login-panel').style.display = 'none';
         document.getElementById('admin-panel').style.display = 'block';
         loadUsers();
+        if (typeof loadShareTtsSettings === 'function') loadShareTtsSettings();
       } else {
         status.textContent = data.error || 'Login failed';
       }
@@ -242,6 +282,90 @@
     }
   }
 
+  function applyShareTtsForm(settings) {
+    if (!settings) return;
+    const enabled = document.getElementById('stts-enabled');
+    const requireAuth = document.getElementById('stts-require-auth');
+    const daily = document.getElementById('stts-daily');
+    const maxChars = document.getElementById('stts-maxchars');
+    const preset = document.getElementById('stts-voice-preset');
+    const custom = document.getElementById('stts-voice-custom');
+    const customWrap = document.getElementById('stts-custom-wrap');
+    const line = document.getElementById('stts-status-line');
+    if (enabled) enabled.checked = !!settings.enabled;
+    if (requireAuth) requireAuth.checked = !!settings.requireAuth;
+    if (daily) daily.value = String(settings.dailyLimit ?? 12);
+    if (maxChars) maxChars.value = String(settings.maxChars ?? 4000);
+    const voice = String(settings.voice || 'leo');
+    const builtins = ['leo', 'rex', 'ara', 'sal', 'eve'];
+    if (builtins.includes(voice.toLowerCase())) {
+      if (preset) preset.value = voice.toLowerCase();
+      if (customWrap) customWrap.style.display = 'none';
+      if (custom) custom.value = '';
+    } else {
+      if (preset) preset.value = '__custom';
+      if (customWrap) customWrap.style.display = 'block';
+      if (custom) custom.value = voice;
+    }
+    if (line) {
+      const ok = settings.available ? 'READY' : 'OFF / unavailable';
+      line.innerHTML = `Status: <strong>${ok}</strong> · xAI key: ${settings.hasXaiKey ? 'yes' : 'NO'} · voice: <code>${voice.length > 24 ? voice.slice(0, 12) + '…' : voice}</code>`;
+    }
+  }
+
+  async function loadShareTtsSettings() {
+    const status = document.getElementById('stts-save-status');
+    if (!adminToken) return;
+    try {
+      const r = await fetch(base + '/api/admin/share-tts', {
+        headers: { 'Authorization': 'Bearer ' + adminToken }
+      });
+      if (!r.ok) throw new Error('auth');
+      const data = await r.json();
+      applyShareTtsForm(data);
+      if (status) status.textContent = '';
+    } catch (e) {
+      if (status) status.textContent = 'Could not load voice-video settings';
+    }
+  }
+
+  async function saveShareTtsSettings() {
+    const status = document.getElementById('stts-save-status');
+    status.textContent = 'Saving…';
+    const preset = document.getElementById('stts-voice-preset').value;
+    const custom = document.getElementById('stts-voice-custom').value.trim();
+    const voice = preset === '__custom' ? custom : preset;
+    if (!voice) {
+      status.textContent = 'Pick a voice or paste a custom/cloned voice ID';
+      return;
+    }
+    try {
+      const r = await fetch(base + '/api/admin/share-tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + adminToken
+        },
+        body: JSON.stringify({
+          enabled: document.getElementById('stts-enabled').checked,
+          requireAuth: document.getElementById('stts-require-auth').checked,
+          dailyLimit: parseInt(document.getElementById('stts-daily').value, 10),
+          maxChars: parseInt(document.getElementById('stts-maxchars').value, 10),
+          voice
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = data.error || 'Save failed';
+        return;
+      }
+      applyShareTtsForm(data.settings);
+      status.textContent = 'Saved. Changes apply immediately (no redeploy).';
+    } catch (e) {
+      status.textContent = 'Network error saving settings';
+    }
+  }
+
   // Auto-restore admin session
   window.onload = () => {
     const saved = sessionStorage.getItem('admin_token');
@@ -250,17 +374,34 @@
       document.getElementById('login-panel').style.display = 'none';
       document.getElementById('admin-panel').style.display = 'block';
       loadUsers();
+      loadShareTtsSettings();
     }
     // Also load a hint of config
     fetch(base + '/api/config').then(r=>r.json()).then(c => {
       const s = document.getElementById('admin-status');
-      if (s && !s.textContent) s.textContent = 'Demo limit: ' + (c.demoLimit||10) + ' • Normal trial: ' + (c.trialDays||7) + 'd • Tester trial: ' + (c.testerTrialDays||14) + 'd (no card)';
+      if (s && !s.textContent) {
+        const st = c.shareTts || {};
+        s.textContent = 'Demo limit: ' + (c.demoLimit||10) + ' • Normal trial: ' + (c.trialDays||7) + 'd • Tester trial: ' + (c.testerTrialDays||14) + 'd • Voice video: ' + (st.enabled ? 'ON' : 'OFF');
+      }
     }).catch(()=>{});
 
     // Wire static top buttons safely (avoids any inline onclick timing/scope issues)
     const reloadBtn = document.getElementById('reload-users-btn');
     if (reloadBtn) reloadBtn.onclick = () => loadUsers();
+    const sttsSave = document.getElementById('stts-save-btn');
+    if (sttsSave) sttsSave.onclick = () => saveShareTtsSettings();
+    const sttsReload = document.getElementById('stts-reload-btn');
+    if (sttsReload) sttsReload.onclick = () => loadShareTtsSettings();
+    const preset = document.getElementById('stts-voice-preset');
+    if (preset) {
+      preset.onchange = () => {
+        const wrap = document.getElementById('stts-custom-wrap');
+        if (wrap) wrap.style.display = preset.value === '__custom' ? 'block' : 'none';
+      };
+    }
   };
+
+
 
   async function createSpecialTester() {
     const status = document.getElementById('special-status');
