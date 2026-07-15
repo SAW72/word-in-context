@@ -307,9 +307,10 @@
   }
 
   function drawBrandedBackground(ctx, brand) {
-    // Full-bleed cinematic photo (cross + light + parchment)
-    if (brand && brand.bg) {
-      drawCoverImage(ctx, brand.bg, 0, 0, W, H, 1);
+    // Full-bleed: AI verse scene if provided, else classic cinematic brand photo
+    const fullBg = (brand && brand.aiBg) || (brand && brand.bg);
+    if (fullBg) {
+      drawCoverImage(ctx, fullBg, 0, 0, W, H, 1);
     } else {
       const g = ctx.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#2a2118');
@@ -588,8 +589,54 @@
   /**
    * Build a static PNG share card (always works; free).
    */
+  async function loadImageFromBlob(blob) {
+    if (!blob) return null;
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await loadImage(url);
+      return img;
+    } finally {
+      // Keep object URL alive until img is decoded; revoke shortly after
+      setTimeout(() => {
+        try { URL.revokeObjectURL(url); } catch (e) {}
+      }, 60000);
+    }
+  }
+
+  /**
+   * Ask the server to generate a 9:16 image that correlates with the verse.
+   * Returns a Blob (image/jpeg or png) or throws.
+   */
+  async function fetchAiVerseBackground({ reference, translation, text, signal }) {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (token) headers.Authorization = 'Bearer ' + token;
+    } catch (e) {}
+    const res = await fetch('/api/share-bg-image', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ reference, translation, text }),
+      signal
+    });
+    if (!res.ok) {
+      let msg = `AI background unavailable (${res.status})`;
+      try {
+        const data = await res.json();
+        if (data && data.error) msg = data.error;
+      } catch (e) {}
+      const err = new Error(msg);
+      err.status = res.status;
+      throw err;
+    }
+    return res.blob();
+  }
+
   async function createShareCardPng(opts) {
     const brand = await loadBrandImages();
+    if (opts && opts.aiBgImage) {
+      brand.aiBg = opts.aiBgImage;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
@@ -640,6 +687,9 @@
     if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const brand = await loadBrandImages();
+    if (opts && opts.aiBgImage) {
+      brand.aiBg = opts.aiBgImage;
+    }
     onProgress && onProgress(0.08, 'Preparing artwork…');
 
     const verseText = (verses || []).map((v) => v.text).join(' ');
@@ -659,7 +709,13 @@
     // Always have a still card ready as fallback
     let cardFallback = null;
     try {
-      cardFallback = await createShareCardPng({ reference, translation, verses, siteUrl });
+      cardFallback = await createShareCardPng({
+        reference,
+        translation,
+        verses,
+        siteUrl,
+        aiBgImage: brand.aiBg || null
+      });
     } catch (e) { /* optional */ }
 
     if (typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream) {
@@ -953,6 +1009,8 @@
     createScriptureVideo,
     createShareCardPng,
     fetchShareTts,
+    fetchAiVerseBackground,
+    loadImageFromBlob,
     buildNarrationText,
     estimateDurationSec,
     ensureMp4,

@@ -132,6 +132,28 @@
     </div>
 
     <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">AI verse backgrounds (share images / videos)</h3>
+      <p class="small">Optional: generate a unique 9:16 scene that matches the verse (~$0.02 each via xAI Imagine). Classic brand photo stays free.</p>
+      <div style="display:grid; gap:10px; max-width:520px;">
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="saibg-enabled"> <strong>Allow AI verse backgrounds</strong>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="saibg-require-auth"> Require signed-in user
+        </label>
+        <label>Daily limit per visitor (IP) — <code>0</code> disables
+          <input type="number" id="saibg-daily" min="0" max="200" style="width:100%; padding:8px; margin-top:4px;">
+        </label>
+        <div class="small" id="saibg-status-line">Loading…</div>
+        <div>
+          <button type="button" class="btn" id="saibg-save-btn">Save AI background settings</button>
+          <button type="button" class="btn gray" id="saibg-reload-btn">Reload</button>
+        </div>
+        <div id="saibg-save-status" class="status"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">Bulk Group / Church Grant</h3>
       <p class="small">Grant access to a whole congregation or group under one church name. One email per line.</p>
       <input type="text" id="bulk-group" placeholder="Grace Community Church" style="width:100%; padding:8px; margin-bottom:8px;">
@@ -167,6 +189,7 @@
         document.getElementById('admin-panel').style.display = 'block';
         loadUsers();
         if (typeof loadShareTtsSettings === 'function') loadShareTtsSettings();
+        if (typeof loadShareAiBgSettings === 'function') loadShareAiBgSettings();
       } else {
         status.textContent = data.error || 'Login failed';
       }
@@ -366,6 +389,62 @@
     }
   }
 
+  function applyShareAiBgForm(settings) {
+    if (!settings) return;
+    const en = document.getElementById('saibg-enabled');
+    const ra = document.getElementById('saibg-require-auth');
+    const daily = document.getElementById('saibg-daily');
+    const line = document.getElementById('saibg-status-line');
+    if (en) en.checked = !!settings.enabled;
+    if (ra) ra.checked = !!settings.requireAuth;
+    if (daily) daily.value = String(settings.dailyLimit ?? 8);
+    if (line) {
+      line.innerHTML = `Status: <strong>${settings.available ? 'READY' : 'OFF'}</strong> · ~$${settings.approxCostUsd || 0.02}/image · model <code>${settings.model || 'grok-imagine-image'}</code>`;
+    }
+  }
+
+  async function loadShareAiBgSettings() {
+    if (!adminToken) return;
+    try {
+      const r = await fetch(base + '/api/admin/share-ai-bg', {
+        headers: { 'Authorization': 'Bearer ' + adminToken }
+      });
+      if (!r.ok) throw new Error('auth');
+      applyShareAiBgForm(await r.json());
+    } catch (e) {
+      const s = document.getElementById('saibg-save-status');
+      if (s) s.textContent = 'Could not load AI background settings';
+    }
+  }
+
+  async function saveShareAiBgSettings() {
+    const status = document.getElementById('saibg-save-status');
+    status.textContent = 'Saving…';
+    try {
+      const r = await fetch(base + '/api/admin/share-ai-bg', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + adminToken
+        },
+        body: JSON.stringify({
+          enabled: document.getElementById('saibg-enabled').checked,
+          requireAuth: document.getElementById('saibg-require-auth').checked,
+          dailyLimit: parseInt(document.getElementById('saibg-daily').value, 10)
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = data.error || 'Save failed';
+        return;
+      }
+      applyShareAiBgForm(data.settings);
+      status.textContent = 'Saved. Applies immediately.';
+    } catch (e) {
+      status.textContent = 'Network error';
+    }
+  }
+
   // Auto-restore admin session
   window.onload = () => {
     const saved = sessionStorage.getItem('admin_token');
@@ -375,6 +454,7 @@
       document.getElementById('admin-panel').style.display = 'block';
       loadUsers();
       loadShareTtsSettings();
+      loadShareAiBgSettings();
     }
     // Also load a hint of config
     fetch(base + '/api/config').then(r=>r.json()).then(c => {
@@ -392,6 +472,10 @@
     if (sttsSave) sttsSave.onclick = () => saveShareTtsSettings();
     const sttsReload = document.getElementById('stts-reload-btn');
     if (sttsReload) sttsReload.onclick = () => loadShareTtsSettings();
+    const saibgSave = document.getElementById('saibg-save-btn');
+    if (saibgSave) saibgSave.onclick = () => saveShareAiBgSettings();
+    const saibgReload = document.getElementById('saibg-reload-btn');
+    if (saibgReload) saibgReload.onclick = () => loadShareAiBgSettings();
     const preset = document.getElementById('stts-voice-preset');
     if (preset) {
       preset.onchange = () => {

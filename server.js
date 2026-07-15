@@ -1488,6 +1488,7 @@ app.get('/api/config', (req, res) => {
     siteUrl: SHARE_SITE_URL,
     paymentProvider: paymentProvider(),
     shareTts: getPublicShareTtsConfig(),
+    shareAiBg: getPublicShareAiBgConfig(),
   });
 });
 
@@ -1797,12 +1798,226 @@ app.post('/api/admin/share-tts', express.json({ limit: '8kb' }), (req, res) => {
   }
 });
 
+// === AI verse-correlated share backgrounds (optional, paid Imagine) ===
+// ~$0.02/image with grok-imagine-image. Separate daily quota from voice TTS.
+const SHARE_AI_BG_ENV_DEFAULTS = {
+  enabled: envBool('SHARE_AI_BG_ENABLED', true),
+  requireAuth: envBool('SHARE_AI_BG_REQUIRE_AUTH', false),
+  dailyLimit: Math.max(0, envInt('SHARE_AI_BG_DAILY_LIMIT', 8)),
+  model: (process.env.SHARE_AI_BG_MODEL || 'grok-imagine-image').trim() || 'grok-imagine-image',
+};
+
+const shareAiBgByIp = new Map();
+
+function parseStoredShareAiBgOverrides() {
+  try {
+    const raw = getAppSetting('share_ai_bg');
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function getShareAiBgSettings() {
+  const o = parseStoredShareAiBgOverrides();
+  const enabled = typeof o.enabled === 'boolean' ? o.enabled : SHARE_AI_BG_ENV_DEFAULTS.enabled;
+  const requireAuth = typeof o.requireAuth === 'boolean' ? o.requireAuth : SHARE_AI_BG_ENV_DEFAULTS.requireAuth;
+  const dailyLimit = Number.isFinite(Number(o.dailyLimit))
+    ? Math.max(0, parseInt(o.dailyLimit, 10))
+    : SHARE_AI_BG_ENV_DEFAULTS.dailyLimit;
+  const model = String(o.model || SHARE_AI_BG_ENV_DEFAULTS.model || 'grok-imagine-image').trim();
+  return {
+    enabled,
+    requireAuth,
+    dailyLimit,
+    model,
+    available: !!(enabled && dailyLimit > 0 && xaiKeyLooksConfigured()),
+    hasXaiKey: xaiKeyLooksConfigured(),
+    approxCostUsd: 0.02,
+  };
+}
+
+function getPublicShareAiBgConfig() {
+  const s = getShareAiBgSettings();
+  return {
+    enabled: s.available,
+    requireAuth: s.requireAuth,
+    dailyLimit: s.dailyLimit,
+    approxCostUsd: s.approxCostUsd,
+  };
+}
+
+function saveShareAiBgOverrides(partial) {
+  const current = parseStoredShareAiBgOverrides();
+  const next = { ...current };
+  if (typeof partial.enabled === 'boolean') next.enabled = partial.enabled;
+  if (typeof partial.requireAuth === 'boolean') next.requireAuth = partial.requireAuth;
+  if (partial.dailyLimit !== undefined && partial.dailyLimit !== null && partial.dailyLimit !== '') {
+    next.dailyLimit = Math.max(0, parseInt(partial.dailyLimit, 10) || 0);
+  }
+  if (partial.model) next.model = String(partial.model).trim().slice(0, 80);
+  setAppSetting('share_ai_bg', JSON.stringify(next));
+  return getShareAiBgSettings();
+}
+
+function checkShareAiBgQuota(ip) {
+  const day = shareTtsDayKey();
+  let row = shareAiBgByIp.get(ip);
+  if (!row || row.day !== day) {
+    row = { day, count: 0 };
+    shareAiBgByIp.set(ip, row);
+  }
+  return row;
+}
+
+function buildVerseBackgroundPrompt({ reference, translation, text }) {
+  const ref = String(reference || 'Scripture').trim().slice(0, 120);
+  const body = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 420);
+  const theme = body || ref;
+  return [
+    `Vertical 9:16 cinematic sacred illustration inspired by the Bible passage ${ref}.`,
+    `Visual mood and imagery that correlates with this text (do not paint letters or words): ${theme}`,
+    `Reverent Christian aesthetic, soft golden light, atmospheric depth, high quality, photoreal or painterly fine art.`,
+    `Leave the lower center somewhat open/soft for overlaying a text card later.`,
+    `No text, no letters, no watermarks, no logos, no UI, no captions.`,
+  ].join(' ');
+}
+
+app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res) => {
+  try {
+    const settings = getShareAiBgSettings();
+    if (!settings.enabled || settings.dailyLimit <= 0) {
+      return res.status(403).json({ error: 'AI verse backgrounds are turned off by the admin.' });
+    }
+    if (!settings.hasXaiKey) {
+      return res.status(503).json({ error: 'AI backgrounds need XAI_API_KEY on the server.' });
+    }
+    if (settings.requireAuth) {
+      const user = optionalUserFromAuthHeader(req);
+      if (!user || !userHasAccess(user)) {
+        return res.status(401).json({ error: 'Sign in to use AI verse backgrounds.', requireAuth: true });
+      }
+    }
+
+    const reference = String(req.body?.reference || '').trim().slice(0, 160);
+    const translation = String(req.body?.translation || '').trim().slice(0, 40);
+    const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, 800);
+    if (!reference && !text) {
+      return res.status(400).json({ error: 'Reference or verse text required.' });
+    }
+
+    const ip = getShareTtsClientIp(req);
+    const quota = checkShareAiBgQuota(ip);
+    if (quota.count >= settings.dailyLimit) {
+      return res.status(429).json({
+        error: `Daily AI background limit reached (${settings.dailyLimit}/day). Use the classic brand background instead.`,
+      });
+    }
+
+    const prompt = buildVerseBackgroundPrompt({ reference, translation, text });
+    const model = settings.model.includes('imagine') ? settings.model : 'grok-imagine-image';
+
+    const imgRes = await fetch('https://api.x.ai/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getXaiApiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        aspect_ratio: '9:16',
+        // response_format may be url or b64_json depending on API version
+        response_format: 'url',
+      }),
+    });
+
+    if (!imgRes.ok) {
+      const errText = await imgRes.text().catch(() => '');
+      console.error('[share-bg-image] xAI failed', imgRes.status, errText.slice(0, 300));
+      return res.status(502).json({
+        error: 'Could not generate an AI background right now. Try the classic brand background.',
+      });
+    }
+
+    const data = await imgRes.json().catch(() => ({}));
+    const item = Array.isArray(data?.data) ? data.data[0] : null;
+    let imageUrl = item?.url || data?.url || null;
+    let b64 = item?.b64_json || null;
+
+    // Some responses nest differently
+    if (!imageUrl && !b64 && data?.images?.[0]) {
+      imageUrl = data.images[0].url || null;
+      b64 = data.images[0].b64_json || null;
+    }
+
+    if (!imageUrl && !b64) {
+      console.error('[share-bg-image] unexpected response keys', Object.keys(data || {}));
+      return res.status(502).json({ error: 'AI image response missing image data.' });
+    }
+
+    // Fetch remote URL and return bytes so client does not hit CORS
+    let buf;
+    let contentType = 'image/jpeg';
+    if (b64) {
+      buf = Buffer.from(b64, 'base64');
+    } else {
+      const remote = await fetch(imageUrl);
+      if (!remote.ok) {
+        return res.status(502).json({ error: 'Could not download generated image.' });
+      }
+      contentType = remote.headers.get('content-type') || 'image/jpeg';
+      buf = Buffer.from(await remote.arrayBuffer());
+    }
+
+    if (!buf.length) {
+      return res.status(502).json({ error: 'Empty AI image.' });
+    }
+
+    quota.count += 1;
+    shareAiBgByIp.set(ip, quota);
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Share-AI-BG-Remaining', String(Math.max(0, settings.dailyLimit - quota.count)));
+    return res.send(buf);
+  } catch (err) {
+    console.error('[share-bg-image]', err && err.message);
+    return res.status(500).json({ error: 'AI background generation failed.' });
+  }
+});
+
+app.get('/api/admin/share-ai-bg', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json(getShareAiBgSettings());
+});
+
+app.post('/api/admin/share-ai-bg', express.json({ limit: '4kb' }), (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const body = req.body || {};
+    const updated = saveShareAiBgOverrides({
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+      requireAuth: typeof body.requireAuth === 'boolean' ? body.requireAuth : undefined,
+      dailyLimit: body.dailyLimit,
+      model: body.model,
+    });
+    res.json({ ok: true, settings: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Failed to save' });
+  }
+});
+
 // === TTS: browser built-in system voices only (window.speechSynthesis) for in-app chat ===
 app.get('/api/debug/tts', (req, res) => {
   const s = getShareTtsSettings();
   res.json({
     chatTts: 'disabled (browser speechSynthesis only)',
     shareTts: s,
+    shareAiBg: getShareAiBgSettings(),
   });
 });
 

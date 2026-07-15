@@ -695,6 +695,68 @@
     return { verses, translation, reference };
   }
 
+  /**
+   * Ask classic brand vs AI verse scene. Returns 'classic' | 'ai' | null (cancel).
+   */
+  function chooseShareBackground() {
+    const aiCfg = (window.__shareAiBgConfig || {});
+    // Default on until config loads; server is source of truth when generating
+    const aiOn = aiCfg.enabled !== false;
+
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'reader-video-modal';
+      backdrop.innerHTML = `
+        <div class="reader-video-panel" role="dialog" aria-modal="true">
+          <h3>Background style</h3>
+          <p class="reader-video-hint" style="margin-bottom:14px">
+            Choose the art behind your verse text.
+          </p>
+          <div class="reader-share-result-actions">
+            <button type="button" class="reader-selection-btn primary" id="bg-classic">
+              Classic brand photo (free)
+            </button>
+            <button type="button" class="reader-selection-btn ${aiOn ? '' : 'ghost'}" id="bg-ai" ${aiOn ? '' : 'disabled'}>
+              AI scene from the verse${aiOn ? ' (~$0.02)' : ' (off)'}
+            </button>
+            <button type="button" class="reader-selection-btn ghost" id="bg-cancel">Cancel</button>
+          </div>
+          <p class="reader-video-hint" style="margin-top:12px;margin-bottom:0">
+            AI uses xAI Imagine to create a unique 9:16 image matching the passage. Daily limit applies.
+          </p>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      const done = (v) => {
+        backdrop.remove();
+        resolve(v);
+      };
+      backdrop.querySelector('#bg-classic').onclick = () => done('classic');
+      const aiBtn = backdrop.querySelector('#bg-ai');
+      if (aiOn) aiBtn.onclick = () => done('ai');
+      backdrop.querySelector('#bg-cancel').onclick = () => done(null);
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) done(null);
+      });
+    });
+  }
+
+  async function resolveAiBackground(reference, translation, verses, onProgress, signal) {
+    const SV = window.ShareVideo;
+    const text = verses.map((v) => v.text).join(' ');
+    onProgress && onProgress(0.08, 'Generating AI scene for this verse…');
+    const blob = await SV.fetchAiVerseBackground({
+      reference,
+      translation,
+      text,
+      signal
+    });
+    onProgress && onProgress(0.18, 'Loading scene…');
+    const img = await SV.loadImageFromBlob(blob);
+    if (!img) throw new Error('Could not load AI image');
+    return img;
+  }
+
   async function createAndShareImageCard() {
     if (!selectedVerses.size) return;
     if (!window.ShareVideo || !window.ShareVideo.createShareCardPng) {
@@ -706,20 +768,47 @@
       showShareToast('No verse text', false);
       return;
     }
+    const style = await chooseShareBackground();
+    if (!style) return;
+
+    const modal = showVideoProgressModal();
+    modal.setProgress(0.05, 'Creating image…');
+    const abort = new AbortController();
+    modal.onCancel(() => abort.abort());
     try {
-      showShareToast('Creating image…', true);
+      let aiBgImage = null;
+      if (style === 'ai') {
+        try {
+          aiBgImage = await resolveAiBackground(
+            reference,
+            translation,
+            verses,
+            (p, l) => modal.setProgress(p, l),
+            abort.signal
+          );
+        } catch (e) {
+          if (e && e.name === 'AbortError') throw e;
+          showShareToast((e && e.message) || 'AI background failed — using classic art', false);
+        }
+      }
+      modal.setProgress(0.7, 'Rendering card…');
       const content = await buildSelectedShareContent();
       const result = await window.ShareVideo.createShareCardPng({
         reference,
         translation,
         verses,
-        siteUrl: 'thewordincontext.org'
+        siteUrl: 'thewordincontext.org',
+        aiBgImage
       });
+      modal.close();
       const file = new File([result.blob], result.filename, { type: result.mimeType });
-      await copyPlainText(content.textWithLink);
-      showShareToast('Image ready — caption copied (includes app link)', true);
       await shareVideoFile(file, content.textWithLink, content.title);
     } catch (err) {
+      modal.close();
+      if (err && err.name === 'AbortError') {
+        showShareToast('Cancelled', true);
+        return;
+      }
       console.error('[share-image]', err);
       showShareToast((err && err.message) || 'Could not create image', false);
     }
@@ -757,6 +846,9 @@
       return;
     }
 
+    const style = await chooseShareBackground();
+    if (!style) return;
+
     const content = await buildSelectedShareContent();
     const narration = SV.buildNarrationText(reference, translation, verses);
 
@@ -777,7 +869,23 @@
     }, 6 * 60 * 1000);
 
     try {
-      modal.setProgress(0.05, 'Generating narration…');
+      let aiBgImage = null;
+      if (style === 'ai') {
+        try {
+          aiBgImage = await resolveAiBackground(
+            reference,
+            translation,
+            verses,
+            (p, l) => modal.setProgress(Math.min(0.2, p), l),
+            abort.signal
+          );
+        } catch (e) {
+          if (e && e.name === 'AbortError') throw e;
+          showShareToast((e && e.message) || 'AI scene failed — using classic art', false);
+        }
+      }
+
+      modal.setProgress(0.22, 'Generating narration…');
       let audioBuf = null;
       let voiceNote = '';
       try {
@@ -795,7 +903,7 @@
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
         if (e && e.name === 'AbortError') voiceNote = 'Voice timed out';
         else voiceNote = e && e.message ? e.message : 'Voice unavailable';
-        modal.setProgress(0.18, 'Building branded video…');
+        modal.setProgress(0.28, 'Building video…');
       }
 
       if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -807,7 +915,8 @@
         audioArrayBuffer: audioBuf,
         siteUrl: 'thewordincontext.org',
         signal: abort.signal,
-        onProgress: (pct, label) => modal.setProgress(pct, label)
+        aiBgImage,
+        onProgress: (pct, label) => modal.setProgress(0.3 + (pct || 0) * 0.55, label)
       });
 
       // Always re-encode to H.264+AAC MP4. Browser MP4 (esp. Safari HEVC) uploads to
@@ -2063,11 +2172,13 @@
     applyTheme();
     bindEvents();
     setupScrollChrome();
-    // Voice-video feature flags (admin toggle)
+    // Share feature flags (admin toggles)
     fetch('/api/config').then((r) => r.json()).then((cfg) => {
       if (cfg && cfg.shareTts) window.__shareTtsConfig = cfg.shareTts;
+      if (cfg && cfg.shareAiBg) window.__shareAiBgConfig = cfg.shareAiBg;
     }).catch(() => {
       window.__shareTtsConfig = { enabled: true };
+      window.__shareAiBgConfig = { enabled: true };
     });
     if (AE) {
       await AE.loadCatalog().catch(() => {});
