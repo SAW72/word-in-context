@@ -433,25 +433,65 @@
     el.remove();
   }
 
+  function isIOSLike() {
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent || '')
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
   /**
-   * Keep media in-app: preview + share to phone apps (no surprise download).
-   * On phone: "Share to apps" opens the system sheet (Messages, Facebook, Files…).
-   * Download is optional, only if the user taps Save.
+   * iOS: sharing { files + text } often opens only Messages.
+   * Sharing { files } alone surfaces Save Video, Photos, Facebook, Instagram, etc.
+   * Sharing { text } alone is better for Messages / caption posts.
+   */
+  function prepareShareFile(file) {
+    const isImage = /^image\//i.test(file.type || '');
+    if (isImage) {
+      const name = /\.(png|jpe?g|webp)$/i.test(file.name || '') ? file.name : 'scripture-share.png';
+      return new File([file], name, { type: file.type || 'image/png' });
+    }
+    // Force a clean .mp4 name/type so iOS lists video destinations
+    const name = /\.mp4$/i.test(file.name || '') ? file.name : 'word-in-context-reel.mp4';
+    const type = /mp4/i.test(file.type || '') ? 'video/mp4' : (file.type || 'video/mp4');
+    return new File([file], name, { type });
+  }
+
+  async function nativeShareMediaOnly(file) {
+    const shareFile = prepareShareFile(file);
+    if (!(navigator.canShare && navigator.canShare({ files: [shareFile] }))) {
+      throw new Error('File share not supported');
+    }
+    // IMPORTANT: files only — do not pass text/url (iOS collapses to Messages)
+    await navigator.share({ files: [shareFile] });
+  }
+
+  async function nativeShareCaptionOnly(caption, title) {
+    if (!navigator.share) throw new Error('Share not supported');
+    await navigator.share({
+      title: title || 'The Word in Context',
+      text: caption || ''
+    });
+  }
+
+  /**
+   * Keep media in-app: preview + targeted share actions.
+   * Primary "Share video" uses files-only so social apps appear (not just Messages).
    */
   async function showShareResultModal({ file, caption, title }) {
     closeShareResultModal();
     await copyPlainText(caption || '');
 
-    const isImage = /^image\//i.test(file.type || '');
-    const isMp4 = /mp4/i.test(file.type || '') || /\.mp4$/i.test(file.name || '');
-    const objectUrl = URL.createObjectURL(file);
+    const shareFile = prepareShareFile(file);
+    const isImage = /^image\//i.test(shareFile.type || '');
+    const isMp4 = /mp4/i.test(shareFile.type || '') || /\.mp4$/i.test(shareFile.name || '');
+    const objectUrl = URL.createObjectURL(shareFile);
     const canNativeShare = !!(navigator.share);
     let canFileShare = false;
     try {
-      canFileShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+      canFileShare = !!(navigator.canShare && navigator.canShare({ files: [shareFile] }));
     } catch (e) {
       canFileShare = false;
     }
+    const ios = isIOSLike();
 
     const backdrop = document.createElement('div');
     backdrop.id = 'reader-share-result-modal';
@@ -464,16 +504,20 @@
           ${isImage ? 'PNG image' : (isMp4 ? 'MP4 · Reels / Shorts ready' : 'Video file')}
           · Caption copied
         </p>
-        <p class="reader-video-hint">
+        <p class="reader-video-hint" id="srs-hint">
           ${canFileShare
-            ? 'Tap <strong>Share to apps</strong> to post in Facebook, Messages, YouTube, etc. without leaving the flow.'
-            : 'Preview stays in the app. Use <strong>Save</strong> only if you need the file, then upload to Facebook Reels or YouTube Shorts.'}
+            ? (ios
+              ? '<strong>Tip:</strong> Use <em>Share video</em> (not Messages). In the sheet, swipe for <strong>Save Video</strong>, then open Facebook → Reels → gallery.'
+              : 'Use <strong>Share video</strong> for Facebook/Instagram/YouTube. Use <strong>Share caption</strong> for text/link only.')
+            : 'Save the file, then open Facebook Reels or YouTube Shorts and upload from your gallery.'}
         </p>
         <div class="reader-share-result-actions">
-          ${canNativeShare ? '<button type="button" class="reader-selection-btn primary" id="srs-share">Share to apps…</button>' : ''}
+          ${canFileShare ? `<button type="button" class="reader-selection-btn primary" id="srs-share-media">Share ${isImage ? 'image' : 'video'}…</button>` : ''}
+          ${canNativeShare ? '<button type="button" class="reader-selection-btn" id="srs-share-caption">Share caption (Messages, etc.)…</button>' : ''}
+          <button type="button" class="reader-selection-btn" id="srs-facebook">Facebook Reels help</button>
+          <button type="button" class="reader-selection-btn" id="srs-youtube">YouTube Shorts help</button>
           <button type="button" class="reader-selection-btn" id="srs-caption">Copy caption again</button>
-          <button type="button" class="reader-selection-btn" id="srs-save">Save ${isImage ? 'image' : 'video'}</button>
-          ${!isImage ? '<button type="button" class="reader-selection-btn" id="srs-youtube">Open YouTube upload</button>' : ''}
+          <button type="button" class="reader-selection-btn" id="srs-save">Save ${isImage ? 'image' : 'video'} to device</button>
           <button type="button" class="reader-selection-btn ghost" id="srs-close">Done</button>
         </div>
       </div>
@@ -502,67 +546,98 @@
       if (e.target === backdrop) closeShareResultModal();
     });
 
-    const shareBtn = backdrop.querySelector('#srs-share');
-    if (shareBtn) {
-      shareBtn.addEventListener('click', async () => {
+    const mediaBtn = backdrop.querySelector('#srs-share-media');
+    if (mediaBtn) {
+      mediaBtn.addEventListener('click', async () => {
         try {
-          if (canFileShare) {
-            await navigator.share({
-              files: [file],
-              title: title || 'Scripture',
-              text: caption || ''
-            });
-          } else {
-            await navigator.share({
-              title: title || 'Scripture',
-              text: caption || ''
-            });
-            showShareToast('Caption shared — attach the saved video in the app if needed', true);
-          }
+          await nativeShareMediaOnly(shareFile);
+          showShareToast(
+            ios
+              ? 'In the sheet: Save Video or pick Facebook/Instagram (swipe for more apps)'
+              : 'Pick Facebook, Instagram, YouTube, or Save',
+            true
+          );
         } catch (e) {
-          if (e && e.name !== 'AbortError') {
-            showShareToast('Share cancelled or not available — use Save', false);
-          }
+          if (e && e.name === 'AbortError') return;
+          showShareToast('Could not open share sheet — use Save, then open Facebook', false);
         }
       });
     }
+
+    const captionShareBtn = backdrop.querySelector('#srs-share-caption');
+    if (captionShareBtn) {
+      captionShareBtn.addEventListener('click', async () => {
+        try {
+          await nativeShareCaptionOnly(caption || '', title);
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+          const ok = await copyPlainText(caption || '');
+          showShareToast(ok ? 'Caption copied instead' : 'Share not available', ok);
+        }
+      });
+    }
+
+    backdrop.querySelector('#srs-facebook').addEventListener('click', async () => {
+      await copyPlainText(caption || '');
+      // 1) Offer the video file first (files-only) so user can Save Video / open FB if listed
+      if (canFileShare) {
+        try {
+          await nativeShareMediaOnly(shareFile);
+          showShareToast('If Facebook is not listed: Save Video → open Facebook → Reels → add from gallery. Paste caption.', true);
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+        }
+      }
+      // 2) Open Facebook (mobile site). Video must come from gallery after Save.
+      const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+      window.open(
+        mobile ? 'https://m.facebook.com/' : 'https://www.facebook.com/reels/create',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      showShareToast('Facebook opened. Save the video first, then create a Reel from your gallery. Caption is copied.', true);
+    });
+
+    backdrop.querySelector('#srs-youtube').addEventListener('click', async () => {
+      await copyPlainText(caption || '');
+      if (canFileShare) {
+        try {
+          await nativeShareMediaOnly(shareFile);
+          showShareToast('Pick YouTube if listed, or Save Video then upload a Short', true);
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+        }
+      }
+      window.open('https://www.youtube.com/upload', '_blank', 'noopener,noreferrer');
+      showShareToast('YouTube opened — Save the video, then upload as a Short. Caption is copied.', true);
+    });
 
     backdrop.querySelector('#srs-caption').addEventListener('click', async () => {
       const ok = await copyPlainText(caption || '');
       showShareToast(ok ? 'Caption copied (verses + app link)' : 'Copy failed', ok);
     });
 
-    backdrop.querySelector('#srs-save').addEventListener('click', () => {
+    backdrop.querySelector('#srs-save').addEventListener('click', async () => {
+      // Prefer system share → Save Video on iOS (lands in Photos better than <a download>)
+      if (canFileShare && ios) {
+        try {
+          await nativeShareMediaOnly(shareFile);
+          showShareToast('Choose “Save Video” / Photos in the sheet', true);
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+        }
+      }
       const a = document.createElement('a');
       a.href = objectUrl;
-      a.download = file.name || (isImage ? 'scripture.png' : 'scripture.mp4');
+      a.download = shareFile.name || (isImage ? 'scripture.png' : 'word-in-context-reel.mp4');
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showShareToast('Saved — upload to Reels or Shorts if you want', true);
+      showShareToast('Saved — open Facebook Reels or YouTube Shorts and pick it from gallery', true);
     });
-
-    const ytBtn = backdrop.querySelector('#srs-youtube');
-    if (ytBtn) {
-      ytBtn.addEventListener('click', async () => {
-        // YouTube has no public “upload this blob” URL — open Studio; user attaches file via Share/Save.
-        if (canFileShare) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: title || 'Scripture',
-              text: caption || ''
-            });
-            showShareToast('Pick YouTube in the share sheet if listed, or Save then upload', true);
-            return;
-          } catch (e) {
-            if (e && e.name === 'AbortError') return;
-          }
-        }
-        window.open('https://www.youtube.com/upload', '_blank', 'noopener,noreferrer');
-        showShareToast('YouTube opened — Save the video first, then upload it as a Short', true);
-      });
-    }
 
     backdrop.querySelector('#srs-close').addEventListener('click', () => closeShareResultModal());
     return true;
