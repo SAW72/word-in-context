@@ -13,13 +13,18 @@
   const W = 720;
   const H = 1280;
   const MAX_DURATION_SEC = 90;
-  const BRAND_IMAGES = [
-    '/icons/whop-banner-2000x1000.png',
-    '/icons/share-og.png',
-    '/icons/icon-512.png'
-  ];
+  const BRAND_IMAGES = {
+    // Primary 9:16 cinematic background (cross + parchment light)
+    bg: '/icons/share-bg-vertical.jpg',
+    // Cream parchment panel texture for scripture text
+    parchment: '/icons/share-bg-parchment.jpg',
+    logo: '/icons/icon-512.png',
+    // legacy fallbacks
+    banner: '/icons/whop-banner-2000x1000.png',
+    card: '/icons/share-og.png'
+  };
 
-  let brandCache = null; // { banner, logo } HTMLImageElement | null
+  let brandCache = null; // loaded HTMLImageElements
 
   function pickRecorderMime() {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -227,11 +232,19 @@
 
   async function loadBrandImages() {
     if (brandCache) return brandCache;
-    const loaded = await Promise.all(BRAND_IMAGES.map(loadImage));
+    const [bg, parchment, logo, banner, card] = await Promise.all([
+      loadImage(BRAND_IMAGES.bg),
+      loadImage(BRAND_IMAGES.parchment),
+      loadImage(BRAND_IMAGES.logo),
+      loadImage(BRAND_IMAGES.banner),
+      loadImage(BRAND_IMAGES.card)
+    ]);
     brandCache = {
-      banner: loaded[0] || loaded[1] || null,
-      card: loaded[1] || null,
-      logo: loaded[2] || null
+      bg: bg || banner || card || null,
+      parchment: parchment || null,
+      logo: logo || null,
+      banner: banner || null,
+      card: card || null
     };
     return brandCache;
   }
@@ -294,50 +307,76 @@
   }
 
   function drawBrandedBackground(ctx, brand) {
-    // Solid dark base so verse text always has contrast
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#14110e');
-    g.addColorStop(0.55, '#1e1914');
-    g.addColorStop(1, '#0f0d0b');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    // Banner only as a thin top strip (never covers the verse text)
-    const bannerH = 120;
-    if (brand && brand.banner) {
-      drawCoverImage(ctx, brand.banner, 0, 0, W, bannerH, 0.75);
-      ctx.fillStyle = 'rgba(12, 10, 8, 0.55)';
-      ctx.fillRect(0, 0, W, bannerH);
-      // Soft fade into body
-      const fade = ctx.createLinearGradient(0, bannerH - 8, 0, bannerH + 40);
-      fade.addColorStop(0, 'rgba(20,17,14,0)');
-      fade.addColorStop(1, 'rgba(20,17,14,1)');
-      ctx.fillStyle = fade;
-      ctx.fillRect(0, bannerH - 8, W, 50);
+    // Full-bleed cinematic photo (cross + light + parchment)
+    if (brand && brand.bg) {
+      drawCoverImage(ctx, brand.bg, 0, 0, W, H, 1);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#2a2118');
+      g.addColorStop(1, '#0f0d0b');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
     }
 
-    // Large readable text panel (center of video)
-    const panelX = 36;
-    const panelY = 150;
-    const panelW = W - 72;
-    const panelH = H - 280;
-    ctx.fillStyle = 'rgba(255, 253, 248, 0.96)';
-    roundRect(ctx, panelX, panelY, panelW, panelH, 18);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(201, 162, 39, 0.65)';
-    ctx.lineWidth = 2;
+    // Soft vignette so edges feel finished
+    const vig = ctx.createRadialGradient(W / 2, H * 0.35, W * 0.15, W / 2, H * 0.45, H * 0.75);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+
+    // Darken lower area slightly so the text card pops
+    const bottomFade = ctx.createLinearGradient(0, H * 0.35, 0, H);
+    bottomFade.addColorStop(0, 'rgba(12,10,8,0)');
+    bottomFade.addColorStop(0.35, 'rgba(12,10,8,0.25)');
+    bottomFade.addColorStop(1, 'rgba(12,10,8,0.55)');
+    ctx.fillStyle = bottomFade;
+    ctx.fillRect(0, H * 0.35, W, H * 0.65);
+
+    // Scripture card: parchment photo when available
+    const panelX = 40;
+    const panelY = 210;
+    const panelW = W - 80;
+    const panelH = H - 340;
+
+    ctx.save();
+    roundRect(ctx, panelX, panelY, panelW, panelH, 20);
+    ctx.clip();
+    if (brand && brand.parchment) {
+      drawCoverImage(ctx, brand.parchment, panelX, panelY, panelW, panelH, 1);
+      // Light wash so dark text stays crisp
+      ctx.fillStyle = 'rgba(255, 252, 245, 0.28)';
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+    } else {
+      ctx.fillStyle = 'rgba(255, 253, 248, 0.96)';
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+    }
+    ctx.restore();
+
+    // Gold edge on the card
+    roundRect(ctx, panelX, panelY, panelW, panelH, 20);
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.75)';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Soft outer glow
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.2)';
+    ctx.lineWidth = 8;
+    roundRect(ctx, panelX - 2, panelY - 2, panelW + 4, panelH + 4, 22);
     ctx.stroke();
 
-    // Gold frame around full video
-    ctx.strokeStyle = 'rgba(201, 162, 39, 0.45)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(16, 16, W - 32, H - 32);
+    // Thin gold frame on full canvas
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(18, 18, W - 36, H - 36);
 
-    // Small logo top-left of panel
+    // Small logo badge on the card
     if (brand && brand.logo) {
-      const s = 40;
+      const s = 36;
       try {
-        ctx.drawImage(brand.logo, panelX + 16, panelY + 14, s, s);
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(brand.logo, panelX + 18, panelY + 16, s, s);
+        ctx.restore();
       } catch (e) {}
     }
   }
@@ -371,22 +410,26 @@
 
     drawBrandedBackground(ctx, brand);
 
-    // Brand label on banner strip
+    // Brand label over the photo (above the parchment card)
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#e0c060';
-    ctx.font = '700 17px system-ui, -apple-system, sans-serif';
-    ctx.fillText('THE WORD IN CONTEXT', W / 2, 48);
-    ctx.fillStyle = 'rgba(245, 239, 227, 0.85)';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#e8c84a';
+    ctx.font = '700 18px system-ui, -apple-system, sans-serif';
+    ctx.fillText('THE WORD IN CONTEXT', W / 2, 52);
+    ctx.fillStyle = 'rgba(255, 250, 240, 0.92)';
     ctx.font = '500 13px system-ui, -apple-system, sans-serif';
-    ctx.fillText(siteUrl || 'thewordincontext.org', W / 2, 72);
+    ctx.fillText(siteUrl || 'thewordincontext.org', W / 2, 76);
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
 
-    // Inside white panel: reference + verse text (this is what must appear in the video)
-    const panelX = 36;
-    const panelY = 150;
-    const panelW = W - 72;
+    // Inside parchment card: reference + verse text
+    const panelX = 40;
+    const panelY = 210;
+    const panelW = W - 80;
     const textLeft = panelX + 28;
     const textWidth = panelW - 56;
-    let y = panelY + 70;
+    let y = panelY + 68;
 
     // Reference (e.g. Psalm 32:1–11)
     ctx.textAlign = 'center';
@@ -417,7 +460,7 @@
     // Verse body — MUST always paint something
     ctx.textAlign = 'left';
     ctx.fillStyle = '#1a1814';
-    const maxTextBottom = panelY + (H - 280) - 36;
+    const maxTextBottom = panelY + (H - 340) - 40;
 
     let painted = false;
     const page = (pages && pages.length)
@@ -458,25 +501,28 @@
       ctx.fillText('Scripture text unavailable for this selection.', textLeft, y);
     }
 
-    // Footer below panel
+    // Footer over the photo
     const p = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
-    const barY = H - 88;
-    const barX = 80;
-    const barW = W - 160;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    const barY = H - 78;
+    const barX = 90;
+    const barW = W - 180;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(barX, barY, barW, 5);
     ctx.fillStyle = '#c9a227';
     ctx.fillRect(barX, barY, p * barW, 5);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(240, 235, 227, 0.8)';
-    ctx.font = '500 14px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Read free · ' + (siteUrl || 'thewordincontext.org'), W / 2, H - 48);
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = 'rgba(255, 250, 240, 0.9)';
+    ctx.font = '500 13px system-ui, -apple-system, sans-serif';
+    ctx.fillText('Read free · ' + (siteUrl || 'thewordincontext.org'), W / 2, H - 42);
+    ctx.shadowBlur = 0;
 
     if (pages && pages.length > 1) {
-      ctx.fillStyle = 'rgba(201, 162, 39, 0.9)';
-      ctx.font = '600 13px system-ui, -apple-system, sans-serif';
-      ctx.fillText(`Text ${pageIndex + 1} / ${pages.length}`, W / 2, H - 68);
+      ctx.fillStyle = 'rgba(232, 200, 74, 0.95)';
+      ctx.font = '600 12px system-ui, -apple-system, sans-serif';
+      ctx.fillText(`Text ${pageIndex + 1} / ${pages.length}`, W / 2, H - 58);
     }
   }
 

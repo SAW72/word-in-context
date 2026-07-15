@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-58';
+const CACHE_VERSION = 'wic-pwa-59';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -13,7 +13,7 @@ const SHELL_URLS = [
   '/reader.html',
   `/reader.css?v=5`,
   `/reader.js?v=11`,
-  `/share-video.js?v=7`,
+  `/share-video.js?v=8`,
   `/audio-engine.js?v=2`,
   `/voice-picker.js?v=2`,
   `/study-core.js?v=2`,
@@ -33,6 +33,8 @@ const SHELL_URLS = [
   `/icons/icon-512.png?v=${ASSET_V}`,
   `/icons/icon-maskable-512.png?v=${ASSET_V}`,
   '/icons/share-og.png',
+  '/icons/share-bg-vertical.jpg',
+  '/icons/share-bg-parchment.jpg',
   '/icons/whop-banner-2000x1000.png',
   `/data/study-lexicon.json?v=${ASSET_V}`,
 ];
