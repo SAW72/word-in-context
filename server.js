@@ -1520,14 +1520,117 @@ app.post('/api/share', express.json({ limit: '32kb' }), (req, res) => {
   res.json({ id, url: `${SHARE_SITE_URL}/share/${id}` });
 });
 
-// === TTS: browser built-in system voices only (window.speechSynthesis) ===
+// === Share voice-over TTS (limited; for Bible reader "voice video" only) ===
+// Keeps general /api/tts disabled so chat stays free local voices. This path is rate-limited
+// so sharing a few passages (e.g. Psalm 32) is practical without open-ended TTS cost.
+const SHARE_TTS_MAX_CHARS = Math.max(500, parseInt(process.env.SHARE_TTS_MAX_CHARS || '4000', 10));
+const SHARE_TTS_DAILY_LIMIT = Math.max(1, parseInt(process.env.SHARE_TTS_DAILY_LIMIT || '12', 10));
+const SHARE_TTS_VOICE = (process.env.SHARE_TTS_VOICE || 'leo').trim() || 'leo';
+const shareTtsByIp = new Map(); // ip -> { day: 'YYYY-MM-DD', count: number }
+
+function shareTtsDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getShareTtsClientIp(req) {
+  const xf = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xf || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function checkShareTtsQuota(ip) {
+  const day = shareTtsDayKey();
+  let row = shareTtsByIp.get(ip);
+  if (!row || row.day !== day) {
+    row = { day, count: 0 };
+    shareTtsByIp.set(ip, row);
+  }
+  return row;
+}
+
+app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => {
+  try {
+    if (!xaiKeyLooksConfigured()) {
+      return res.status(503).json({
+        error: 'Voice video is not configured on the server yet (missing XAI_API_KEY). You can still share as text.'
+      });
+    }
+
+    const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length < 8) {
+      return res.status(400).json({ error: 'Text is too short to narrate.' });
+    }
+    if (text.length > SHARE_TTS_MAX_CHARS) {
+      return res.status(400).json({
+        error: `Selection is too long for one voice video (max ${SHARE_TTS_MAX_CHARS} characters). Select fewer verses.`
+      });
+    }
+
+    const ip = getShareTtsClientIp(req);
+    const quota = checkShareTtsQuota(ip);
+    if (quota.count >= SHARE_TTS_DAILY_LIMIT) {
+      return res.status(429).json({
+        error: `Daily voice-video limit reached (${SHARE_TTS_DAILY_LIMIT}/day). Share as text, or try again tomorrow.`
+      });
+    }
+
+    const voiceId = String(req.body?.voice || SHARE_TTS_VOICE).trim() || SHARE_TTS_VOICE;
+    const allowed = new Set(['leo', 'rex', 'ara', 'sal', 'eve', 'Leo', 'Rex', 'Ara', 'Sal', 'Eve']);
+    const voice = allowed.has(voiceId) ? voiceId.toLowerCase() : SHARE_TTS_VOICE.toLowerCase();
+
+    const ttsRes = await fetch('https://api.x.ai/v1/tts', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getXaiApiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        voice_id: voice,
+        language: 'en',
+        speed: 0.98,
+        output_format: { codec: 'mp3', sample_rate: 24000, bit_rate: 128000 },
+      }),
+    });
+
+    if (!ttsRes.ok) {
+      const errText = await ttsRes.text().catch(() => '');
+      console.error('[share-tts] xAI TTS failed', ttsRes.status, errText.slice(0, 240));
+      return res.status(502).json({
+        error: 'Could not generate narration right now. Try again, or share as text.',
+      });
+    }
+
+    const buf = Buffer.from(await ttsRes.arrayBuffer());
+    if (!buf.length) {
+      return res.status(502).json({ error: 'Empty audio from voice service.' });
+    }
+
+    quota.count += 1;
+    shareTtsByIp.set(ip, quota);
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Share-TTS-Remaining', String(Math.max(0, SHARE_TTS_DAILY_LIMIT - quota.count)));
+    return res.send(buf);
+  } catch (err) {
+    console.error('[share-tts]', err && err.message);
+    return res.status(500).json({ error: 'Voice generation failed. Share as text instead.' });
+  }
+});
+
+// === TTS: browser built-in system voices only (window.speechSynthesis) for in-app chat ===
 app.get('/api/debug/tts', (req, res) => {
-  res.json({ disabled: true, note: 'All speech output uses browser system voices via window.speechSynthesis only.' });
+  res.json({
+    chatTts: 'disabled (browser speechSynthesis only)',
+    shareTts: xaiKeyLooksConfigured() ? 'enabled (/api/share-tts, rate-limited)' : 'unavailable (no XAI_API_KEY)',
+    shareTtsDailyLimit: SHARE_TTS_DAILY_LIMIT,
+    shareTtsMaxChars: SHARE_TTS_MAX_CHARS,
+  });
 });
 
 app.post('/api/tts', (req, res) => {
   return res.status(400).json({
-    error: 'Server TTS disabled. This app uses only your device\'s built-in system voices (window.speechSynthesis).'
+    error: 'Server TTS disabled for chat. This app uses device voices in-app. Use /api/share-tts for reader voice videos only.'
   });
 });
 

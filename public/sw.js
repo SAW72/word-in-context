@@ -1,11 +1,11 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-50';
+const CACHE_VERSION = 'wic-pwa-51';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
 const BIBLE_ORIGIN = 'https://bible.helloao.org';
 
-const ASSET_V = '2';
+const ASSET_V = '4';
 const SHELL_URLS = [
   '/',
   '/app',
@@ -13,10 +13,11 @@ const SHELL_URLS = [
   '/reader.html',
   `/reader.css?v=${ASSET_V}`,
   `/reader.js?v=${ASSET_V}`,
-  `/audio-engine.js?v=${ASSET_V}`,
-  `/voice-picker.js?v=${ASSET_V}`,
-  `/study-core.js?v=${ASSET_V}`,
-  `/bible-core.js?v=${ASSET_V}`,
+  `/share-video.js?v=1`,
+  `/audio-engine.js?v=2`,
+  `/voice-picker.js?v=2`,
+  `/study-core.js?v=2`,
+  `/bible-core.js?v=2`,
   '/admin',
   '/index.html',
   '/landing.html',

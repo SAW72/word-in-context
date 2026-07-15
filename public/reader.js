@@ -376,6 +376,171 @@
     }
   }
 
+  function getSelectedVerseObjects() {
+    return sortedSelectedVerses().map((n) => {
+      const block = verseBlockByNumber(n);
+      return { number: n, text: block ? String(block.text || '').trim() : '' };
+    }).filter((v) => v.text);
+  }
+
+  function closeVideoProgressModal() {
+    const el = document.getElementById('reader-video-modal');
+    if (el) el.remove();
+  }
+
+  function showVideoProgressModal() {
+    closeVideoProgressModal();
+    const backdrop = document.createElement('div');
+    backdrop.id = 'reader-video-modal';
+    backdrop.className = 'reader-video-modal';
+    backdrop.innerHTML = `
+      <div class="reader-video-panel" role="dialog" aria-modal="true" aria-labelledby="reader-video-title">
+        <h3 id="reader-video-title">Creating voice video</h3>
+        <p class="reader-video-status" id="reader-video-status">Preparing…</p>
+        <div class="reader-video-bar"><div class="reader-video-bar-fill" id="reader-video-bar-fill"></div></div>
+        <p class="reader-video-hint">Keep this screen open. You will hear the narration while the video is made, then you can post it.</p>
+        <button type="button" class="reader-video-cancel" id="reader-video-cancel">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    return {
+      setProgress(pct, label) {
+        const fill = document.getElementById('reader-video-bar-fill');
+        const status = document.getElementById('reader-video-status');
+        if (fill) fill.style.width = `${Math.round(Math.max(0, Math.min(1, pct)) * 100)}%`;
+        if (status && label) status.textContent = label;
+      },
+      onCancel(fn) {
+        const btn = document.getElementById('reader-video-cancel');
+        if (btn) btn.addEventListener('click', fn);
+      },
+      close: closeVideoProgressModal
+    };
+  }
+
+  async function shareVideoFile(file, caption, title) {
+    const canFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    if (canFiles) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: title || 'Scripture',
+          text: caption || ''
+        });
+        return true;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return false;
+      }
+    }
+    // Download fallback (desktop / when file share unsupported)
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name || 'scripture-video.mp4';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (caption) await copyPlainText(caption);
+    showShareToast('Video saved — open Photos/Files and post it. Caption copied.', true);
+    return true;
+  }
+
+  async function createAndShareVoiceVideo() {
+    if (!selectedVerses.size) return;
+    if (!window.ShareVideo) {
+      showShareToast('Voice video module not loaded — refresh the page', false);
+      return;
+    }
+
+    const SV = window.ShareVideo;
+    const verses = getSelectedVerseObjects();
+    if (!verses.length) {
+      showShareToast('No verse text to narrate', false);
+      return;
+    }
+
+    const content = await buildSelectedShareContent();
+    const bookName = (chapterPayload && chapterPayload.bookName) || 'Scripture';
+    const transMeta = BC.translationMeta(BC.getTranslationId());
+    const translation = (transMeta && (transMeta.short || transMeta.id)) || BC.getTranslationId() || '';
+    const reference = formatVerseRangeRef(bookName, currentChapter, sortedSelectedVerses());
+    const narration = SV.buildNarrationText(reference, translation, verses);
+
+    if (narration.length > 4000) {
+      showShareToast('Selection too long for one video — select fewer verses', false);
+      return;
+    }
+
+    const abort = new AbortController();
+    const modal = showVideoProgressModal();
+    modal.onCancel(() => abort.abort());
+
+    try {
+      modal.setProgress(0.05, 'Generating narration…');
+      let audioBuf = null;
+      let voiceNote = '';
+      try {
+        audioBuf = await SV.fetchShareTts(narration, abort.signal);
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        // Fall back to silent video with on-screen text only
+        voiceNote = e && e.message ? e.message : 'Voice unavailable';
+        modal.setProgress(0.2, 'Building video without server voice…');
+      }
+
+      const result = await SV.createScriptureVideo({
+        reference,
+        translation,
+        verses,
+        audioArrayBuffer: audioBuf,
+        siteUrl: 'thewordincontext.org',
+        signal: abort.signal,
+        onProgress: (pct, label) => modal.setProgress(pct, label)
+      });
+
+      modal.close();
+
+      const file = new File([result.blob], result.filename, { type: result.mimeType });
+      // Caption for social posts (plain text + link)
+      await copyPlainText(content.textWithLink);
+
+      if (result.hadVoice) {
+        showShareToast('Caption copied — pick an app for the video', true);
+      } else {
+        showShareToast(
+          voiceNote
+            ? `${voiceNote} Shared silent video; caption copied.`
+            : 'Silent video ready (no voice). Caption copied.',
+          !voiceNote
+        );
+      }
+
+      await shareVideoFile(file, content.textWithLink, content.title);
+    } catch (err) {
+      modal.close();
+      if (err && err.name === 'AbortError') {
+        showShareToast('Cancelled', true);
+        return;
+      }
+      console.error('[voice-video]', err);
+      showShareToast((err && err.message) || 'Could not create video — try Share as text', false);
+    }
+  }
+
+  function speakSelectedAloud() {
+    const verses = getSelectedVerseObjects();
+    if (!verses.length) return;
+    const bookName = (chapterPayload && chapterPayload.bookName) || 'Scripture';
+    const reference = formatVerseRangeRef(bookName, currentChapter, sortedSelectedVerses());
+    const text = `${reference}. ${verses.map((v) => v.text).join(' ')}`;
+    stopAudio();
+    showShareToast('Speaking with your device voice…', true);
+    speakText(text, () => {
+      showShareToast('Done speaking', true);
+    });
+  }
+
   function openReaderShareMenu(anchorEl) {
     closeReaderShareMenu();
     if (!selectedVerses.size) return;
@@ -389,12 +554,15 @@
     menu.id = 'reader-share-menu';
     menu.className = 'reader-share-menu';
     menu.setAttribute('role', 'menu');
-    menu.innerHTML = '<div class="reader-share-menu-title">Share verses</div>';
+    menu.innerHTML = `
+      <div class="reader-share-menu-title">How do you want to share?</div>
+      <div class="reader-share-section-label">Text</div>
+    `;
 
-    const addItem = (label, icon, onClick) => {
+    const addItem = (label, icon, onClick, className) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'reader-share-menu-item';
+      btn.className = 'reader-share-menu-item' + (className ? ` ${className}` : '');
       btn.setAttribute('role', 'menuitem');
       btn.innerHTML = `<span class="share-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
       btn.addEventListener('click', async (e) => {
@@ -404,11 +572,18 @@
           await onClick();
         } catch (err) {
           if (err && err.name !== 'AbortError') {
-            showShareToast('Share failed — try Copy text', false);
+            showShareToast((err && err.message) || 'Share failed — try Copy text', false);
           }
         }
       });
       menu.appendChild(btn);
+    };
+
+    const addSection = (label) => {
+      const div = document.createElement('div');
+      div.className = 'reader-share-section-label';
+      div.textContent = label;
+      menu.appendChild(div);
     };
 
     // System share sheet (Messages, Mail, Facebook app, etc.) — PLAIN TEXT only.
@@ -465,6 +640,10 @@
       window.location.href = `mailto:?subject=${encodeURIComponent(content.title)}&body=${encodeURIComponent(content.textWithLink)}`;
     });
 
+    addSection('Voice');
+    addItem('Create voice video', '🎬', () => createAndShareVoiceVideo(), 'featured');
+    addItem('Speak aloud now', '🔊', () => speakSelectedAloud());
+
     document.body.appendChild(backdrop);
     document.body.appendChild(menu);
 
@@ -477,6 +656,10 @@
     if (left + menuRect.width > window.innerWidth - margin) left = window.innerWidth - menuRect.width - margin;
     if (left < margin) left = margin;
     if (top < margin) top = (rect ? rect.bottom + 8 : margin);
+    // Keep menu on screen if tall
+    if (top + menuRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - menuRect.height - margin);
+    }
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
@@ -1250,7 +1433,7 @@
             </div>
           </div>
           <a href="/app?view=library" class="reader-library-link">Open full Library study mode →</a>
-          <p class="reader-voice-hint">Tap one or more verses to highlight them, then <strong>Copy</strong> or <strong>Share</strong> (plain text + app link for Messages, Facebook, etc.). Shift-tap selects a range on desktop. Use <strong>Study</strong> for Greek/Hebrew on a single selected verse.</p>
+          <p class="reader-voice-hint">Tap one or more verses to highlight them, then <strong>Copy</strong> or <strong>Share</strong>. Share as <strong>text</strong> (Messages/Facebook) or create a <strong>voice video</strong> that reads the verses aloud for social posts. Shift-tap selects a range on desktop. Use <strong>Study</strong> for Greek/Hebrew on a single selected verse.</p>
         </div>
         <div class="reader-settings-group">
           <div class="reader-settings-label">Text size</div>
