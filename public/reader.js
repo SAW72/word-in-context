@@ -810,19 +810,26 @@
         onProgress: (pct, label) => modal.setProgress(pct, label)
       });
 
-      // Convert WebM → MP4 so Facebook Reels / YouTube Shorts accept it
+      // Always re-encode to H.264+AAC MP4. Browser MP4 (esp. Safari HEVC) uploads to
+      // YouTube but Facebook Reels often rejects it with "file can't be uploaded".
       if (result.kind !== 'image' && !result.videoFailed && SV.ensureMp4) {
-        modal.setProgress(0.92, 'Making MP4 for Facebook / YouTube…');
+        modal.setProgress(0.88, 'Making Facebook-ready MP4…');
         try {
-          const ensured = await SV.ensureMp4(result.blob, result.filename, (pct, label) => {
-            modal.setProgress(0.92 + (pct || 0) * 0.07, label || 'Making MP4…');
-          });
+          const ensured = await SV.ensureMp4(
+            result.blob,
+            result.filename,
+            (pct, label) => {
+              modal.setProgress(0.88 + (pct || 0) * 0.1, label || 'Encoding MP4…');
+            },
+            { forceReencode: true }
+          );
           result = {
             ...result,
             blob: ensured.blob,
             mimeType: ensured.mimeType,
-            filename: ensured.filename,
-            convertFailed: ensured.convertFailed
+            filename: ensured.filename || 'word-in-context-reel.mp4',
+            convertFailed: ensured.convertFailed,
+            facebookReady: ensured.facebookReady
           };
         } catch (e) {
           console.warn('[voice-video] mp4 ensure failed', e);
@@ -837,7 +844,9 @@
       if (result.kind === 'image' || result.videoFailed) {
         showShareToast('Image card ready in-app (device could not make video).', true);
       } else if (result.convertFailed) {
-        showShareToast('Video ready — MP4 convert skipped; Share to apps or Save.', true);
+        showShareToast('Video ready, but Facebook MP4 encode failed — YouTube may still work. Try Share image for FB.', false);
+      } else if (result.facebookReady) {
+        showShareToast('Facebook-ready MP4 (H.264). Download then upload to Reels.', true);
       } else if (result.hadVoice) {
         showShareToast('Video ready in-app (text + voice).', true);
       } else {

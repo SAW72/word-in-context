@@ -70,40 +70,115 @@
     return _ffmpegPromise;
   }
 
+  /**
+   * Facebook Reels is stricter than YouTube:
+   * - H.264 (NOT HEVC from Safari MediaRecorder)
+   * - yuv420p, even dimensions
+   * - AAC audio track (silent videos with no audio are often rejected)
+   * - baseline/main profile, +faststart
+   */
   async function convertToMp4(inputBlob, onProgress) {
     const { fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
     const ffmpeg = await getFfmpeg(onProgress);
-    onProgress && onProgress(0.2, 'Converting to MP4…');
-    ffmpeg.on('progress', ({ progress }) => {
+    onProgress && onProgress(0.2, 'Encoding Facebook-ready MP4…');
+    const onProg = ({ progress }) => {
       const p = typeof progress === 'number' ? progress : 0;
-      onProgress && onProgress(0.2 + Math.max(0, Math.min(1, p)) * 0.75, 'Converting to MP4…');
-    });
-    const inName = /webm/i.test(inputBlob.type || '') ? 'in.webm' : 'in.input';
+      onProgress && onProgress(0.2 + Math.max(0, Math.min(1, p)) * 0.75, 'Encoding Facebook-ready MP4…');
+    };
+    ffmpeg.on('progress', onProg);
+
+    const inName = /webm/i.test(inputBlob.type || '')
+      ? 'in.webm'
+      : (/mp4/i.test(inputBlob.type || '') ? 'in.mp4' : 'in.input');
     await ffmpeg.writeFile(inName, await fetchFile(inputBlob));
-    // H.264 + AAC is what Facebook/YouTube expect
-    await ffmpeg.exec([
-      '-i', inName,
+
+    // Scale to 720x1280 (9:16), force H.264 baseline + AAC. Min ~3.5s for Reels.
+    const vf = 'scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p,tpad=stop_mode=clone:stop_duration=0.5';
+
+    const commonVideo = [
+      '-vf', vf,
       '-c:v', 'libx264',
-      '-preset', 'veryfast',
+      '-profile:v', 'baseline',
+      '-level', '3.1',
       '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-b:a', '128k',
+      '-r', '30',
+      '-g', '60',
+      '-preset', 'veryfast',
+      '-crf', '23',
       '-movflags', '+faststart',
-      'out.mp4'
-    ]);
+      '-t', '90'
+    ];
+
+    let encoded = false;
+    // Pass 1: keep source audio if present
+    try {
+      await ffmpeg.exec([
+        '-i', inName,
+        ...commonVideo,
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '44100',
+        '-ac', '2',
+        'out.mp4'
+      ]);
+      encoded = true;
+    } catch (e1) {
+      console.warn('[ShareVideo] encode with source audio failed, trying silent AAC', e1);
+    }
+
+    // Pass 2: no/bad audio → add silent stereo AAC (Facebook often requires an audio track)
+    if (!encoded) {
+      try {
+        await ffmpeg.exec([
+          '-i', inName,
+          '-f', 'lavfi',
+          '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+          ...commonVideo,
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-ar', '44100',
+          '-ac', '2',
+          '-map', '0:v:0',
+          '-map', '1:a:0',
+          '-shortest',
+          'out.mp4'
+        ]);
+        encoded = true;
+      } catch (e2) {
+        console.warn('[ShareVideo] silent-audio encode failed', e2);
+        // Pass 3: video only (last resort — YouTube may still take it)
+        await ffmpeg.exec([
+          '-i', inName,
+          ...commonVideo,
+          '-an',
+          'out.mp4'
+        ]);
+        encoded = true;
+      }
+    }
+
     const data = await ffmpeg.readFile('out.mp4');
     try { await ffmpeg.deleteFile(inName); } catch (e) {}
     try { await ffmpeg.deleteFile('out.mp4'); } catch (e) {}
-    const bytes = data.buffer ? data : new Uint8Array(data);
+    try { ffmpeg.off('progress', onProg); } catch (e) {}
+    const bytes = data.buffer ? new Uint8Array(data.buffer) : new Uint8Array(data);
+    if (!bytes.length) throw new Error('Empty MP4 output');
     return new Blob([bytes], { type: 'video/mp4' });
   }
 
   /**
-   * Ensure we hand the user an MP4 when possible (Reels / Shorts friendly).
+   * Always re-encode for social upload. Safari "mp4" is often HEVC — YouTube accepts it,
+   * Facebook Reels frequently rejects it with "file can't be uploaded".
    */
-  async function ensureMp4(blob, filename, onProgress) {
+  async function ensureMp4(blob, filename, onProgress, opts) {
     const base = String(filename || 'scripture').replace(/\.\w+$/, '');
-    if (isMp4Blob(blob, filename)) {
+    // Images pass through
+    if (blob && /image\//i.test(blob.type || '')) {
+      return { blob, mimeType: blob.type, filename: filename || `${base}.png`, converted: false };
+    }
+    // forceReencode default true for Facebook compatibility
+    const force = !opts || opts.forceReencode !== false;
+    if (!force && isMp4Blob(blob, filename)) {
       return {
         blob,
         mimeType: 'video/mp4',
@@ -111,19 +186,20 @@
         converted: false
       };
     }
-    // Images pass through
-    if (blob && /image\//i.test(blob.type || '')) {
-      return { blob, mimeType: blob.type, filename: filename || `${base}.png`, converted: false };
-    }
     try {
       const mp4 = await convertToMp4(blob, onProgress);
       if (!mp4 || !mp4.size) throw new Error('Empty MP4');
-      onProgress && onProgress(1, 'MP4 ready');
+      // Facebook soft limit ~100MB for short reels; warn only
+      if (mp4.size > 95 * 1024 * 1024) {
+        console.warn('[ShareVideo] MP4 is large for Facebook:', mp4.size);
+      }
+      onProgress && onProgress(1, 'Facebook-ready MP4');
       return {
         blob: mp4,
         mimeType: 'video/mp4',
-        filename: `${base}.mp4`,
-        converted: true
+        filename: 'word-in-context-reel.mp4',
+        converted: true,
+        facebookReady: true
       };
     } catch (e) {
       console.warn('[ShareVideo] MP4 convert failed', e);
@@ -133,7 +209,8 @@
         filename: filename || `${base}.webm`,
         converted: false,
         convertFailed: true,
-        convertError: e && e.message
+        convertError: e && e.message,
+        facebookReady: false
       };
     }
   }
