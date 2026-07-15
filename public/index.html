@@ -2518,19 +2518,41 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     // Engine wake helper. Browsers (especially iOS Safari) may not expose the full voice list
     // until speechSynthesis has been used from a user gesture at least once.
     let __ttsWoken = false;
+    let __lastTtsWakeAt = 0;
     function wakeSpeechEngine(force) {
       if (__ttsWoken && !force) return;
+      // Never interrupt real AI/manual speech — cancel() clears the whole WebKit queue.
+      try {
+        if (synth.speaking || synth.pending || (speechQueue && speechQueue.length > 0)) return;
+      } catch (e) {}
       __ttsWoken = true;
+      __lastTtsWakeAt = Date.now();
       try {
         try { synth.getVoices(); } catch (e) {}
+        try { if (synth.paused) synth.resume(); } catch (e) {}
         const u = new SpeechSynthesisUtterance(' ');
         if (selectedVoice || (voiceSettings.voiceSource === 'local' && voiceSettings.voiceId)) {
           const target = selectedVoice || findLocalVoiceById(voiceSettings.voiceId);
           if (target) u.voice = target;
         }
-        u.volume = 0.001;
+        u.volume = 0.01;
+        u.rate = 2;
+        // Tag so we only cancel this unlock utterance, not a real reply that started after.
+        u.__isUnlock = true;
+        const unlockToken = Date.now();
+        u.__unlockToken = unlockToken;
         synth.speak(u);
-        setTimeout(() => { try { if (synth.speaking) synth.cancel(); } catch (e) {} }, 50);
+        setTimeout(() => {
+          try {
+            // Only cancel if still on the unlock utterance (not a real reply).
+            if (synth.speaking && currentUtterance && currentUtterance.__isUnlock && currentUtterance.__unlockToken === unlockToken) {
+              synth.cancel();
+            } else if (synth.speaking && !currentUtterance) {
+              // Unlock path before speak() sets currentUtterance — cancel only if queue empty
+              if (!speechQueue || speechQueue.length === 0) synth.cancel();
+            }
+          } catch (e) {}
+        }, 80);
       } catch (e) {}
     }
 
@@ -2615,13 +2637,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Automatic first-gesture wake on any click/touch in the app. This helps ensure the speech
     // engine is activated early so later (including async) speaks work reliably.
+    // On iOS, lightly re-prime on later gestures (throttled): WebKit can drop unlock after long
+    // idle or after heavy mic use, which makes hands-free auto-speak silent until the next unlock.
     function setupGlobalTTSWake() {
       const handler = () => {
-        wakeSpeechEngine();
+        try {
+          if (synth.speaking || synth.pending || (speechQueue && speechQueue.length > 0)) return;
+        } catch (e) {}
+        const now = Date.now();
+        const force = isIOSDevice() && (now - __lastTtsWakeAt > 8000);
+        wakeSpeechEngine(force);
         if (isIOSDevice()) scheduleVoiceListRefresh();
       };
-      document.addEventListener('click', handler, { once: true });
-      document.addEventListener('touchstart', handler, { once: true });
+      if (isIOSDevice()) {
+        document.addEventListener('click', handler, { passive: true });
+        document.addEventListener('touchstart', handler, { passive: true });
+      } else {
+        document.addEventListener('click', handler, { once: true });
+        document.addEventListener('touchstart', handler, { once: true });
+      }
     }
 
     let hostedAudio = null;  // legacy guard only (server /api/tts for voices is disabled; all output uses synth)
@@ -3993,8 +4027,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function appendShareLink(bodyText, sharePageUrl) {
-      const link = sharePageUrl || SITE_SHARE_URL;
-      return `${bodyText}\n\n${link}`;
+      const link = productionShareUrl(sharePageUrl || SITE_SHARE_URL);
+      // Plain text only (no HTML) so paste into Messages/SMS shows readable verses + link.
+      return `${String(bodyText || '').trim()}\n\n— The Word in Context\n${link}`;
     }
 
     async function createShareRecord(payload) {
@@ -4095,21 +4130,25 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     async function copyShareText(text, btn) {
+      // Always plain text — never text/html — so iMessage/SMS does not paste “code”.
+      const plain = String(text || '').replace(/\r\n/g, '\n');
       let copied = false;
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
+          await navigator.clipboard.writeText(plain);
           copied = true;
         }
       } catch (e) {}
 
       if (!copied) {
         const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
+        ta.value = plain;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
         document.body.appendChild(ta);
+        ta.focus();
         ta.select();
+        ta.setSelectionRange(0, plain.length);
         try {
           copied = document.execCommand('copy');
         } catch (e) {}
@@ -4349,13 +4388,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       if (navigator.share) {
-        addItem('Apps on this device…', '📤', async () => {
+        addItem('Messages / Apps…', '📤', async () => {
           try {
             const content = await buildShareContent(payload);
+            // Plain text only. Passing both `text` (already includes the URL) and
+            // a separate `url` makes iOS Messages show broken “code” or duplicate links.
             await navigator.share({
               title: content.title,
               text: content.textWithLink,
-              url: content.sharePageUrl,
             });
           } catch (e) {
             if (e && e.name !== 'AbortError') {
@@ -4541,16 +4581,86 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       msgEl.appendChild(wrap);
     }
 
+    // Fully free the OS audio session for TTS playback.
+    // iOS Safari (and Chrome on iPhone) will often play no audio from speechSynthesis while
+    // SpeechRecognition and/or getUserMedia tracks are still live. Desktop Chrome tolerates
+    // concurrent mic + TTS; mobile WebKit does not. Barge-in while AI is speaking is via the
+    // mic / Stop button after this release (wake-word barge-in resumes after speech ends).
+    function releaseMicForSpeechOutput() {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+      if (commitTimeout) {
+        clearTimeout(commitTimeout);
+        commitTimeout = null;
+      }
+      if (liveSttTimer) {
+        clearTimeout(liveSttTimer);
+        liveSttTimer = null;
+      }
+
+      stopListeningUI();
+
+      if (mediaRecorder) {
+        try {
+          if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        } catch (e) {}
+        try {
+          mediaRecorder.ondataavailable = null;
+          mediaRecorder.onstop = null;
+        } catch (e) {}
+        mediaRecorder = null;
+      }
+
+      if (mediaStream) {
+        try {
+          mediaStream.getTracks().forEach((track) => {
+            try { track.stop(); } catch (e) {}
+          });
+        } catch (e) {}
+        mediaStream = null;
+      }
+
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {
+          try { recognition.stop(); } catch (e2) {}
+        }
+      }
+    }
+
     function speak(text, voiceNoteEl = null, langHint = null) {
       text = cleanTextForSpeech(text);
-      stopSpeaking();
+      // Cancel prior utterance without clearing the "awaiting" gate yet — we re-assert it below
+      // so hands-free does not restart the mic in the gap before TTS starts (critical on iOS).
+      resetSpeechQueue();
+      try { if (synth.speaking || synth.pending) synth.cancel(); } catch (e) {}
+      currentUtterance = null;
+      if (hostedAudio) {
+        try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
+        hostedAudio = null;
+      }
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
 
-      // Make sure we're not listening while the AI is speaking its reply.
-      // This prevents the AI voice from being picked up as "user" input (the hands-free auto-restart can otherwise cause loops or false triggers).
-      stopListeningUI();
+      // Block hands-free mic restart until speech finishes (finishSpeechOutput) or user stops.
+      if (handsFreeEnabled) isAwaitingResponse = true;
+
+      // Pre-queue text BEFORE releasing recognition so recognition.onend sees isSpeechOutputting().
+      lastSpokenText = text;
+      speechQueue = splitTextForSpeechChunks(text);
+      speechQueueIndex = 0;
+
+      // Must fully release mic hardware — leaving SR/getUserMedia open silences TTS on iPhone.
+      releaseMicForSpeechOutput();
 
       // Prime the speech synthesis engine immediately (Mac requires recent getVoices() + gesture context for non-default voices to work reliably)
       try { synth.getVoices(); } catch (e) {}
+      try { if (synth.paused) synth.resume(); } catch (e) {}
 
       // Always use fast local system voices. We no longer support cloud/XAI voices
       // because good local neural voices (especially after installing via Piper etc.) sound better
@@ -4572,13 +4682,6 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       const lastMsgForClean = document.querySelector('.messages .message:last-child');
       if (lastMsgForClean) {
         lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-      }
-
-      // For hands-free + wake word, we LEAVE the recognition object running (even though
-      // our isListening flag is false). This lets onresult still fire so we can detect
-      // "John" as a barge-in / interrupt while the AI is speaking.
-      if (!handsFreeEnabled && recognition) {
-        try { recognition.stop(); } catch (e) {}
       }
 
       // Determine which voice to use. Prefer the live dropdown selection if the
@@ -4716,6 +4819,9 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     function startSpeechKeepAlive() {
       clearSpeechKeepAlive();
+      // Chrome desktop can cut long utterances (~15s); pause/resume keeps them going.
+      // On iOS/iPadOS WebKit, pause/resume often silences or freezes speech entirely — skip.
+      if (isIOSDevice()) return;
       speechKeepAliveTimer = setInterval(() => {
         if (!isSpeechOutputting()) {
           clearSpeechKeepAlive();
@@ -4773,8 +4879,10 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function finishSpeechOutput() {
       resetSpeechQueue();
       currentUtterance = null;
-      if (handsFreeEnabled && !isListening) {
-        scheduleHandsFreeRestart(1200);
+      isAwaitingResponse = false;
+      if (handsFreeEnabled && !isListening && micAllowed && document.visibilityState !== 'hidden') {
+        // Slightly longer on iOS so the audio session fully flips back to capture mode.
+        scheduleHandsFreeRestart(isIOSDevice() ? 1600 : 1200);
       }
     }
 
@@ -4802,6 +4910,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       utterance.onend = () => speakNextInQueue(langHint, allowVoiceFallback);
 
       utterance.onerror = (ev) => {
+        // cancel/interrupt from stopSpeaking or a new speak() — do not drain or restart HF here
         if (ev.error === 'canceled' || ev.error === 'interrupted') return;
         console.error('[TTS] SpeechSynthesis error:', ev && ev.error, 'for voice:', (utterance.voice && utterance.voice.name) || 'default');
         if (allowVoiceFallback && (ev.error === 'voice-unavailable' || ev.error === 'synthesis-failed')) {
@@ -4813,6 +4922,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       };
 
       try {
+        // iOS can leave speechSynthesis stuck paused after backgrounding or a prior cancel.
+        try { if (synth.paused) synth.resume(); } catch (e) {}
         synth.speak(utterance);
       } catch (e) {
         console.error('[TTS] speak() failed:', e);
@@ -4823,22 +4934,31 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     function fallbackToBrowserSpeech(text, langHint = null) {
       text = cleanTextForSpeech(text);
       lastSpokenText = text;
-      resetSpeechQueue();
-      speechQueue = splitTextForSpeechChunks(text);
-      speechQueueIndex = 0;
+      // speak() may have already pre-filled the queue for the hands-free race guard;
+      // only rebuild if empty or text changed after clean.
+      if (!speechQueue.length || speechQueue.join(' ') !== text) {
+        speechQueue = splitTextForSpeechChunks(text);
+        speechQueueIndex = 0;
+      }
       startSpeechKeepAlive();
 
-      if (synth.speaking) synth.cancel();
+      try {
+        if (synth.speaking || synth.pending) synth.cancel();
+      } catch (e) {}
 
+      // iOS needs a short gap after releasing getUserMedia/SpeechRecognition so the
+      // audio session can switch from record → playback. Desktop can start immediately.
+      const startDelay = isIOSDevice() ? 280 : 40;
       setTimeout(() => {
         try { synth.getVoices(); } catch (e) {}
+        try { if (synth.paused) synth.resume(); } catch (e) {}
         speakNextInQueue(langHint, true);
-      }, 0);
+      }, startDelay);
     }
 
     function stopSpeaking() {
       resetSpeechQueue();
-      if (synth.speaking) synth.cancel();
+      try { if (synth.speaking || synth.pending) synth.cancel(); } catch (e) {}
       currentUtterance = null;
 
       if (hostedAudio) {
@@ -5657,13 +5777,14 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         autoSaveCurrentChat();
       updateHeaderForCurrentChat();
       renderSidebarChats(currentSearchTerm || '');
-        isAwaitingResponse = false;
 
         enforceAuthRequired();
 
         if (handsFreeEnabled && autoSpeakEnabled) {
           // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
           // No xAI or server voices for output. Clean any old notes.
+          // Keep isAwaitingResponse true until speak()/finishSpeechOutput so the mic does not
+          // restart and steal the iOS audio session before TTS starts.
           const lastMsgForClean = document.querySelector('.messages .message:last-child');
           if (lastMsgForClean) {
             lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
@@ -5676,9 +5797,12 @@ STRICT RULES — FOLLOW THESE ALWAYS:
           speak(reply);
           // After speak() the audio onended handlers will schedule the next listen (after echo delay)
         } else if (handsFreeEnabled) {
+          isAwaitingResponse = false;
           // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
           // Give a bit more time before listening to avoid picking up any residual audio/echo.
           scheduleHandsFreeRestart(800);
+        } else {
+          isAwaitingResponse = false;
         }
       } catch (err) {
         removeLoadingMessage();
@@ -6665,6 +6789,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 
     // Mic button behavior
     micBtn.addEventListener("click", () => {
+      // User gesture — prime TTS so hands-free auto-speak works after the network round-trip (esp. iPhone).
+      wakeSpeechEngine(true);
       if (handsFreeEnabled) {
         if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
         if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
@@ -7119,7 +7245,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         micBtn.style.background = '#c9a227';
         micBtn.style.color = 'white';
         micBtn.title = "Click to interrupt (Hands-free active)";
-        wakeSpeechEngine();
+        // Unlock speechSynthesis on this user gesture so later auto-speak after the AI reply works on iPhone.
+        wakeSpeechEngine(true);
         if (!isListening) scheduleHandsFreeRestart(400);
       } else {
         continuousMode = false;

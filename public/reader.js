@@ -20,10 +20,14 @@
   let audioCatalogLoaded = false;
   let chapterAudioLinks = null;
   let chapterPayload = null;
-  let selectedVerseNum = null;
+  let selectedVerses = new Set(); // verse numbers in current chapter
+  let lastTappedVerse = null;
   let openStudyVerseNum = null;
   let scrollHideTimer = null;
   let lastScrollY = 0;
+  const SITE_SHARE_URL = 'https://www.thewordincontext.org';
+  let selectionBarEl = null;
+  let shareMenuCloseHandler = null;
 
   const els = {
     header: document.getElementById('reader-header'),
@@ -206,10 +210,383 @@
   }
 
   function clearVerseSelection() {
-    selectedVerseNum = null;
+    selectedVerses = new Set();
+    lastTappedVerse = null;
     openStudyVerseNum = null;
     document.querySelectorAll('.reader-verse.selected-verse').forEach((el) => el.classList.remove('selected-verse'));
     document.querySelectorAll('.reader-study-panel').forEach((el) => { el.hidden = true; });
+    updateSelectionBar();
+  }
+
+  function sortedSelectedVerses() {
+    return [...selectedVerses].sort((a, b) => a - b);
+  }
+
+  function verseBlockByNumber(num) {
+    return chapterBlocks.find((b) => b.type !== 'heading' && Number(b.number) === Number(num));
+  }
+
+  function formatVerseRangeRef(bookName, chapter, nums) {
+    const sorted = [...nums].sort((a, b) => a - b);
+    if (!sorted.length) return `${bookName} ${chapter}`;
+    const parts = [];
+    let start = sorted[0];
+    let end = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] === end + 1) {
+        end = sorted[i];
+      } else {
+        parts.push(start === end ? String(start) : `${start}–${end}`);
+        start = end = sorted[i];
+      }
+    }
+    parts.push(start === end ? String(start) : `${start}–${end}`);
+    return `${bookName} ${chapter}:${parts.join(', ')}`;
+  }
+
+  function productionShareUrl(url) {
+    if (!url || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url)) {
+      return SITE_SHARE_URL;
+    }
+    return String(url)
+      .replace(/^http:\/\//i, 'https://')
+      .replace(/:\/\/word-in-context\.onrender\.com/i, '://www.thewordincontext.org');
+  }
+
+  function readerDeepLink(verseNum) {
+    if (!currentBook) return `${SITE_SHARE_URL}/read`;
+    const v = verseNum ? `/${verseNum}` : '';
+    return `${SITE_SHARE_URL}/read#/${currentBook.code}/${currentChapter}${v}`;
+  }
+
+  /** Plain-text body only — never HTML. Safe for SMS, iMessage, Notes, Facebook paste. */
+  function formatSelectedVersesBody() {
+    const nums = sortedSelectedVerses();
+    if (!nums.length || !chapterPayload) return '';
+    const bookName = chapterPayload.bookName || (currentBook && currentBook.name) || 'Scripture';
+    const transMeta = BC.translationMeta(BC.getTranslationId());
+    const trans = (transMeta && (transMeta.short || transMeta.id)) || BC.getTranslationId() || '';
+    const ref = formatVerseRangeRef(bookName, currentChapter, nums);
+    const lines = nums.map((n) => {
+      const block = verseBlockByNumber(n);
+      const text = block ? String(block.text || '').trim() : '';
+      return text ? `${n} ${text}` : String(n);
+    });
+    return `${ref}${trans ? ` (${trans})` : ''}\n\n${lines.join('\n')}`;
+  }
+
+  function appendShareLink(bodyText, sharePageUrl) {
+    const link = productionShareUrl(sharePageUrl || SITE_SHARE_URL);
+    const body = String(bodyText || '').trim();
+    // Explicit plain-text footer so Messages/SMS never get HTML or “code”
+    return `${body}\n\n— The Word in Context\n${link}`;
+  }
+
+  async function createShareRecord(payload) {
+    const res = await fetch('/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Share create failed');
+    return res.json();
+  }
+
+  async function buildSelectedShareContent() {
+    const bodyText = formatSelectedVersesBody();
+    const nums = sortedSelectedVerses();
+    const bookName = (chapterPayload && chapterPayload.bookName) || 'Scripture';
+    const transMeta = BC.translationMeta(BC.getTranslationId());
+    const trans = (transMeta && (transMeta.short || transMeta.id)) || BC.getTranslationId() || '';
+    const reference = formatVerseRangeRef(bookName, currentChapter, nums);
+    const title = reference || 'Scripture';
+    // Combined verse text for OG preview (plain)
+    const verseText = nums.map((n) => {
+      const block = verseBlockByNumber(n);
+      return block ? String(block.text || '').trim() : '';
+    }).filter(Boolean).join(' ');
+
+    let sharePageUrl = readerDeepLink(nums[0] || null);
+    try {
+      const data = await createShareRecord({
+        type: 'verse',
+        reference,
+        translation: trans,
+        text: verseText.slice(0, 6000)
+      });
+      if (data && data.url) sharePageUrl = productionShareUrl(data.url);
+    } catch (e) {
+      sharePageUrl = productionShareUrl(sharePageUrl);
+    }
+
+    return {
+      title: `${title} — The Word in Context`,
+      bodyText,
+      sharePageUrl: productionShareUrl(sharePageUrl),
+      textWithLink: appendShareLink(bodyText, sharePageUrl)
+    };
+  }
+
+  /** Copy only plain text (text/plain). Avoids HTML “code” when pasting into Messages. */
+  async function copyPlainText(text) {
+    const plain = String(text || '').replace(/\r\n/g, '\n');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(plain);
+        return true;
+      }
+    } catch (e) { /* fall through */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = plain;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, plain.length);
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return !!ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function showShareToast(message, ok) {
+    const existing = document.getElementById('reader-share-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'reader-share-toast';
+    toast.className = 'reader-share-toast' + (ok ? '' : ' failed');
+    toast.setAttribute('role', 'status');
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3200);
+  }
+
+  function closeReaderShareMenu() {
+    const menu = document.getElementById('reader-share-menu');
+    const backdrop = document.getElementById('reader-share-backdrop');
+    if (menu) menu.remove();
+    if (backdrop) backdrop.remove();
+    if (shareMenuCloseHandler) {
+      document.removeEventListener('keydown', shareMenuCloseHandler);
+      shareMenuCloseHandler = null;
+    }
+  }
+
+  function openReaderShareMenu(anchorEl) {
+    closeReaderShareMenu();
+    if (!selectedVerses.size) return;
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'reader-share-backdrop';
+    backdrop.className = 'reader-share-backdrop';
+    backdrop.addEventListener('click', closeReaderShareMenu);
+
+    const menu = document.createElement('div');
+    menu.id = 'reader-share-menu';
+    menu.className = 'reader-share-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = '<div class="reader-share-menu-title">Share verses</div>';
+
+    const addItem = (label, icon, onClick) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'reader-share-menu-item';
+      btn.setAttribute('role', 'menuitem');
+      btn.innerHTML = `<span class="share-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        closeReaderShareMenu();
+        try {
+          await onClick();
+        } catch (err) {
+          if (err && err.name !== 'AbortError') {
+            showShareToast('Share failed — try Copy text', false);
+          }
+        }
+      });
+      menu.appendChild(btn);
+    };
+
+    // System share sheet (Messages, Mail, Facebook app, etc.) — PLAIN TEXT only.
+    // Important: do not pass both text (with URL) and a separate url field on iOS —
+    // that often produces broken “code” or duplicate links in Messages.
+    if (navigator.share) {
+      addItem('Messages / Apps…', '📤', async () => {
+        const content = await buildSelectedShareContent();
+        await navigator.share({
+          title: content.title,
+          text: content.textWithLink
+        });
+      });
+    }
+
+    addItem('Copy text + link', '📋', async () => {
+      const content = await buildSelectedShareContent();
+      const ok = await copyPlainText(content.textWithLink);
+      showShareToast(ok ? 'Copied — paste into any app' : 'Copy failed', ok);
+    });
+
+    addItem('Facebook', 'f', async () => {
+      const content = await buildSelectedShareContent();
+      const ok = await copyPlainText(content.textWithLink);
+      showShareToast(ok ? 'Copied — paste into your Facebook post' : 'Could not copy', ok);
+      const publicUrl = productionShareUrl(content.sharePageUrl);
+      const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const fbUrl = mobile
+        ? `https://m.facebook.com/sharer.php?u=${encodeURIComponent(publicUrl)}`
+        : `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(publicUrl)}`;
+      window.open(fbUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    addItem('X (Twitter)', '𝕏', async () => {
+      const content = await buildSelectedShareContent();
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(content.textWithLink)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    addItem('WhatsApp', '💬', async () => {
+      const content = await buildSelectedShareContent();
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(content.textWithLink)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    addItem('Email', '✉️', async () => {
+      const content = await buildSelectedShareContent();
+      window.location.href = `mailto:?subject=${encodeURIComponent(content.title)}&body=${encodeURIComponent(content.textWithLink)}`;
+    });
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(menu);
+
+    // Position near anchor or bottom center
+    const margin = 10;
+    const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+    const menuRect = menu.getBoundingClientRect();
+    let left = rect ? rect.left : (window.innerWidth - menuRect.width) / 2;
+    let top = rect ? rect.top - menuRect.height - 8 : window.innerHeight / 3;
+    if (left + menuRect.width > window.innerWidth - margin) left = window.innerWidth - menuRect.width - margin;
+    if (left < margin) left = margin;
+    if (top < margin) top = (rect ? rect.bottom + 8 : margin);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    shareMenuCloseHandler = (e) => {
+      if (e.key === 'Escape') closeReaderShareMenu();
+    };
+    document.addEventListener('keydown', shareMenuCloseHandler);
+  }
+
+  function ensureSelectionBar() {
+    if (selectionBarEl && document.body.contains(selectionBarEl)) return selectionBarEl;
+    selectionBarEl = document.createElement('div');
+    selectionBarEl.id = 'reader-selection-bar';
+    selectionBarEl.className = 'reader-selection-bar';
+    selectionBarEl.hidden = true;
+    selectionBarEl.innerHTML = `
+      <div class="reader-selection-count" id="reader-selection-count">0 selected</div>
+      <div class="reader-selection-actions">
+        <button type="button" class="reader-selection-btn" id="reader-sel-copy" title="Copy plain text + link">Copy</button>
+        <button type="button" class="reader-selection-btn primary" id="reader-sel-share" title="Share to Messages, Facebook, and more">Share</button>
+        <button type="button" class="reader-selection-btn" id="reader-sel-study" title="Word study" hidden>Study</button>
+        <button type="button" class="reader-selection-btn ghost" id="reader-sel-clear" title="Clear selection">✕</button>
+      </div>
+    `;
+    document.body.appendChild(selectionBarEl);
+
+    selectionBarEl.querySelector('#reader-sel-copy').addEventListener('click', async () => {
+      if (!selectedVerses.size) return;
+      const content = await buildSelectedShareContent();
+      const ok = await copyPlainText(content.textWithLink);
+      showShareToast(
+        ok
+          ? 'Copied as plain text — paste in Messages, Facebook, etc.'
+          : 'Copy failed — try Share instead',
+        ok
+      );
+    });
+
+    selectionBarEl.querySelector('#reader-sel-share').addEventListener('click', (e) => {
+      openReaderShareMenu(e.currentTarget);
+    });
+
+    selectionBarEl.querySelector('#reader-sel-study').addEventListener('click', () => {
+      const nums = sortedSelectedVerses();
+      if (nums.length !== 1 || !currentBook) return;
+      const block = verseBlockByNumber(nums[0]);
+      const blockEl = document.querySelector(`.reader-verse-block[data-verse="${nums[0]}"]`);
+      if (block && blockEl) openVerseStudy(block, blockEl);
+    });
+
+    selectionBarEl.querySelector('#reader-sel-clear').addEventListener('click', () => {
+      clearVerseSelection();
+    });
+
+    return selectionBarEl;
+  }
+
+  function updateSelectionBar() {
+    const bar = ensureSelectionBar();
+    const n = selectedVerses.size;
+    if (!n) {
+      bar.hidden = true;
+      document.body.classList.remove('reader-has-selection');
+      return;
+    }
+    bar.hidden = false;
+    document.body.classList.add('reader-has-selection');
+    const countEl = bar.querySelector('#reader-selection-count');
+    const nums = sortedSelectedVerses();
+    const bookName = (chapterPayload && chapterPayload.bookName) || 'Verses';
+    const ref = formatVerseRangeRef(bookName, currentChapter, nums);
+    countEl.textContent = n === 1 ? ref : `${n} verses · ${ref}`;
+
+    const studyBtn = bar.querySelector('#reader-sel-study');
+    const tools = getTools();
+    if (studyBtn) {
+      studyBtn.hidden = !(tools.wordStudy && n === 1);
+    }
+  }
+
+  function renderSelectionHighlights() {
+    document.querySelectorAll('.reader-verse.selected-verse').forEach((el) => {
+      el.classList.remove('selected-verse');
+    });
+    selectedVerses.forEach((num) => {
+      const el = document.querySelector(`.reader-verse[data-verse="${num}"]`);
+      if (el) el.classList.add('selected-verse');
+    });
+  }
+
+  function toggleVerseSelection(num, evt) {
+    const n = Number(num);
+    if (!n) return;
+
+    // Shift-click (desktop) or second-finger feel: select inclusive range from last tap
+    const range = !!(evt && (evt.shiftKey || evt.altKey));
+    if (range && lastTappedVerse != null) {
+      const a = Math.min(lastTappedVerse, n);
+      const b = Math.max(lastTappedVerse, n);
+      for (let i = a; i <= b; i++) {
+        if (verseBlockByNumber(i)) selectedVerses.add(i);
+      }
+    } else if (selectedVerses.has(n)) {
+      selectedVerses.delete(n);
+    } else {
+      selectedVerses.add(n);
+    }
+    lastTappedVerse = n;
+    renderSelectionHighlights();
+    updateSelectionBar();
   }
 
   function renderStudyPanel(panelEl, study) {
@@ -279,19 +656,20 @@
     }
   }
 
-  function handleVerseTap(block, blockEl) {
+  function handleVerseTap(block, blockEl, evt) {
     const tools = getTools();
     if (!tools.highlight && !tools.wordStudy) return;
 
     const verseEl = blockEl.querySelector('.reader-verse');
     if (!verseEl) return;
 
+    // Multi-select highlight for share/copy (primary reading UX)
     if (tools.highlight) {
-      document.querySelectorAll('.reader-verse.selected-verse').forEach((el) => el.classList.remove('selected-verse'));
-      verseEl.classList.add('selected-verse');
-      selectedVerseNum = block.number;
+      toggleVerseSelection(block.number, evt);
+      return;
     }
 
+    // Highlight off: tap opens word study only
     if (tools.wordStudy) {
       openVerseStudy(block, blockEl);
     }
@@ -575,8 +953,10 @@
         if (tools.speaker) {
           actionParts.push(`<button type="button" class="reader-verse-btn speak-verse-btn" title="Speak verse" data-text="${escapeAttr(block.text)}">🔊</button>`);
         }
+        // Quick share for this single verse
+        actionParts.push(`<button type="button" class="reader-verse-btn share-verse-btn" title="Select & share" data-verse="${block.number}">↗</button>`);
 
-        const tapClass = (tools.highlight || tools.wordStudy) ? ' tappable' : '';
+        const tapClass = (tools.highlight || tools.wordStudy) ? ' tappable' : ' tappable';
         const actionsHtml = actionParts.length
           ? `<span class="reader-verse-actions">${actionParts.join('')}</span>`
           : '';
@@ -593,10 +973,18 @@
         `;
 
         const verseEl = blockEl.querySelector('.reader-verse');
-        if (verseEl && (tools.highlight || tools.wordStudy)) {
+        if (verseEl) {
           verseEl.addEventListener('click', (e) => {
             if (e.target.closest('.reader-verse-btn')) return;
-            handleVerseTap(block, blockEl);
+            // Always multi-select for copy/share while reading.
+            // Word study is via the Study button on the selection bar (avoids conflict).
+            if (tools.highlight !== false) {
+              toggleVerseSelection(block.number, e);
+            } else if (tools.wordStudy) {
+              openVerseStudy(block, blockEl);
+            } else {
+              toggleVerseSelection(block.number, e);
+            }
           });
         }
 
@@ -653,6 +1041,25 @@
           }
         });
       });
+
+      prose.querySelectorAll('.share-verse-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const verseNum = Number(btn.getAttribute('data-verse'));
+          if (!verseNum) return;
+          if (!selectedVerses.has(verseNum)) {
+            selectedVerses.add(verseNum);
+            lastTappedVerse = verseNum;
+            renderSelectionHighlights();
+            updateSelectionBar();
+          }
+          openReaderShareMenu(btn);
+        });
+      });
+
+      // Restore highlight classes if user navigated within same chapter selection (usually empty)
+      renderSelectionHighlights();
+      updateSelectionBar();
 
       if (verse) {
         const target = document.getElementById(`v${verse}`);
@@ -834,16 +1241,16 @@
               <input type="checkbox" id="tool-bookmark" ${tools.bookmark ? 'checked' : ''}>
             </div>
             <div class="reader-tool-row">
-              <label for="tool-highlight">Verse highlight (tap)</label>
+              <label for="tool-highlight">Select verses (tap to share/copy)</label>
               <input type="checkbox" id="tool-highlight" ${tools.highlight ? 'checked' : ''}>
             </div>
             <div class="reader-tool-row">
-              <label for="tool-word-study">Word study (tap verse)</label>
+              <label for="tool-word-study">Word study (Study button)</label>
               <input type="checkbox" id="tool-word-study" ${tools.wordStudy ? 'checked' : ''}>
             </div>
           </div>
           <a href="/app?view=library" class="reader-library-link">Open full Library study mode →</a>
-          <p class="reader-voice-hint">Tap any verse for Greek/Hebrew words and context. Library mode adds Ask AI, John and extra buttons.</p>
+          <p class="reader-voice-hint">Tap one or more verses to highlight them, then <strong>Copy</strong> or <strong>Share</strong> (plain text + app link for Messages, Facebook, etc.). Shift-tap selects a range on desktop. Use <strong>Study</strong> for Greek/Hebrew on a single selected verse.</p>
         </div>
         <div class="reader-settings-group">
           <div class="reader-settings-label">Text size</div>
@@ -993,7 +1400,8 @@
             wordStudy: !!body.querySelector('#tool-word-study')?.checked
           }
         });
-        if (currentBook) loadChapter(currentBook, currentChapter, selectedVerseNum);
+        const keepVerse = sortedSelectedVerses()[0] || null;
+        if (currentBook) loadChapter(currentBook, currentChapter, keepVerse);
       };
       ['#tool-speaker', '#tool-bookmark', '#tool-highlight', '#tool-word-study'].forEach((selId) => {
         const input = body.querySelector(selId);
