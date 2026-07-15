@@ -8,6 +8,7 @@
 
   const W = 1080;
   const H = 1920;
+  const MAX_DURATION_SEC = 120;
 
   function pickRecorderMime() {
     if (typeof MediaRecorder === 'undefined') return '';
@@ -72,14 +73,12 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // soft gold glow
     const radial = ctx.createRadialGradient(W * 0.5, H * 0.28, 40, W * 0.5, H * 0.35, W * 0.7);
     radial.addColorStop(0, 'rgba(201, 162, 39, 0.18)');
     radial.addColorStop(1, 'rgba(201, 162, 39, 0)');
     ctx.fillStyle = radial;
     ctx.fillRect(0, 0, W, H);
 
-    // thin gold frame
     ctx.strokeStyle = 'rgba(201, 162, 39, 0.45)';
     ctx.lineWidth = 4;
     ctx.strokeRect(48, 48, W - 96, H - 96);
@@ -98,13 +97,11 @@
   }) {
     drawBackground(ctx);
 
-    // brand
     ctx.fillStyle = '#c9a227';
     ctx.font = '600 28px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('THE WORD IN CONTEXT', W / 2, 130);
 
-    // reference
     ctx.fillStyle = '#f5efe3';
     ctx.font = '600 56px Georgia, "Times New Roman", serif';
     const refLines = wrapLines(ctx, reference, W - 160);
@@ -121,7 +118,6 @@
       y += 56;
     }
 
-    // divider
     ctx.strokeStyle = 'rgba(201, 162, 39, 0.35)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -130,16 +126,14 @@
     ctx.stroke();
     y += 70;
 
-    // verse page
     const page = pages[Math.min(pageIndex, pages.length - 1)] || [];
     ctx.textAlign = 'left';
     ctx.fillStyle = '#f0ebe3';
     const left = 120;
-    const maxW = W - 240;
 
     page.forEach((block) => {
       ctx.font = 'italic 400 40px Georgia, "Times New Roman", serif';
-      block.lines.forEach((ln, i) => {
+      block.lines.forEach((ln) => {
         if (y > H - 280) return;
         ctx.fillText(ln, left, y);
         y += 56;
@@ -147,16 +141,15 @@
       y += 28;
     });
 
-    // progress bar
     const barY = H - 200;
     const barX = 140;
     const barW = W - 280;
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(barX, barY, barW, 8);
     ctx.fillStyle = '#c9a227';
-    ctx.fillRect(barX, barY, Math.max(0, Math.min(1, progress)) * barW, 8);
+    const p = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+    ctx.fillRect(barX, barY, p * barW, 8);
 
-    // footer
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(240, 235, 227, 0.65)';
     ctx.font = '400 26px system-ui, -apple-system, sans-serif';
@@ -175,6 +168,10 @@
     try {
       const copy = arrayBuffer.slice(0);
       const buffer = await ctx.decodeAudioData(copy);
+      if (!buffer || !Number.isFinite(buffer.duration) || buffer.duration <= 0) {
+        try { await ctx.close(); } catch (e) {}
+        return null;
+      }
       return { ctx, buffer };
     } catch (e) {
       try { await ctx.close(); } catch (e2) {}
@@ -184,19 +181,118 @@
 
   function estimateDurationSec(text) {
     const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
-    // ~140 wpm narration + padding
-    return Math.max(4, Math.min(180, (words / 140) * 60 + 1.5));
+    return Math.max(4, Math.min(MAX_DURATION_SEC, (words / 140) * 60 + 1.5));
+  }
+
+  function safeDuration(seconds, fallbackText) {
+    let d = Number(seconds);
+    if (!Number.isFinite(d) || d <= 0) {
+      d = estimateDurationSec(fallbackText);
+    }
+    return Math.max(3, Math.min(MAX_DURATION_SEC, d));
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function createRecorder(stream, mimeType) {
+    // Prefer explicit mime; fall back to browser default if construction fails.
+    try {
+      if (mimeType) {
+        return new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 2_500_000
+        });
+      }
+    } catch (e) { /* try default */ }
+    try {
+      return new MediaRecorder(stream, { videoBitsPerSecond: 2_500_000 });
+    } catch (e2) {
+      try {
+        return new MediaRecorder(stream);
+      } catch (e3) {
+        throw new Error('This browser cannot record video. Try Safari on a newer iPhone, or share as text.');
+      }
+    }
+  }
+
+  /**
+   * Wall-clock animation loop (setTimeout), not only rAF.
+   * rAF pauses when the tab is backgrounded or Safari throttles, which made
+   * recording appear stuck forever on "Recording video…".
+   */
+  function runTimedLoop({ durationSec, signal, onTick }) {
+    return new Promise((resolve, reject) => {
+      const t0 = performance.now();
+      let finished = false;
+      let timer = null;
+
+      const cleanup = () => {
+        if (timer != null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
+      const fail = (err) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(err);
+      };
+
+      const done = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve();
+      };
+
+      if (signal) {
+        if (signal.aborted) {
+          fail(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        signal.addEventListener('abort', () => {
+          fail(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      }
+
+      // Hard stop so we never hang longer than duration + grace
+      const hardStop = setTimeout(() => done(), Math.ceil(durationSec * 1000) + 1500);
+
+      const step = () => {
+        if (finished) return;
+        if (signal && signal.aborted) {
+          clearTimeout(hardStop);
+          fail(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        const elapsed = (performance.now() - t0) / 1000;
+        const progress = Math.min(1, elapsed / durationSec);
+        try {
+          onTick(elapsed, progress);
+        } catch (e) {
+          clearTimeout(hardStop);
+          fail(e);
+          return;
+        }
+        if (elapsed >= durationSec) {
+          clearTimeout(hardStop);
+          done();
+          return;
+        }
+        // ~15fps is enough for text slides and keeps CPU lower on phones
+        timer = setTimeout(step, 66);
+      };
+
+      step();
+    });
   }
 
   /**
    * @param {object} opts
-   * @param {string} opts.reference
-   * @param {string} opts.translation
-   * @param {{number:number,text:string}[]} opts.verses
-   * @param {ArrayBuffer|null} opts.audioArrayBuffer
-   * @param {string} [opts.siteUrl]
-   * @param {(pct:number,label:string)=>void} [opts.onProgress]
-   * @param {AbortSignal} [opts.signal]
    * @returns {Promise<{ blob: Blob, mimeType: string, filename: string, duration: number, hadVoice: boolean }>}
    */
   async function createScriptureVideo(opts) {
@@ -212,154 +308,221 @@
 
     if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const mimeType = pickRecorderMime();
-    if (!mimeType || typeof MediaRecorder === 'undefined') {
-      throw new Error('Video recording is not supported in this browser. Try Safari or Chrome on a recent iPhone, or use Share as text.');
+    if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement === 'undefined') {
+      throw new Error('Video recording is not supported in this browser. Share as text instead.');
     }
+
+    const preferredMime = pickRecorderMime();
 
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Canvas unavailable');
+    // Keep canvas in the DOM (off-screen). Safari often produces no frames / hangs
+    // MediaRecorder if the canvas is fully detached.
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(canvas);
 
-    // Measure pages with final font
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    if (!ctx) {
+      canvas.remove();
+      throw new Error('Canvas unavailable');
+    }
+
     ctx.font = 'italic 400 40px Georgia, "Times New Roman", serif';
     const pages = splitIntoPages(ctx, verses || [], W - 240, 18);
+    const verseText = (verses || []).map((v) => v.text).join(' ');
 
     let audioPack = null;
-    let duration = estimateDurationSec(
-      (verses || []).map((v) => v.text).join(' ')
-    );
+    let duration = safeDuration(estimateDurationSec(verseText), verseText);
     let hadVoice = false;
 
     if (audioArrayBuffer && audioArrayBuffer.byteLength > 0) {
-      onProgress && onProgress(0.15, 'Preparing voice…');
+      onProgress && onProgress(0.12, 'Preparing voice…');
       audioPack = await decodeAudio(audioArrayBuffer);
       if (audioPack && audioPack.buffer) {
-        duration = Math.max(2, audioPack.buffer.duration + 0.35);
+        duration = safeDuration(audioPack.buffer.duration + 0.4, verseText);
         hadVoice = true;
       }
     }
 
-    onProgress && onProgress(0.25, 'Recording video…');
+    onProgress && onProgress(0.2, 'Recording video…');
 
-    // Prime a first frame (helps some Safari versions)
-    drawFrame(ctx, {
-      reference,
-      translation,
-      pages,
-      pageIndex: 0,
-      progress: 0,
-      siteUrl
-    });
+    const drawAt = (progress) => {
+      const pageIndex = pages.length <= 1
+        ? 0
+        : Math.min(pages.length - 1, Math.floor(progress * pages.length));
+      drawFrame(ctx, {
+        reference,
+        translation,
+        pages,
+        pageIndex,
+        progress,
+        siteUrl
+      });
+    };
 
-    const fps = 30;
-    const stream = canvas.captureStream(fps);
+    // Prime several frames before captureStream (helps WebKit)
+    drawAt(0);
+    await wait(40);
+    drawAt(0);
+
+    let stream;
+    try {
+      stream = canvas.captureStream(15);
+    } catch (e) {
+      canvas.remove();
+      throw new Error('This browser cannot capture video from the canvas. Share as text instead.');
+    }
+
     let audioCtx = null;
     let bufferSource = null;
+    let audioEnded = false;
 
     if (audioPack) {
       audioCtx = audioPack.ctx;
       if (audioCtx.state === 'suspended') {
         try { await audioCtx.resume(); } catch (e) {}
       }
-      const dest = audioCtx.createMediaStreamDestination();
-      bufferSource = audioCtx.createBufferSource();
-      bufferSource.buffer = audioPack.buffer;
-      bufferSource.connect(dest);
-      // Also play softly so user can hear generation (optional)
       try {
-        const gain = audioCtx.createGain();
-        gain.gain.value = 0.85;
-        bufferSource.connect(gain);
-        gain.connect(audioCtx.destination);
-      } catch (e) {}
-      dest.stream.getAudioTracks().forEach((track) => {
-        try { stream.addTrack(track); } catch (e) {}
-      });
+        const dest = audioCtx.createMediaStreamDestination();
+        bufferSource = audioCtx.createBufferSource();
+        bufferSource.buffer = audioPack.buffer;
+        bufferSource.onended = () => { audioEnded = true; };
+        bufferSource.connect(dest);
+        try {
+          const gain = audioCtx.createGain();
+          gain.gain.value = 0.9;
+          bufferSource.connect(gain);
+          gain.connect(audioCtx.destination);
+        } catch (e) {}
+        dest.stream.getAudioTracks().forEach((track) => {
+          try { stream.addTrack(track); } catch (e) {}
+        });
+      } catch (e) {
+        // Continue silent if audio graph fails
+        hadVoice = false;
+        bufferSource = null;
+      }
     }
 
-    const recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 3_500_000
-    });
+    const recorder = createRecorder(stream, preferredMime);
+    const actualMime = recorder.mimeType || preferredMime || 'video/webm';
     const chunks = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
-    const stopped = new Promise((resolve, reject) => {
-      recorder.onstop = () => resolve();
-      recorder.onerror = () => reject(new Error('Recording failed'));
+    let stopResolved = false;
+    const stopped = new Promise((resolve) => {
+      recorder.onstop = () => {
+        stopResolved = true;
+        resolve();
+      };
+      recorder.onerror = () => {
+        stopResolved = true;
+        resolve(); // don't hang; empty blob handled later
+      };
     });
+
+    const hardCleanup = () => {
+      try {
+        if (recorder.state === 'recording' || recorder.state === 'paused') {
+          try { recorder.requestData(); } catch (e) {}
+          try { recorder.stop(); } catch (e) {}
+        }
+      } catch (e) {}
+      try {
+        if (bufferSource) bufferSource.stop();
+      } catch (e) {}
+      try {
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      try { canvas.remove(); } catch (e) {}
+      if (audioCtx) {
+        try { audioCtx.close(); } catch (e) {}
+      }
+    };
 
     if (signal) {
       signal.addEventListener('abort', () => {
-        try { if (recorder.state !== 'inactive') recorder.stop(); } catch (e) {}
-        try { if (bufferSource) bufferSource.stop(); } catch (e) {}
+        hardCleanup();
       }, { once: true });
     }
 
-    recorder.start(100);
-    const t0 = performance.now();
+    try {
+      // timeslice so we always get chunks even if stop is flaky
+      try {
+        recorder.start(250);
+      } catch (e) {
+        // Some browsers reject timeslice
+        recorder.start();
+      }
+    } catch (e) {
+      hardCleanup();
+      throw new Error('Could not start video recording on this device. Share as text instead.');
+    }
+
     if (bufferSource) {
       try { bufferSource.start(0); } catch (e) {}
     }
 
-    await new Promise((resolve, reject) => {
-      function tick() {
-        if (signal && signal.aborted) {
-          reject(new DOMException('Aborted', 'AbortError'));
-          return;
+    // Keep drawing while recording (wall clock — never stuck if rAF sleeps)
+    try {
+      await runTimedLoop({
+        durationSec: duration,
+        signal,
+        onTick: (elapsed, progress) => {
+          drawAt(progress);
+          const label = hadVoice && !audioEnded && progress < 0.98
+            ? 'Recording video…'
+            : 'Finishing video…';
+          onProgress && onProgress(0.2 + progress * 0.75, label);
         }
-        const elapsed = (performance.now() - t0) / 1000;
-        const progress = Math.min(1, elapsed / duration);
-        const pageIndex = pages.length <= 1
-          ? 0
-          : Math.min(pages.length - 1, Math.floor(progress * pages.length));
+      });
+    } catch (e) {
+      hardCleanup();
+      throw e;
+    }
 
-        drawFrame(ctx, {
-          reference,
-          translation,
-          pages,
-          pageIndex,
-          progress,
-          siteUrl
-        });
-
-        onProgress && onProgress(0.25 + progress * 0.7, 'Recording video…');
-
-        if (elapsed >= duration) {
-          resolve();
-          return;
-        }
-        requestAnimationFrame(tick);
-      }
-      requestAnimationFrame(tick);
-    });
+    onProgress && onProgress(0.96, 'Finishing video…');
 
     try {
-      if (recorder.state !== 'inactive') recorder.stop();
+      if (recorder.state === 'recording') {
+        try { recorder.requestData(); } catch (e) {}
+        recorder.stop();
+      }
+    } catch (e) {}
+
+    // Never wait forever for onstop
+    await Promise.race([
+      stopped,
+      wait(3000).then(() => {
+        if (!stopResolved) {
+          try { if (recorder.state !== 'inactive') recorder.stop(); } catch (e) {}
+        }
+      })
+    ]);
+    // Extra beat for last dataavailable
+    await wait(120);
+
+    try {
+      stream.getTracks().forEach((t) => t.stop());
     } catch (e) {}
     try {
       if (bufferSource) bufferSource.stop();
     } catch (e) {}
-
-    await stopped;
-
-    // Stop tracks
-    try {
-      stream.getTracks().forEach((t) => t.stop());
-    } catch (e) {}
     if (audioCtx) {
       try { await audioCtx.close(); } catch (e) {}
     }
+    try { canvas.remove(); } catch (e) {}
 
-    const blob = new Blob(chunks, { type: mimeType });
-    if (!blob.size) throw new Error('Video came out empty — try a shorter selection or another browser.');
+    const blob = new Blob(chunks, { type: actualMime });
+    if (!blob.size) {
+      throw new Error('Video came out empty. Try a shorter selection, Safari, or share as text.');
+    }
 
-    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const ext = /mp4/i.test(actualMime) ? 'mp4' : 'webm';
     const safeRef = String(reference || 'scripture')
       .replace(/[^\w\s\-–—]/g, '')
       .trim()
@@ -370,7 +533,7 @@
 
     return {
       blob,
-      mimeType,
+      mimeType: actualMime,
       filename: `${safeRef}.${ext}`,
       duration,
       hadVoice

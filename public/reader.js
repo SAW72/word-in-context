@@ -494,18 +494,40 @@
     const modal = showVideoProgressModal();
     modal.onCancel(() => abort.abort());
 
+    // Absolute safety net: never leave the modal spinning forever
+    const overallTimer = setTimeout(() => {
+      try { abort.abort(); } catch (e) {}
+      modal.close();
+      showShareToast('Video timed out — try fewer verses or share as text', false);
+    }, 3 * 60 * 1000);
+
     try {
       modal.setProgress(0.05, 'Generating narration…');
       let audioBuf = null;
       let voiceNote = '';
       try {
-        audioBuf = await SV.fetchShareTts(narration, abort.signal);
+        // TTS network timeout so we don't sit on "Generating" forever
+        const ttsAbort = new AbortController();
+        const ttsTimer = setTimeout(() => ttsAbort.abort(), 45000);
+        const onParentAbort = () => ttsAbort.abort();
+        abort.signal.addEventListener('abort', onParentAbort, { once: true });
+        try {
+          audioBuf = await SV.fetchShareTts(narration, ttsAbort.signal);
+        } finally {
+          clearTimeout(ttsTimer);
+          abort.signal.removeEventListener('abort', onParentAbort);
+        }
       } catch (e) {
-        if (e && e.name === 'AbortError') throw e;
-        // Fall back to silent video with on-screen text only
-        voiceNote = e && e.message ? e.message : 'Voice unavailable';
-        modal.setProgress(0.2, 'Building video without server voice…');
+        if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        if (e && e.name === 'AbortError') {
+          voiceNote = 'Voice timed out';
+        } else {
+          voiceNote = e && e.message ? e.message : 'Voice unavailable';
+        }
+        modal.setProgress(0.18, 'Building video…');
       }
+
+      if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
       const result = await SV.createScriptureVideo({
         reference,
@@ -517,10 +539,10 @@
         onProgress: (pct, label) => modal.setProgress(pct, label)
       });
 
+      clearTimeout(overallTimer);
       modal.close();
 
       const file = new File([result.blob], result.filename, { type: result.mimeType });
-      // Caption for social posts (plain text + link)
       await copyPlainText(content.textWithLink);
 
       if (result.hadVoice) {
@@ -528,14 +550,15 @@
       } else {
         showShareToast(
           voiceNote
-            ? `${voiceNote} Shared silent video; caption copied.`
-            : 'Silent video ready (no voice). Caption copied.',
-          !voiceNote
+            ? `${voiceNote} — video ready (silent). Caption copied.`
+            : 'Silent video ready. Caption copied.',
+          true
         );
       }
 
       await shareVideoFile(file, content.textWithLink, content.title);
     } catch (err) {
+      clearTimeout(overallTimer);
       modal.close();
       if (err && err.name === 'AbortError') {
         showShareToast('Cancelled', true);
