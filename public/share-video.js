@@ -586,16 +586,30 @@
 
   async function decodeAudio(arrayBuffer) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return null;
+    if (!Ctx || !arrayBuffer || !arrayBuffer.byteLength) return null;
     const ctx = new Ctx();
     try {
-      const buffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+      // iOS often leaves context suspended after async network — resume with timeout
+      if (ctx.state === 'suspended') {
+        try {
+          await Promise.race([
+            ctx.resume(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('resume timeout')), 2500))
+          ]);
+        } catch (e) { /* continue; decode may still work */ }
+      }
+      // Never hang forever on decode (was stuck on "Preparing voice…")
+      const buffer = await Promise.race([
+        ctx.decodeAudioData(arrayBuffer.slice(0)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('decode timeout')), 8000))
+      ]);
       if (!buffer || !Number.isFinite(buffer.duration) || buffer.duration <= 0) {
         try { await ctx.close(); } catch (e) {}
         return null;
       }
       return { ctx, buffer };
     } catch (e) {
+      console.warn('[ShareVideo] decodeAudio failed', e && e.message);
       try { await ctx.close(); } catch (e2) {}
       return null;
     }
@@ -756,10 +770,18 @@
 
     if (audioArrayBuffer && audioArrayBuffer.byteLength > 0) {
       onProgress && onProgress(0.12, 'Preparing voice…');
-      audioPack = await decodeAudio(audioArrayBuffer);
+      try {
+        audioPack = await decodeAudio(audioArrayBuffer);
+      } catch (e) {
+        audioPack = null;
+      }
       if (audioPack) {
         duration = safeDuration(audioPack.buffer.duration + 0.5, verseText);
         hadVoice = true;
+        onProgress && onProgress(0.18, 'Voice ready — recording…');
+      } else {
+        // Continue as silent video rather than hang
+        onProgress && onProgress(0.18, 'Voice unavailable — recording silent video…');
       }
     }
 
@@ -1030,23 +1052,50 @@
       const token = localStorage.getItem('auth_token');
       if (token) headers.Authorization = 'Bearer ' + token;
     } catch (e) {}
-    const res = await fetch('/api/share-tts', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text }),
-      signal
-    });
-    if (!res.ok) {
-      let msg = `Voice service unavailable (${res.status})`;
-      try {
-        const data = await res.json();
-        if (data && data.error) msg = data.error;
-      } catch (e) {}
-      const err = new Error(msg);
-      err.status = res.status;
-      throw err;
+    // Cap client text too — long psalms stall TTS
+    const clipped = String(text || '').length > 1800
+      ? String(text).slice(0, 1800) + '…'
+      : String(text || '');
+
+    // Extra timeout even if parent signal is missing
+    const localAbort = new AbortController();
+    const timer = setTimeout(() => localAbort.abort(), 25000);
+    const onParent = () => localAbort.abort();
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timer);
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      signal.addEventListener('abort', onParent, { once: true });
     }
-    return res.arrayBuffer();
+    try {
+      const res = await fetch('/api/share-tts', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text: clipped }),
+        signal: localAbort.signal
+      });
+      if (!res.ok) {
+        let msg = `Voice service unavailable (${res.status})`;
+        try {
+          const data = await res.json();
+          if (data && data.error) msg = data.error;
+        } catch (e) {}
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      // Also timeout reading the body (large mp3)
+      const buf = await Promise.race([
+        res.arrayBuffer(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Voice download timed out')), 15000))
+      ]);
+      if (!buf || !buf.byteLength) throw new Error('Empty voice audio');
+      return buf;
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onParent);
+    }
   }
 
   function buildNarrationText(reference, translation, verses) {

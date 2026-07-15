@@ -1834,28 +1834,65 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
       });
     }
 
-    const voice = resolveShareTtsVoiceId(req.body?.voice, settings.voice);
+    // Cap narration length so TTS cannot hang for minutes on long psalms
+    const speakText = text.length > 1800 ? text.slice(0, 1800) + '…' : text;
+    let voice = resolveShareTtsVoiceId(req.body?.voice, settings.voice);
 
-    const ttsRes = await fetch('https://api.x.ai/v1/tts', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${getXaiApiKey()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        voice_id: voice,
-        language: 'en',
-        speed: 0.98,
-        output_format: { codec: 'mp3', sample_rate: 24000, bit_rate: 128000 },
-      }),
-    });
+    async function callXaiTts(voiceId) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 22000); // hard stop — client was stuck on "Preparing voice"
+      try {
+        const ttsRes = await fetch('https://api.x.ai/v1/tts', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${getXaiApiKey()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: speakText,
+            voice_id: voiceId,
+            language: 'en',
+            speed: 0.98,
+            output_format: { codec: 'mp3', sample_rate: 24000, bit_rate: 128000 },
+          }),
+          signal: ac.signal,
+        });
+        return ttsRes;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    let ttsRes;
+    try {
+      ttsRes = await callXaiTts(voice);
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        return res.status(504).json({ error: 'Voice timed out. Try fewer verses, or share as image/text.' });
+      }
+      throw e;
+    }
+
+    // Custom/cloned voice may fail — fall back to leo once
+    if (!ttsRes.ok && voice.toLowerCase() !== 'leo') {
+      const errText = await ttsRes.text().catch(() => '');
+      console.warn('[share-tts] voice failed, retrying leo', voice, ttsRes.status, errText.slice(0, 160));
+      voice = 'leo';
+      try {
+        ttsRes = await callXaiTts('leo');
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          return res.status(504).json({ error: 'Voice timed out. Try fewer verses, or share as image/text.' });
+        }
+        throw e;
+      }
+    }
 
     if (!ttsRes.ok) {
       const errText = await ttsRes.text().catch(() => '');
       console.error('[share-tts] xAI TTS failed', ttsRes.status, errText.slice(0, 240));
       return res.status(502).json({
-        error: 'Could not generate narration right now. Try again, or share as text.',
+        error: 'Could not generate narration right now. Share as image instead, or try again.',
       });
     }
 
@@ -1873,7 +1910,7 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
     return res.send(buf);
   } catch (err) {
     console.error('[share-tts]', err && err.message);
-    return res.status(500).json({ error: 'Voice generation failed. Share as text instead.' });
+    return res.status(500).json({ error: 'Voice generation failed. Share as image instead.' });
   }
 });
 

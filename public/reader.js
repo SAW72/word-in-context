@@ -885,25 +885,21 @@
         }
       }
 
-      modal.setProgress(0.22, 'Generating narration…');
+      modal.setProgress(0.22, 'Generating narration (max ~25s)…');
       let audioBuf = null;
       let voiceNote = '';
       try {
-        const ttsAbort = new AbortController();
-        const ttsTimer = setTimeout(() => ttsAbort.abort(), 45000);
-        const onParentAbort = () => ttsAbort.abort();
-        abort.signal.addEventListener('abort', onParentAbort, { once: true });
-        try {
-          audioBuf = await SV.fetchShareTts(narration, ttsAbort.signal);
-        } finally {
-          clearTimeout(ttsTimer);
-          abort.signal.removeEventListener('abort', onParentAbort);
-        }
+        // Hard race so UI never sits on "Preparing voice" forever
+        audioBuf = await Promise.race([
+          SV.fetchShareTts(narration, abort.signal),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Voice timed out — continuing without audio')), 28000))
+        ]);
+        modal.setProgress(0.28, 'Voice received…');
       } catch (e) {
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-        if (e && e.name === 'AbortError') voiceNote = 'Voice timed out';
-        else voiceNote = e && e.message ? e.message : 'Voice unavailable';
-        modal.setProgress(0.28, 'Building video…');
+        voiceNote = (e && e.message) ? e.message : 'Voice unavailable';
+        audioBuf = null;
+        modal.setProgress(0.28, 'Skipping voice — building video…');
       }
 
       if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
