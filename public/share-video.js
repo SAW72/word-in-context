@@ -23,18 +23,119 @@
 
   function pickRecorderMime() {
     if (typeof MediaRecorder === 'undefined') return '';
-    const ua = navigator.userAgent || '';
-    const isApple = /iPad|iPhone|iPod|Macintosh/i.test(ua) && !/Chrome|CriOS|Firefox|FxiOS|Android/i.test(ua);
-    // Safari/iOS: mp4 first. Chrome: webm first.
-    const candidates = isApple
-      ? ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']
-      : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    // Prefer MP4 everywhere (Facebook Reels / YouTube Shorts / iMessage).
+    // Chrome desktop often only supports webm — we convert to MP4 after if needed.
+    const candidates = [
+      'video/mp4',
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
     for (const t of candidates) {
       try {
         if (MediaRecorder.isTypeSupported(t)) return t;
       } catch (e) { /* ignore */ }
     }
     return '';
+  }
+
+  function isMp4Blob(blob, filename) {
+    return !!(blob && (/mp4/i.test(blob.type || '') || /\.mp4$/i.test(filename || '')));
+  }
+
+  /**
+   * Convert WebM (or other) to MP4 for Facebook/YouTube using ffmpeg.wasm (loaded on demand).
+   * First use downloads ~25MB converter once; then reuses if possible.
+   */
+  let _ffmpegPromise = null;
+  async function getFfmpeg(onProgress) {
+    if (_ffmpegPromise) return _ffmpegPromise;
+    _ffmpegPromise = (async () => {
+      onProgress && onProgress(0.05, 'Loading MP4 converter (one-time)…');
+      const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm');
+      const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
+      const ffmpeg = new FFmpeg();
+      const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+      });
+      return ffmpeg;
+    })().catch((err) => {
+      _ffmpegPromise = null;
+      throw err;
+    });
+    return _ffmpegPromise;
+  }
+
+  async function convertToMp4(inputBlob, onProgress) {
+    const { fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
+    const ffmpeg = await getFfmpeg(onProgress);
+    onProgress && onProgress(0.2, 'Converting to MP4…');
+    ffmpeg.on('progress', ({ progress }) => {
+      const p = typeof progress === 'number' ? progress : 0;
+      onProgress && onProgress(0.2 + Math.max(0, Math.min(1, p)) * 0.75, 'Converting to MP4…');
+    });
+    const inName = /webm/i.test(inputBlob.type || '') ? 'in.webm' : 'in.input';
+    await ffmpeg.writeFile(inName, await fetchFile(inputBlob));
+    // H.264 + AAC is what Facebook/YouTube expect
+    await ffmpeg.exec([
+      '-i', inName,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      'out.mp4'
+    ]);
+    const data = await ffmpeg.readFile('out.mp4');
+    try { await ffmpeg.deleteFile(inName); } catch (e) {}
+    try { await ffmpeg.deleteFile('out.mp4'); } catch (e) {}
+    const bytes = data.buffer ? data : new Uint8Array(data);
+    return new Blob([bytes], { type: 'video/mp4' });
+  }
+
+  /**
+   * Ensure we hand the user an MP4 when possible (Reels / Shorts friendly).
+   */
+  async function ensureMp4(blob, filename, onProgress) {
+    const base = String(filename || 'scripture').replace(/\.\w+$/, '');
+    if (isMp4Blob(blob, filename)) {
+      return {
+        blob,
+        mimeType: 'video/mp4',
+        filename: `${base}.mp4`,
+        converted: false
+      };
+    }
+    // Images pass through
+    if (blob && /image\//i.test(blob.type || '')) {
+      return { blob, mimeType: blob.type, filename: filename || `${base}.png`, converted: false };
+    }
+    try {
+      const mp4 = await convertToMp4(blob, onProgress);
+      if (!mp4 || !mp4.size) throw new Error('Empty MP4');
+      onProgress && onProgress(1, 'MP4 ready');
+      return {
+        blob: mp4,
+        mimeType: 'video/mp4',
+        filename: `${base}.mp4`,
+        converted: true
+      };
+    } catch (e) {
+      console.warn('[ShareVideo] MP4 convert failed', e);
+      return {
+        blob,
+        mimeType: blob.type || 'video/webm',
+        filename: filename || `${base}.webm`,
+        converted: false,
+        convertFailed: true,
+        convertError: e && e.message
+      };
+    }
   }
 
   function loadImage(src) {
@@ -730,6 +831,9 @@
     createShareCardPng,
     fetchShareTts,
     buildNarrationText,
-    estimateDurationSec
+    estimateDurationSec,
+    ensureMp4,
+    convertToMp4,
+    isMp4Blob
   };
 })(typeof window !== 'undefined' ? window : globalThis);

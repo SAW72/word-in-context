@@ -1176,3 +1176,50 @@ body.reader-has-selection .reader-scroll {
   border-radius: 10px;
   cursor: pointer;
 }
+
+/* In-app share result (preview stays in app — no forced download) */
+.reader-share-result-panel {
+  max-width: min(92vw, 400px);
+  max-height: min(92dvh, 720px);
+  overflow: auto;
+}
+
+.reader-share-result-preview {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+  margin: 0 0 12px;
+  aspect-ratio: 9 / 16;
+  max-height: 42vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reader-share-result-media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #111;
+}
+
+.reader-share-result-meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.reader-share-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-share-result-actions .reader-selection-btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 42px;
+}

@@ -418,32 +418,159 @@
     };
   }
 
-  async function shareVideoFile(file, caption, title) {
-    const canFiles = !!(navigator.canShare && navigator.canShare({ files: [file] }));
-    if (canFiles) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: title || 'Scripture',
-          text: caption || ''
-        });
-        return true;
-      } catch (e) {
-        if (e && e.name === 'AbortError') return false;
-      }
+  function closeShareResultModal() {
+    const el = document.getElementById('reader-share-result-modal');
+    if (!el) return;
+    const vid = el.querySelector('video');
+    if (vid) {
+      try { vid.pause(); } catch (e) {}
+      try { URL.revokeObjectURL(vid.src); } catch (e) {}
     }
-    // Download fallback (desktop / when file share unsupported)
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name || 'scripture-video.mp4';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    if (caption) await copyPlainText(caption);
-    showShareToast('Video saved — open Photos/Files and post it. Caption copied.', true);
+    const img = el.querySelector('img.reader-share-result-media');
+    if (img && img.src && img.src.startsWith('blob:')) {
+      try { URL.revokeObjectURL(img.src); } catch (e) {}
+    }
+    el.remove();
+  }
+
+  /**
+   * Keep media in-app: preview + share to phone apps (no surprise download).
+   * On phone: "Share to apps" opens the system sheet (Messages, Facebook, Files…).
+   * Download is optional, only if the user taps Save.
+   */
+  async function showShareResultModal({ file, caption, title }) {
+    closeShareResultModal();
+    await copyPlainText(caption || '');
+
+    const isImage = /^image\//i.test(file.type || '');
+    const isMp4 = /mp4/i.test(file.type || '') || /\.mp4$/i.test(file.name || '');
+    const objectUrl = URL.createObjectURL(file);
+    const canNativeShare = !!(navigator.share);
+    let canFileShare = false;
+    try {
+      canFileShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    } catch (e) {
+      canFileShare = false;
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'reader-share-result-modal';
+    backdrop.className = 'reader-video-modal reader-share-result-modal';
+    backdrop.innerHTML = `
+      <div class="reader-video-panel reader-share-result-panel" role="dialog" aria-modal="true" aria-labelledby="reader-share-result-title">
+        <h3 id="reader-share-result-title">${isImage ? 'Share image ready' : 'Share video ready'}</h3>
+        <div class="reader-share-result-preview" id="reader-share-result-preview"></div>
+        <p class="reader-share-result-meta">
+          ${isImage ? 'PNG image' : (isMp4 ? 'MP4 · Reels / Shorts ready' : 'Video file')}
+          · Caption copied
+        </p>
+        <p class="reader-video-hint">
+          ${canFileShare
+            ? 'Tap <strong>Share to apps</strong> to post in Facebook, Messages, YouTube, etc. without leaving the flow.'
+            : 'Preview stays in the app. Use <strong>Save</strong> only if you need the file, then upload to Facebook Reels or YouTube Shorts.'}
+        </p>
+        <div class="reader-share-result-actions">
+          ${canNativeShare ? '<button type="button" class="reader-selection-btn primary" id="srs-share">Share to apps…</button>' : ''}
+          <button type="button" class="reader-selection-btn" id="srs-caption">Copy caption again</button>
+          <button type="button" class="reader-selection-btn" id="srs-save">Save ${isImage ? 'image' : 'video'}</button>
+          ${!isImage ? '<button type="button" class="reader-selection-btn" id="srs-youtube">Open YouTube upload</button>' : ''}
+          <button type="button" class="reader-selection-btn ghost" id="srs-close">Done</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    const preview = backdrop.querySelector('#reader-share-result-preview');
+    if (isImage) {
+      const img = document.createElement('img');
+      img.className = 'reader-share-result-media';
+      img.src = objectUrl;
+      img.alt = title || 'Scripture share';
+      preview.appendChild(img);
+    } else {
+      const video = document.createElement('video');
+      video.className = 'reader-share-result-media';
+      video.src = objectUrl;
+      video.controls = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.preload = 'metadata';
+      preview.appendChild(video);
+    }
+
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closeShareResultModal();
+    });
+
+    const shareBtn = backdrop.querySelector('#srs-share');
+    if (shareBtn) {
+      shareBtn.addEventListener('click', async () => {
+        try {
+          if (canFileShare) {
+            await navigator.share({
+              files: [file],
+              title: title || 'Scripture',
+              text: caption || ''
+            });
+          } else {
+            await navigator.share({
+              title: title || 'Scripture',
+              text: caption || ''
+            });
+            showShareToast('Caption shared — attach the saved video in the app if needed', true);
+          }
+        } catch (e) {
+          if (e && e.name !== 'AbortError') {
+            showShareToast('Share cancelled or not available — use Save', false);
+          }
+        }
+      });
+    }
+
+    backdrop.querySelector('#srs-caption').addEventListener('click', async () => {
+      const ok = await copyPlainText(caption || '');
+      showShareToast(ok ? 'Caption copied (verses + app link)' : 'Copy failed', ok);
+    });
+
+    backdrop.querySelector('#srs-save').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = file.name || (isImage ? 'scripture.png' : 'scripture.mp4');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showShareToast('Saved — upload to Reels or Shorts if you want', true);
+    });
+
+    const ytBtn = backdrop.querySelector('#srs-youtube');
+    if (ytBtn) {
+      ytBtn.addEventListener('click', async () => {
+        // YouTube has no public “upload this blob” URL — open Studio; user attaches file via Share/Save.
+        if (canFileShare) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: title || 'Scripture',
+              text: caption || ''
+            });
+            showShareToast('Pick YouTube in the share sheet if listed, or Save then upload', true);
+            return;
+          } catch (e) {
+            if (e && e.name === 'AbortError') return;
+          }
+        }
+        window.open('https://www.youtube.com/upload', '_blank', 'noopener,noreferrer');
+        showShareToast('YouTube opened — Save the video first, then upload it as a Short', true);
+      });
+    }
+
+    backdrop.querySelector('#srs-close').addEventListener('click', () => closeShareResultModal());
     return true;
+  }
+
+  async function shareVideoFile(file, caption, title) {
+    // In-app result UI (no automatic download to the computer)
+    return showShareResultModal({ file, caption, title });
   }
 
   function getSelectionShareMeta() {
@@ -529,11 +656,12 @@
     const modal = showVideoProgressModal();
     modal.onCancel(() => abort.abort());
 
+    // Includes optional one-time MP4 converter download (~25MB) on desktop Chrome
     const overallTimer = setTimeout(() => {
       try { abort.abort(); } catch (e) {}
       modal.close();
       showShareToast('Video timed out — try fewer verses, Share image, or text', false);
-    }, 3 * 60 * 1000);
+    }, 6 * 60 * 1000);
 
     try {
       modal.setProgress(0.05, 'Generating narration…');
@@ -559,7 +687,7 @@
 
       if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-      const result = await SV.createScriptureVideo({
+      let result = await SV.createScriptureVideo({
         reference,
         translation,
         verses,
@@ -569,24 +697,38 @@
         onProgress: (pct, label) => modal.setProgress(pct, label)
       });
 
+      // Convert WebM → MP4 so Facebook Reels / YouTube Shorts accept it
+      if (result.kind !== 'image' && !result.videoFailed && SV.ensureMp4) {
+        modal.setProgress(0.92, 'Making MP4 for Facebook / YouTube…');
+        try {
+          const ensured = await SV.ensureMp4(result.blob, result.filename, (pct, label) => {
+            modal.setProgress(0.92 + (pct || 0) * 0.07, label || 'Making MP4…');
+          });
+          result = {
+            ...result,
+            blob: ensured.blob,
+            mimeType: ensured.mimeType,
+            filename: ensured.filename,
+            convertFailed: ensured.convertFailed
+          };
+        } catch (e) {
+          console.warn('[voice-video] mp4 ensure failed', e);
+        }
+      }
+
       clearTimeout(overallTimer);
       modal.close();
 
       const file = new File([result.blob], result.filename, { type: result.mimeType });
-      await copyPlainText(content.textWithLink);
 
       if (result.kind === 'image' || result.videoFailed) {
-        showShareToast(
-          'This device could not make a full video — share image ready (banner + verses + link). Caption copied.',
-          true
-        );
+        showShareToast('Image card ready in-app (device could not make video).', true);
+      } else if (result.convertFailed) {
+        showShareToast('Video ready — MP4 convert skipped; Share to apps or Save.', true);
       } else if (result.hadVoice) {
-        showShareToast('Video ready (branded slide + voice). Caption copied.', true);
+        showShareToast('Video ready in-app (text + voice).', true);
       } else {
-        showShareToast(
-          (voiceNote ? voiceNote + ' — ' : '') + 'Video ready (branded slide). Caption copied.',
-          true
-        );
+        showShareToast((voiceNote ? voiceNote + ' — ' : '') + 'Video ready in-app.', true);
       }
 
       await shareVideoFile(file, content.textWithLink, content.title);
