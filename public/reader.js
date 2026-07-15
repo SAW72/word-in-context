@@ -446,6 +446,45 @@
     return true;
   }
 
+  function getSelectionShareMeta() {
+    const verses = getSelectedVerseObjects();
+    const bookName = (chapterPayload && chapterPayload.bookName) || 'Scripture';
+    const transMeta = BC.translationMeta(BC.getTranslationId());
+    const translation = (transMeta && (transMeta.short || transMeta.id)) || BC.getTranslationId() || '';
+    const reference = formatVerseRangeRef(bookName, currentChapter, sortedSelectedVerses());
+    return { verses, translation, reference };
+  }
+
+  async function createAndShareImageCard() {
+    if (!selectedVerses.size) return;
+    if (!window.ShareVideo || !window.ShareVideo.createShareCardPng) {
+      showShareToast('Share image not loaded — refresh the page', false);
+      return;
+    }
+    const { verses, translation, reference } = getSelectionShareMeta();
+    if (!verses.length) {
+      showShareToast('No verse text', false);
+      return;
+    }
+    try {
+      showShareToast('Creating image…', true);
+      const content = await buildSelectedShareContent();
+      const result = await window.ShareVideo.createShareCardPng({
+        reference,
+        translation,
+        verses,
+        siteUrl: 'thewordincontext.org'
+      });
+      const file = new File([result.blob], result.filename, { type: result.mimeType });
+      await copyPlainText(content.textWithLink);
+      showShareToast('Image ready — caption copied (includes app link)', true);
+      await shareVideoFile(file, content.textWithLink, content.title);
+    } catch (err) {
+      console.error('[share-image]', err);
+      showShareToast((err && err.message) || 'Could not create image', false);
+    }
+  }
+
   async function createAndShareVoiceVideo() {
     if (!selectedVerses.size) return;
     if (!window.ShareVideo) {
@@ -472,17 +511,13 @@
     }
 
     const SV = window.ShareVideo;
-    const verses = getSelectedVerseObjects();
+    const { verses, translation, reference } = getSelectionShareMeta();
     if (!verses.length) {
       showShareToast('No verse text to narrate', false);
       return;
     }
 
     const content = await buildSelectedShareContent();
-    const bookName = (chapterPayload && chapterPayload.bookName) || 'Scripture';
-    const transMeta = BC.translationMeta(BC.getTranslationId());
-    const translation = (transMeta && (transMeta.short || transMeta.id)) || BC.getTranslationId() || '';
-    const reference = formatVerseRangeRef(bookName, currentChapter, sortedSelectedVerses());
     const narration = SV.buildNarrationText(reference, translation, verses);
 
     if (narration.length > 4000) {
@@ -494,11 +529,10 @@
     const modal = showVideoProgressModal();
     modal.onCancel(() => abort.abort());
 
-    // Absolute safety net: never leave the modal spinning forever
     const overallTimer = setTimeout(() => {
       try { abort.abort(); } catch (e) {}
       modal.close();
-      showShareToast('Video timed out — try fewer verses or share as text', false);
+      showShareToast('Video timed out — try fewer verses, Share image, or text', false);
     }, 3 * 60 * 1000);
 
     try {
@@ -506,7 +540,6 @@
       let audioBuf = null;
       let voiceNote = '';
       try {
-        // TTS network timeout so we don't sit on "Generating" forever
         const ttsAbort = new AbortController();
         const ttsTimer = setTimeout(() => ttsAbort.abort(), 45000);
         const onParentAbort = () => ttsAbort.abort();
@@ -519,12 +552,9 @@
         }
       } catch (e) {
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-        if (e && e.name === 'AbortError') {
-          voiceNote = 'Voice timed out';
-        } else {
-          voiceNote = e && e.message ? e.message : 'Voice unavailable';
-        }
-        modal.setProgress(0.18, 'Building video…');
+        if (e && e.name === 'AbortError') voiceNote = 'Voice timed out';
+        else voiceNote = e && e.message ? e.message : 'Voice unavailable';
+        modal.setProgress(0.18, 'Building branded video…');
       }
 
       if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -545,13 +575,16 @@
       const file = new File([result.blob], result.filename, { type: result.mimeType });
       await copyPlainText(content.textWithLink);
 
-      if (result.hadVoice) {
-        showShareToast('Caption copied — pick an app for the video', true);
+      if (result.kind === 'image' || result.videoFailed) {
+        showShareToast(
+          'This device could not make a full video — share image ready (banner + verses + link). Caption copied.',
+          true
+        );
+      } else if (result.hadVoice) {
+        showShareToast('Video ready (branded slide + voice). Caption copied.', true);
       } else {
         showShareToast(
-          voiceNote
-            ? `${voiceNote} — video ready (silent). Caption copied.`
-            : 'Silent video ready. Caption copied.',
+          (voiceNote ? voiceNote + ' — ' : '') + 'Video ready (branded slide). Caption copied.',
           true
         );
       }
@@ -565,7 +598,21 @@
         return;
       }
       console.error('[voice-video]', err);
-      showShareToast((err && err.message) || 'Could not create video — try Share as text', false);
+      // Last resort: still card
+      try {
+        const card = await SV.createShareCardPng({
+          reference,
+          translation,
+          verses,
+          siteUrl: 'thewordincontext.org'
+        });
+        const file = new File([card.blob], card.filename, { type: card.mimeType });
+        await copyPlainText(content.textWithLink);
+        showShareToast('Video failed — image card ready instead. Caption copied.', true);
+        await shareVideoFile(file, content.textWithLink, content.title);
+      } catch (e2) {
+        showShareToast((err && err.message) || 'Could not create video — try Share as text', false);
+      }
     }
   }
 
@@ -681,13 +728,13 @@
       window.location.href = `mailto:?subject=${encodeURIComponent(content.title)}&body=${encodeURIComponent(content.textWithLink)}`;
     });
 
-    addSection('Voice');
+    addSection('Voice & image');
     // Voice video shown when server config allows it (admin toggle + key + daily limit).
-    // shareTtsConfig loaded at init; default optimistic so menu works if config is slow.
     const stts = window.__shareTtsConfig || { enabled: true };
     if (stts.enabled !== false) {
       addItem('Create voice video', '🎬', () => createAndShareVoiceVideo(), 'featured');
     }
+    addItem('Share image card', '🖼️', () => createAndShareImageCard());
     addItem('Speak aloud now', '🔊', () => speakSelectedAloud());
 
     document.body.appendChild(backdrop);
