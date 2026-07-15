@@ -3,7 +3,9 @@ services:
     name: the-word-in-context
     runtime: node
     plan: free
-    buildCommand: npm install
+    # ci is faster/more reliable than bare install; omit devDeps (we have none, but keeps install lean).
+    # better-sqlite3 compiles natively — needs Node 22 + build tools (Render provides them).
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     # Persistent disk for the SQLite DB (users.db) so admin users, tester accounts, trial status etc. survive deploys.
     # Mount path must be a subdirectory (cannot be /). Only files under this path persist.
@@ -17,6 +19,9 @@ services:
         value: production
       - key: PORT
         value: 10000
+      # Pin Node so better-sqlite3 prebuilds match (see package.json engines + .nvmrc)
+      - key: NODE_VERSION
+        value: "22.12.0"
       # Non-sensitive config (can be declared here or set in dashboard)
       - key: TRIAL_DAYS
         value: "7"
