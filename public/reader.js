@@ -945,23 +945,49 @@
         }
       }
 
-      clearTimeout(overallTimer);
-      modal.close();
-
       const file = new File([result.blob], result.filename, { type: result.mimeType });
 
+      // iPhone: if video convert failed, auto-offer image (works for Facebook)
+      if (
+        result.kind !== 'image'
+        && !result.videoFailed
+        && (result.preferImageForFacebook || result.convertFailed)
+        && isIOSLike()
+      ) {
+        try {
+          modal.setProgress(0.95, 'Making Facebook image instead…');
+          const card = await SV.createShareCardPng({
+            reference,
+            translation,
+            verses,
+            siteUrl: 'thewordincontext.org',
+            aiBgImage: aiBgImage || null
+          });
+          clearTimeout(overallTimer);
+          modal.close();
+          const imgFile = new File([card.blob], card.filename, { type: card.mimeType });
+          showShareToast('On iPhone, image posts to Facebook more reliably than video. Caption copied.', true);
+          await shareVideoFile(imgFile, content.textWithLink, content.title);
+          return;
+        } catch (eImg) {
+          /* fall through to video result */
+        }
+      }
+
       if (result.kind === 'image' || result.videoFailed) {
-        showShareToast('Image card ready in-app (device could not make video).', true);
-      } else if (result.convertFailed) {
-        showShareToast('Video ready, but Facebook MP4 encode failed — YouTube may still work. Try Share image for FB.', false);
+        showShareToast('Image card ready (best for Facebook on iPhone).', true);
       } else if (result.facebookReady) {
-        showShareToast('Facebook-ready MP4 (H.264). Download then upload to Reels.', true);
+        showShareToast('Facebook-ready MP4. On Mac: Download, then upload to Reels.', true);
+      } else if (result.convertFailed) {
+        showShareToast('Video ready — if Facebook rejects it, use Share image card.', false);
       } else if (result.hadVoice) {
         showShareToast('Video ready in-app (text + voice).', true);
       } else {
         showShareToast((voiceNote ? voiceNote + ' — ' : '') + 'Video ready in-app.', true);
       }
 
+      clearTimeout(overallTimer);
+      modal.close();
       await shareVideoFile(file, content.textWithLink, content.title);
     } catch (err) {
       clearTimeout(overallTimer);
@@ -971,20 +997,21 @@
         return;
       }
       console.error('[voice-video]', err);
-      // Last resort: still card
+      // Last resort: still card (works on iPhone + Facebook)
       try {
         const card = await SV.createShareCardPng({
           reference,
           translation,
           verses,
-          siteUrl: 'thewordincontext.org'
+          siteUrl: 'thewordincontext.org',
+          aiBgImage: null
         });
         const file = new File([card.blob], card.filename, { type: card.mimeType });
         await copyPlainText(content.textWithLink);
-        showShareToast('Video failed — image card ready instead. Caption copied.', true);
+        showShareToast('Video failed — image card ready (use this for Facebook).', true);
         await shareVideoFile(file, content.textWithLink, content.title);
       } catch (e2) {
-        showShareToast((err && err.message) || 'Could not create video — try Share as text', false);
+        showShareToast((err && err.message) || 'Could not create video — try Share image card', false);
       }
     }
   }

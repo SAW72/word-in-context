@@ -171,17 +171,47 @@
     return new Blob([bytes], { type: 'video/mp4' });
   }
 
+  function isIOSBrowser() {
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent || '')
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  /** Server ffmpeg (works on iPhone). Prefer this over browser wasm. */
+  async function convertToMp4Server(inputBlob, onProgress) {
+    onProgress && onProgress(0.15, 'Uploading for Facebook MP4 convert…');
+    const ext = /mp4/i.test(inputBlob.type || '') ? 'mp4' : 'webm';
+    const res = await fetch('/api/share-transcode', {
+      method: 'POST',
+      headers: {
+        'Content-Type': inputBlob.type || 'application/octet-stream',
+        'X-Input-Ext': ext
+      },
+      body: inputBlob
+    });
+    if (!res.ok) {
+      let msg = `Server convert failed (${res.status})`;
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = j.error;
+      } catch (e) {}
+      throw new Error(msg);
+    }
+    onProgress && onProgress(0.9, 'Receiving Facebook-ready MP4…');
+    const out = await res.blob();
+    if (!out || !out.size) throw new Error('Empty converted MP4');
+    return new Blob([out], { type: 'video/mp4' });
+  }
+
   /**
-   * Always re-encode for social upload. Safari "mp4" is often HEVC — YouTube accepts it,
-   * Facebook Reels frequently rejects it with "file can't be uploaded".
+   * Always re-encode for Facebook when possible.
+   * 1) Server ffmpeg (best — works on iPhone + Mac)
+   * 2) Browser wasm (desktop only; fails on iOS Safari)
    */
   async function ensureMp4(blob, filename, onProgress, opts) {
     const base = String(filename || 'scripture').replace(/\.\w+$/, '');
-    // Images pass through
     if (blob && /image\//i.test(blob.type || '')) {
       return { blob, mimeType: blob.type, filename: filename || `${base}.png`, converted: false };
     }
-    // forceReencode default true for Facebook compatibility
     const force = !opts || opts.forceReencode !== false;
     if (!force && isMp4Blob(blob, filename)) {
       return {
@@ -191,32 +221,59 @@
         converted: false
       };
     }
+
+    // 1) Server-side (preferred)
     try {
-      const mp4 = await convertToMp4(blob, onProgress);
-      if (!mp4 || !mp4.size) throw new Error('Empty MP4');
-      // Facebook soft limit ~100MB for short reels; warn only
-      if (mp4.size > 95 * 1024 * 1024) {
-        console.warn('[ShareVideo] MP4 is large for Facebook:', mp4.size);
-      }
+      const mp4 = await convertToMp4Server(blob, onProgress);
       onProgress && onProgress(1, 'Facebook-ready MP4');
       return {
         blob: mp4,
         mimeType: 'video/mp4',
         filename: 'word-in-context-reel.mp4',
         converted: true,
-        facebookReady: true
+        facebookReady: true,
+        via: 'server'
       };
-    } catch (e) {
-      console.warn('[ShareVideo] MP4 convert failed', e);
-      return {
-        blob,
-        mimeType: blob.type || 'video/webm',
-        filename: filename || `${base}.webm`,
-        converted: false,
-        convertFailed: true,
-        convertError: e && e.message,
-        facebookReady: false
-      };
+    } catch (serverErr) {
+      console.warn('[ShareVideo] server transcode failed', serverErr);
+      // 2) Browser wasm — skip on iOS (usually broken / hangs)
+      if (isIOSBrowser()) {
+        return {
+          blob,
+          mimeType: blob.type || 'video/mp4',
+          filename: isMp4Blob(blob, filename) ? `${base}.mp4` : (filename || `${base}.webm`),
+          converted: false,
+          convertFailed: true,
+          convertError: serverErr && serverErr.message,
+          facebookReady: false,
+          preferImageForFacebook: true
+        };
+      }
+      try {
+        const mp4 = await convertToMp4(blob, onProgress);
+        if (!mp4 || !mp4.size) throw new Error('Empty MP4');
+        onProgress && onProgress(1, 'Facebook-ready MP4');
+        return {
+          blob: mp4,
+          mimeType: 'video/mp4',
+          filename: 'word-in-context-reel.mp4',
+          converted: true,
+          facebookReady: true,
+          via: 'wasm'
+        };
+      } catch (e) {
+        console.warn('[ShareVideo] wasm convert failed', e);
+        return {
+          blob,
+          mimeType: blob.type || 'video/webm',
+          filename: filename || `${base}.webm`,
+          converted: false,
+          convertFailed: true,
+          convertError: e && e.message,
+          facebookReady: false,
+          preferImageForFacebook: true
+        };
+      }
     }
   }
 

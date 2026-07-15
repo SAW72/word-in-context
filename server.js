@@ -14,6 +14,16 @@ const { Resend } = require('resend');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+let ffmpegStaticPath = null;
+try {
+  ffmpegStaticPath = require('ffmpeg-static');
+} catch (e) {
+  console.warn('[ffmpeg] ffmpeg-static not installed — share video transcode disabled');
+}
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -807,6 +817,98 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
     return null;
   }
 }
+
+/**
+ * Transcode share video → Facebook-safe H.264 MP4.
+ * MUST be registered before express.json so the raw body is not corrupted.
+ */
+app.post('/api/share-transcode', express.raw({ type: () => true, limit: '40mb' }), async (req, res) => {
+  if (!ffmpegStaticPath) {
+    return res.status(503).json({ error: 'Server video converter not installed.' });
+  }
+  if (!req.body || !Buffer.isBuffer(req.body) || !req.body.length) {
+    return res.status(400).json({ error: 'Empty video body.' });
+  }
+  if (req.body.length > 40 * 1024 * 1024) {
+    return res.status(413).json({ error: 'Video too large (max 40MB). Use fewer verses.' });
+  }
+
+  const hint = String(req.headers['x-input-ext'] || req.headers['content-type'] || 'webm').toLowerCase();
+  const ext = /mp4/.test(hint) ? 'mp4' : 'webm';
+  const id = crypto.randomBytes(8).toString('hex');
+  const inPath = path.join(os.tmpdir(), `wic-in-${id}.${ext}`);
+  const outPath = path.join(os.tmpdir(), `wic-out-${id}.mp4`);
+
+  try {
+    fs.writeFileSync(inPath, req.body);
+
+    try {
+      await execFileAsync(ffmpegStaticPath, [
+        '-y',
+        '-i', inPath,
+        '-vf', 'scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p',
+        '-c:v', 'libx264',
+        '-profile:v', 'baseline',
+        '-level', '3.1',
+        '-pix_fmt', 'yuv420p',
+        '-preset', 'veryfast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '44100',
+        '-ac', '2',
+        '-movflags', '+faststart',
+        '-t', '90',
+        outPath,
+      ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+    } catch (e1) {
+      // No audio in source — add silent AAC (Facebook often rejects silent/missing audio)
+      await execFileAsync(ffmpegStaticPath, [
+        '-y',
+        '-i', inPath,
+        '-f', 'lavfi',
+        '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+        '-vf', 'scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', 'libx264',
+        '-profile:v', 'baseline',
+        '-level', '3.1',
+        '-pix_fmt', 'yuv420p',
+        '-preset', 'veryfast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-shortest',
+        '-movflags', '+faststart',
+        '-t', '90',
+        outPath,
+      ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+    }
+
+    const out = fs.readFileSync(outPath);
+    if (!out.length) {
+      return res.status(500).json({ error: 'Transcode produced empty file.' });
+    }
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', 'inline; filename="word-in-context-reel.mp4"');
+    return res.send(out);
+  } catch (err) {
+    console.error('[share-transcode]', err && (err.stderr || err.message || err));
+    return res.status(500).json({
+      error: 'Could not convert video for Facebook. Use Share image card instead.',
+      detail: String(err && err.message || '').slice(0, 200),
+    });
+  } finally {
+    try { fs.unlinkSync(inPath); } catch (e) {}
+    try { fs.unlinkSync(outPath); } catch (e) {}
+  }
+});
+
+app.get('/api/share-transcode-status', (req, res) => {
+  res.json({ available: !!ffmpegStaticPath });
+});
 
 app.use(express.json({ limit: '50mb' }));
 
@@ -1919,6 +2021,7 @@ app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res
     const prompt = buildVerseBackgroundPrompt({ reference, translation, text });
     const model = settings.model.includes('imagine') ? settings.model : 'grok-imagine-image';
 
+    // Match working console shape: model + prompt + n + aspect_ratio (no response_format)
     const imgRes = await fetch('https://api.x.ai/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -1930,46 +2033,47 @@ app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res
         prompt,
         n: 1,
         aspect_ratio: '9:16',
-        // response_format may be url or b64_json depending on API version
-        response_format: 'url',
       }),
     });
 
+    const rawText = await imgRes.text().catch(() => '');
     if (!imgRes.ok) {
-      const errText = await imgRes.text().catch(() => '');
-      console.error('[share-bg-image] xAI failed', imgRes.status, errText.slice(0, 300));
+      console.error('[share-bg-image] xAI failed', imgRes.status, rawText.slice(0, 400));
       return res.status(502).json({
-        error: 'Could not generate an AI background right now. Try the classic brand background.',
+        error: `AI image failed (${imgRes.status}). Your xAI key may not include Imagine, or the service is busy. Use classic brand background.`,
+        detail: rawText.slice(0, 200),
       });
     }
 
-    const data = await imgRes.json().catch(() => ({}));
+    let data = {};
+    try { data = JSON.parse(rawText); } catch (e) {
+      return res.status(502).json({ error: 'AI image returned non-JSON.' });
+    }
     const item = Array.isArray(data?.data) ? data.data[0] : null;
     let imageUrl = item?.url || data?.url || null;
     let b64 = item?.b64_json || null;
 
-    // Some responses nest differently
     if (!imageUrl && !b64 && data?.images?.[0]) {
       imageUrl = data.images[0].url || null;
       b64 = data.images[0].b64_json || null;
     }
 
     if (!imageUrl && !b64) {
-      console.error('[share-bg-image] unexpected response keys', Object.keys(data || {}));
+      console.error('[share-bg-image] unexpected response', rawText.slice(0, 400));
       return res.status(502).json({ error: 'AI image response missing image data.' });
     }
 
-    // Fetch remote URL and return bytes so client does not hit CORS
+    // Fetch remote URL and return bytes so the browser canvas is not CORS-tainted
     let buf;
-    let contentType = 'image/jpeg';
+    let contentType = item?.mime_type || 'image/jpeg';
     if (b64) {
       buf = Buffer.from(b64, 'base64');
     } else {
       const remote = await fetch(imageUrl);
       if (!remote.ok) {
-        return res.status(502).json({ error: 'Could not download generated image.' });
+        return res.status(502).json({ error: 'Could not download generated image from xAI.' });
       }
-      contentType = remote.headers.get('content-type') || 'image/jpeg';
+      contentType = remote.headers.get('content-type') || contentType;
       buf = Buffer.from(await remote.arrayBuffer());
     }
 
