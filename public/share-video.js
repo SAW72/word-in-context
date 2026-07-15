@@ -116,50 +116,69 @@
   }
 
   function drawBrandedBackground(ctx, brand) {
-    // Base parchment / dark brand gradient
+    // Solid dark base so verse text always has contrast
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#1a1510');
-    g.addColorStop(0.5, '#2a2118');
-    g.addColorStop(1, '#12100e');
+    g.addColorStop(0, '#14110e');
+    g.addColorStop(0.55, '#1e1914');
+    g.addColorStop(1, '#0f0d0b');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
-    // Banner across top (Word in Context / cross artwork)
+    // Banner only as a thin top strip (never covers the verse text)
+    const bannerH = 120;
     if (brand && brand.banner) {
-      drawCoverImage(ctx, brand.banner, 0, 0, W, Math.round(H * 0.28), 0.55);
-      // Darken so text stays readable
-      const fade = ctx.createLinearGradient(0, 0, 0, Math.round(H * 0.32));
-      fade.addColorStop(0, 'rgba(18,16,14,0.35)');
-      fade.addColorStop(1, 'rgba(18,16,14,0.92)');
+      drawCoverImage(ctx, brand.banner, 0, 0, W, bannerH, 0.75);
+      ctx.fillStyle = 'rgba(12, 10, 8, 0.55)';
+      ctx.fillRect(0, 0, W, bannerH);
+      // Soft fade into body
+      const fade = ctx.createLinearGradient(0, bannerH - 8, 0, bannerH + 40);
+      fade.addColorStop(0, 'rgba(20,17,14,0)');
+      fade.addColorStop(1, 'rgba(20,17,14,1)');
       ctx.fillStyle = fade;
-      ctx.fillRect(0, 0, W, Math.round(H * 0.32));
+      ctx.fillRect(0, bannerH - 8, W, 50);
     }
 
-    // Soft gold glow behind text area
-    const radial = ctx.createRadialGradient(W * 0.5, H * 0.42, 20, W * 0.5, H * 0.45, W * 0.55);
-    radial.addColorStop(0, 'rgba(201, 162, 39, 0.16)');
-    radial.addColorStop(1, 'rgba(201, 162, 39, 0)');
-    ctx.fillStyle = radial;
-    ctx.fillRect(0, 0, W, H);
+    // Large readable text panel (center of video)
+    const panelX = 36;
+    const panelY = 150;
+    const panelW = W - 72;
+    const panelH = H - 280;
+    ctx.fillStyle = 'rgba(255, 253, 248, 0.96)';
+    roundRect(ctx, panelX, panelY, panelW, panelH, 18);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-    // Frame
-    ctx.strokeStyle = 'rgba(201, 162, 39, 0.5)';
+    // Gold frame around full video
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.45)';
     ctx.lineWidth = 3;
-    ctx.strokeRect(28, 28, W - 56, H - 56);
+    ctx.strokeRect(16, 16, W - 32, H - 32);
 
-    // Logo badge
+    // Small logo top-left of panel
     if (brand && brand.logo) {
-      const s = 64;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(W / 2, 78, s / 2 + 4, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,253,248,0.12)';
-      ctx.fill();
-      ctx.drawImage(brand.logo, W / 2 - s / 2, 78 - s / 2, s, s);
-      ctx.restore();
+      const s = 40;
+      try {
+        ctx.drawImage(brand.logo, panelX + 16, panelY + 14, s, s);
+      } catch (e) {}
     }
   }
 
+  function roundRect(ctx, x, y, w, h, r) {
+    const rad = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+
+  /**
+   * Always draws verse text on every frame — high contrast on white panel.
+   * pages: from splitIntoPages; rawVerses used as fallback if pages empty.
+   */
   function drawFrame(ctx, opts) {
     const {
       reference,
@@ -168,78 +187,118 @@
       pageIndex,
       progress,
       siteUrl,
-      brand
+      brand,
+      rawVerses
     } = opts;
 
     drawBrandedBackground(ctx, brand);
 
+    // Brand label on banner strip
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#c9a227';
-    ctx.font = '700 18px system-ui, -apple-system, sans-serif';
-    ctx.fillText('THE WORD IN CONTEXT', W / 2, brand && brand.logo ? 130 : 72);
+    ctx.fillStyle = '#e0c060';
+    ctx.font = '700 17px system-ui, -apple-system, sans-serif';
+    ctx.fillText('THE WORD IN CONTEXT', W / 2, 48);
+    ctx.fillStyle = 'rgba(245, 239, 227, 0.85)';
+    ctx.font = '500 13px system-ui, -apple-system, sans-serif';
+    ctx.fillText(siteUrl || 'thewordincontext.org', W / 2, 72);
 
-    ctx.fillStyle = '#f5efe3';
-    ctx.font = '600 36px Georgia, "Times New Roman", serif';
-    const refLines = wrapLines(ctx, reference || 'Scripture', W - 100);
-    let y = 180;
+    // Inside white panel: reference + verse text (this is what must appear in the video)
+    const panelX = 36;
+    const panelY = 150;
+    const panelW = W - 72;
+    const textLeft = panelX + 28;
+    const textWidth = panelW - 56;
+    let y = panelY + 70;
+
+    // Reference (e.g. Psalm 32:1–11)
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1a1814';
+    ctx.font = '700 30px Georgia, "Times New Roman", serif';
+    const refLines = wrapLines(ctx, reference || 'Scripture', textWidth);
     refLines.forEach((ln) => {
       ctx.fillText(ln, W / 2, y);
-      y += 42;
+      y += 36;
     });
 
     if (translation) {
-      ctx.fillStyle = 'rgba(201, 162, 39, 0.95)';
-      ctx.font = '500 18px system-ui, -apple-system, sans-serif';
-      ctx.fillText(translation, W / 2, y + 4);
-      y += 36;
+      ctx.fillStyle = '#8b7355';
+      ctx.font = '600 16px system-ui, -apple-system, sans-serif';
+      ctx.fillText(String(translation), W / 2, y + 2);
+      y += 28;
     }
 
-    ctx.strokeStyle = 'rgba(201, 162, 39, 0.4)';
+    // Divider
+    ctx.strokeStyle = 'rgba(201, 162, 39, 0.55)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(W * 0.28, y + 6);
-    ctx.lineTo(W * 0.72, y + 6);
+    ctx.moveTo(W * 0.28, y + 8);
+    ctx.lineTo(W * 0.72, y + 8);
     ctx.stroke();
-    y += 40;
+    y += 36;
 
-    const page = pages[Math.min(pageIndex, Math.max(0, pages.length - 1))] || [];
+    // Verse body — MUST always paint something
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#f0ebe3';
-    const left = 72;
-    const maxTextBottom = H - 160;
+    ctx.fillStyle = '#1a1814';
+    const maxTextBottom = panelY + (H - 280) - 36;
 
-    page.forEach((block) => {
-      ctx.font = 'italic 400 26px Georgia, "Times New Roman", serif';
-      block.lines.forEach((ln) => {
-        if (y > maxTextBottom) return;
-        ctx.fillText(ln, left, y);
-        y += 36;
+    let painted = false;
+    const page = (pages && pages.length)
+      ? (pages[Math.min(Math.max(0, pageIndex), pages.length - 1)] || [])
+      : [];
+
+    if (page.length) {
+      page.forEach((block) => {
+        ctx.font = '500 24px Georgia, "Times New Roman", serif';
+        (block.lines || []).forEach((ln) => {
+          if (y > maxTextBottom) return;
+          ctx.fillText(ln, textLeft, y);
+          y += 34;
+          painted = true;
+        });
+        y += 12;
       });
-      y += 16;
-    });
+    }
 
-    // Progress
-    const barY = H - 120;
+    // Fallback: draw raw verse text if pagination produced nothing
+    if (!painted && rawVerses && rawVerses.length) {
+      ctx.font = '500 24px Georgia, "Times New Roman", serif';
+      rawVerses.forEach((v) => {
+        const lines = wrapLines(ctx, `${v.number}  ${v.text}`, textWidth);
+        lines.forEach((ln) => {
+          if (y > maxTextBottom) return;
+          ctx.fillText(ln, textLeft, y);
+          y += 34;
+          painted = true;
+        });
+        y += 12;
+      });
+    }
+
+    if (!painted) {
+      ctx.font = '500 22px Georgia, serif';
+      ctx.fillStyle = '#5c574d';
+      ctx.fillText('Scripture text unavailable for this selection.', textLeft, y);
+    }
+
+    // Footer below panel
+    const p = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+    const barY = H - 88;
     const barX = 80;
     const barW = W - 160;
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(barX, barY, barW, 6);
+    ctx.fillRect(barX, barY, barW, 5);
     ctx.fillStyle = '#c9a227';
-    const p = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
-    ctx.fillRect(barX, barY, p * barW, 6);
+    ctx.fillRect(barX, barY, p * barW, 5);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(240, 235, 227, 0.75)';
-    ctx.font = '500 16px system-ui, -apple-system, sans-serif';
-    ctx.fillText(siteUrl || 'thewordincontext.org', W / 2, H - 72);
-    ctx.fillStyle = 'rgba(201, 162, 39, 0.85)';
-    ctx.font = '400 13px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Read free · Study with AI', W / 2, H - 48);
+    ctx.fillStyle = 'rgba(240, 235, 227, 0.8)';
+    ctx.font = '500 14px system-ui, -apple-system, sans-serif';
+    ctx.fillText('Read free · ' + (siteUrl || 'thewordincontext.org'), W / 2, H - 48);
 
-    if (pages.length > 1) {
-      ctx.fillStyle = 'rgba(201, 162, 39, 0.7)';
-      ctx.font = '500 14px system-ui, -apple-system, sans-serif';
-      ctx.fillText(`${pageIndex + 1} / ${pages.length}`, W / 2, H - 96);
+    if (pages && pages.length > 1) {
+      ctx.fillStyle = 'rgba(201, 162, 39, 0.9)';
+      ctx.font = '600 13px system-ui, -apple-system, sans-serif';
+      ctx.fillText(`Text ${pageIndex + 1} / ${pages.length}`, W / 2, H - 68);
     }
   }
 
@@ -311,9 +370,9 @@
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.font = 'italic 400 26px Georgia, serif';
-    const pages = splitIntoPages(ctx, opts.verses || [], W - 144, 16);
-    // For still image, put as much as fits on page 0 (or multi-page not needed)
+    const verses = opts.verses || [];
+    ctx.font = '500 24px Georgia, serif';
+    const pages = splitIntoPages(ctx, verses, W - 72 - 56, 18);
     drawFrame(ctx, {
       reference: opts.reference,
       translation: opts.translation,
@@ -321,7 +380,8 @@
       pageIndex: 0,
       progress: 1,
       siteUrl: opts.siteUrl || 'thewordincontext.org',
-      brand
+      brand,
+      rawVerses: verses
     });
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('Could not create share image');
@@ -393,13 +453,21 @@
       throw new Error('Canvas unavailable');
     }
 
-    ctx.font = 'italic 400 26px Georgia, serif';
-    const pages = splitIntoPages(ctx, verses || [], W - 144, 14);
+    const verseList = verses || [];
+    ctx.font = '500 24px Georgia, serif';
+    // Slightly fewer lines per page so text stays large and readable in video
+    const pages = splitIntoPages(ctx, verseList, W - 72 - 56, 12);
+    // Hold each text page long enough to read (~min 3s each) while still fitting audio length
+    const pageHold = pages.length > 1
+      ? Math.max(3, duration / pages.length)
+      : duration;
 
     const drawAt = (progress) => {
-      const pageIndex = pages.length <= 1
-        ? 0
-        : Math.min(pages.length - 1, Math.floor(Math.max(0, Math.min(0.999, progress)) * pages.length));
+      const elapsed = progress * duration;
+      let pageIndex = 0;
+      if (pages.length > 1) {
+        pageIndex = Math.min(pages.length - 1, Math.floor(elapsed / pageHold));
+      }
       drawFrame(ctx, {
         reference,
         translation,
@@ -407,15 +475,17 @@
         pageIndex,
         progress,
         siteUrl,
-        brand
+        brand,
+        rawVerses: verseList
       });
     };
 
-    // Warm up frames before capture
+    // Warm up frames with FULL text painted before capture starts
     drawAt(0);
-    await wait(50);
+    await wait(80);
     drawAt(0);
-    await wait(50);
+    await wait(80);
+    drawAt(0);
 
     let stream;
     try {
