@@ -93,6 +93,22 @@
     </div>
 
     <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">AI content → Buffer (Bible Q&amp;A)</h3>
+      <p class="small">Generate FB/IG posts: honest study <strong>questions</strong> + short <strong>answers</strong> + free trial CTA. Use a separate Buffer brand from IA / Trail Tracker. Free Buffer: no first-comment; ~10 posts/channel.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <button type="button" class="btn" id="btn-content-status">Status / test</button>
+        <button type="button" class="btn" id="btn-content-smoke">Smoke (1 post)</button>
+        <button type="button" class="btn" id="btn-content-generate">Generate week</button>
+        <button type="button" class="btn" id="btn-content-publish">Publish queued</button>
+        <button type="button" class="btn gray" id="btn-content-export">Export pack</button>
+        <button type="button" class="btn gray" id="btn-content-copy">Copy status</button>
+      </div>
+      <textarea id="content-status" readonly placeholder="Status / errors…" style="width:100%; min-height:110px; padding:10px; font-size:13px; font-family:ui-monospace,monospace; border:1px solid #e8d9c2; border-radius:8px; background:#faf6ef;"></textarea>
+      <textarea id="content-pack" hidden placeholder="Export…" style="width:100%; min-height:120px; margin-top:8px; padding:10px; font-size:12px; font-family:ui-monospace,monospace; border:1px solid #e8d9c2; border-radius:8px;"></textarea>
+      <div id="content-msg" class="status"></div>
+    </div>
+
+    <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">Voice video (Bible reader share)</h3>
       <p class="small">Control narrated verse videos. Costs ~$15 per 1M characters on xAI TTS (usually a few cents per video). Chat still uses free device voices.</p>
       <div style="display:grid; gap:10px; max-width:520px;">
@@ -483,6 +499,127 @@
         if (wrap) wrap.style.display = preset.value === '__custom' ? 'block' : 'none';
       };
     }
+
+    // —— AI content → Buffer (Bible Q&A) ——
+    function setContentStatus(text) {
+      const el = document.getElementById('content-status');
+      if (el) el.value = text || '';
+    }
+    function setContentMsg(text, ok) {
+      const el = document.getElementById('content-msg');
+      if (!el) return;
+      el.textContent = text || '';
+      el.style.color = ok === false ? '#c94e4e' : (ok ? '#2d6a3e' : '');
+    }
+    async function contentApi(path, opts = {}) {
+      const res = await fetch(base + path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + adminToken,
+          ...(opts.headers || {}),
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.result?.error || ('HTTP ' + res.status));
+      return data;
+    }
+    document.getElementById('btn-content-status')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Loading…', true);
+        const st = await contentApi('/api/content/status');
+        const t = await contentApi('/api/content/buffer/test').catch((e) => ({ ok: false, error: e.message }));
+        const q = st.queue?.byStatus || {};
+        setContentStatus(
+          'Brand: ' + (st.brand?.name || '') + ' · format: Bible Q&A\n' +
+          'Networks: ' + ((st.brand?.networks || []).join(', ')) + '\n' +
+          'Buffer: ' + (st.bufferConfigured ? 'key set' : 'NO KEY') + '\n' +
+          'XAI: ' + (st.xaiConfigured ? 'yes' : 'no') + '\n' +
+          (st.buffer?.facebook ? 'FB: ' + st.buffer.facebook + '\n' : '') +
+          (st.buffer?.instagram ? 'IG: ' + st.buffer.instagram + '\n' : '') +
+          (st.buffer?.error ? 'Buffer err: ' + st.buffer.error + '\n' : '') +
+          'Test: ' + (t.ok ? 'OK' : (t.error || 'fail')) + '\n' +
+          'Queue: ' + (st.queue?.total || 0) +
+          (q.queued ? ' · ' + q.queued + ' queued' : '') +
+          (q.scheduled ? ' · ' + q.scheduled + ' scheduled' : '') +
+          (q.failed ? ' · ' + q.failed + ' failed' : '')
+        );
+        setContentMsg(t.ok ? 'Buffer ready' : (t.error || 'Check BUFFER_API_KEY'), !!t.ok);
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-smoke')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Smoke posting…', true);
+        setContentStatus('Smoke…');
+        const r = await contentApi('/api/content/buffer/smoke', { method: 'POST', body: '{}' });
+        setContentStatus(r.ok
+          ? ('Smoke OK ' + JSON.stringify(r.result?.externalIds || {}) + '\n' + (r.tip || ''))
+          : ('Smoke failed: ' + (r.result?.error || r.error || r.tip || '')));
+        setContentMsg(r.ok ? 'Smoke OK — check Buffer' : 'Smoke failed', !!r.ok);
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-generate')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Generating week (15–60s)…', true);
+        setContentStatus('Generating Q&A posts…');
+        const r = await contentApi('/api/content/generate', {
+          method: 'POST',
+          body: JSON.stringify({ days: 7, mode: 'replace' }),
+        });
+        setContentStatus(
+          'Created ' + (r.summary?.created || 0) + ' · pending ' + (r.summary?.pendingPublish || 0) + '\n' +
+          (r.tip || '') + '\n' + (r.warnings || []).slice(0, 6).join('\n')
+        );
+        setContentMsg(r.tip || ('Created ' + (r.summary?.created || 0)), true);
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-publish')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Publishing…', true);
+        setContentStatus('Publishing to Buffer…');
+        const r = await contentApi('/api/content/publish', { method: 'POST', body: '{}' });
+        const ok = r.summary?.ok ?? 0;
+        const fail = r.summary?.failed ?? 0;
+        setContentStatus(
+          'Publish via ' + r.publisher + ': ' + ok + ' ok, ' + fail + ' failed' +
+          (r.firstError ? '\n' + r.firstError : '')
+        );
+        setContentMsg(fail && !ok ? 'Publish failed' : ('Publish ' + ok + ' ok'), !(fail && !ok));
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-export')?.addEventListener('click', async () => {
+      try {
+        const r = await contentApi('/api/content/export');
+        const pack = document.getElementById('content-pack');
+        if (pack) { pack.hidden = false; pack.value = r.pack || ''; }
+        setContentStatus('Export ready · ' + (r.count || 0) + ' posts');
+        setContentMsg((r.count || 0) + ' posts in export box', true);
+      } catch (e) {
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-copy')?.addEventListener('click', async () => {
+      const text = document.getElementById('content-status')?.value ||
+        document.getElementById('content-pack')?.value || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        setContentMsg('Copied', true);
+      } catch {
+        setContentMsg('Select text and copy manually', false);
+      }
+    });
   };
 
 

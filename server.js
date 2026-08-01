@@ -2916,9 +2916,20 @@ app.get('/api/health', (req, res) => {
     xaiKeyLength: getXaiApiKey().length,
     hasSTT: false,
     model: XAI_MODEL,
-    deploy: process.env.RENDER_GIT_COMMIT || 'local'
+    deploy: process.env.RENDER_GIT_COMMIT || 'local',
+    contentEngine: true,
+    bufferConfigured: Boolean((process.env.BUFFER_API_KEY || '').trim()),
   });
 });
+
+// AI social content → Buffer (Bible Q&A). Admin JWT same as other /api/admin routes.
+try {
+  const { mountContentRoutes } = require('./content/routes');
+  mountContentRoutes(app, { requireAdmin });
+  console.log('[content] Bible Q&A content routes mounted');
+} catch (err) {
+  console.warn('[content] failed to mount content routes', err && err.message);
+}
 
 app.listen(PORT, () => {
   console.log(`\n📖 The Word in Context server running`);
@@ -2931,5 +2942,6 @@ app.listen(PORT, () => {
   console.log(`   Whop checkout: ${whopConfigured() ? 'configured' : 'NOT configured (set WHOP_CHECKOUT_URL_MONTHLY + WHOP_CHECKOUT_URL_YEARLY)'}`);
   console.log(`   Whop webhook secret: ${process.env.WHOP_WEBHOOK_SECRET ? 'set' : 'missing (add WHOP_WEBHOOK_SECRET for membership activation)'}`);
   console.log(`   Stripe (legacy): ${stripeConfigured() ? 'still configured' : 'off'}`);
+  console.log(`   Content Buffer: ${process.env.BUFFER_API_KEY ? 'key set' : 'BUFFER_API_KEY missing'}`);
   console.log(`   App base URL: ${APP_BASE_URL}\n`);
 });
