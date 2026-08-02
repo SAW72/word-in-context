@@ -96,6 +96,53 @@ function removePostsByIds(ids) {
   saveQueue(q);
 }
 
+/**
+ * Re-queue recent posts for a single network (e.g. Instagram after reconnect).
+ * Does not re-post to Facebook.
+ */
+function requeuePostsForNetworks(opts = {}) {
+  const networks = Array.isArray(opts.networks) && opts.networks.length
+    ? opts.networks
+    : ['instagram'];
+  const limit = Math.max(1, Math.min(Number(opts.limit) || 14, 30));
+  const from = new Set(
+    opts.fromStatuses || ['scheduled', 'posted', 'failed', 'queued']
+  );
+  const q = loadQueue();
+  const candidates = q.posts
+    .filter((p) => from.has(p.status))
+    .sort((a, b) => (b.scheduledAt || '').localeCompare(a.scheduledAt || ''))
+    .slice(0, limit);
+
+  const base = Date.now() + 25 * 60_000;
+  const requeued = [];
+  let skipped = 0;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const p = candidates[i];
+    const idx = q.posts.findIndex((x) => x.id === p.id);
+    if (idx < 0) {
+      skipped += 1;
+      continue;
+    }
+    const due = new Date(base + i * 60 * 60_000).toISOString();
+    q.posts[idx] = {
+      ...q.posts[idx],
+      status: 'queued',
+      networks: [...networks],
+      scheduledAt: due,
+      error: undefined,
+      externalIds: undefined,
+      publishedAt: undefined,
+      publisher: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    requeued.push(q.posts[idx]);
+  }
+  if (requeued.length) saveQueue(q);
+  return { requeued, skipped };
+}
+
 function nextPillar(brand) {
   const q = loadQueue();
   const idx = q.pillarCursor || 0;
@@ -121,6 +168,7 @@ module.exports = {
   upsertPosts,
   updatePost,
   removePostsByIds,
+  requeuePostsForNetworks,
   nextPillar,
   nextImage,
   newId,

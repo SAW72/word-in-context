@@ -5,7 +5,7 @@
 const path = require('path');
 const fs = require('fs');
 const { CONTENT_BRAND, PUBLIC_URL } = require('./brand');
-const { listPosts, loadQueue } = require('./queue');
+const { listPosts, loadQueue, requeuePostsForNetworks } = require('./queue');
 const { generatePosts, buildCopyPack, countByStatus } = require('./generator');
 const {
   isConfigured,
@@ -186,6 +186,39 @@ function mountContentRoutes(app, { requireAdmin }) {
       ['queued', 'failed', 'draft', 'scheduled'].includes(p.status)
     );
     res.json({ count: posts.length, pack: buildCopyPack(posts) });
+  });
+
+  /**
+   * After Instagram reconnect: re-queue recent posts for Instagram only
+   * (does not re-post to Facebook). Then tap Publish queued.
+   */
+  app.post('/api/content/requeue-instagram', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const limit = Math.min(Number(req.body?.limit) || 14, 30);
+      const { requeued, skipped } = requeuePostsForNetworks({
+        networks: ['instagram'],
+        limit,
+      });
+      res.json({
+        ok: true,
+        requeued: requeued.length,
+        skipped,
+        posts: requeued.map((p) => ({
+          id: p.id,
+          targetDate: p.targetDate,
+          scheduledAt: p.scheduledAt,
+          networks: p.networks,
+          status: p.status,
+        })),
+        tip:
+          requeued.length > 0
+            ? 'Next: reconnect Instagram in Buffer if needed, then tap Publish queued. These go to Instagram only (not Facebook).'
+            : 'No recent posts found to requeue. Generate week first, then try again.',
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post('/api/content/publish', (req, res) => {

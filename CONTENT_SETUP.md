@@ -48,10 +48,13 @@ Free plan: no first-comment field; ~10 scheduled posts/channel.
    - Status / test  
    - Smoke (1 post)  
    - Generate week  
+   - **Requeue Instagram only** (after IG disconnect — does not re-post Facebook)  
    - Publish queued  
    - Export pack / Copy  
 
 Images: `https://www.thewordincontext.org/content-media/share-bg-vertical.jpg`
+
+If Instagram was disconnected and Buffer wiped the IG queue: reconnect IG → **Requeue Instagram only** → **Publish queued**.
 
 ---
 
@@ -79,5 +82,6 @@ CTA + thewordincontext.org/app
 | GET | `/api/content/buffer/test` |
 | POST | `/api/content/buffer/smoke` |
 | POST | `/api/content/generate` |
+| POST | `/api/content/requeue-instagram` `{ limit? }` |
 | POST | `/api/content/publish` |
 | GET | `/api/content/export` |

@@ -99,6 +99,7 @@
         <button type="button" class="btn" id="btn-content-status">Status / test</button>
         <button type="button" class="btn" id="btn-content-smoke">Smoke (1 post)</button>
         <button type="button" class="btn" id="btn-content-generate">Generate week</button>
+        <button type="button" class="btn gray" id="btn-content-requeue-ig">Requeue Instagram only</button>
         <button type="button" class="btn" id="btn-content-publish">Publish queued</button>
         <button type="button" class="btn gray" id="btn-content-export">Export pack</button>
         <button type="button" class="btn gray" id="btn-content-copy">Copy status</button>
@@ -577,6 +578,29 @@
           (r.tip || '') + '\n' + (r.warnings || []).slice(0, 6).join('\n')
         );
         setContentMsg(r.tip || ('Created ' + (r.summary?.created || 0)), true);
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-requeue-ig')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Requeueing for Instagram only…', true);
+        setContentStatus('Requeue Instagram only…');
+        const r = await contentApi('/api/content/requeue-instagram', {
+          method: 'POST',
+          body: JSON.stringify({ limit: 14 }),
+        });
+        setContentStatus(
+          (r.tip || ('Requeued ' + (r.requeued || 0) + ' posts for Instagram only')) +
+          (r.skipped ? '\n' + r.skipped + ' skipped' : '')
+        );
+        setContentMsg(
+          r.requeued > 0
+            ? r.requeued + ' posts → Instagram only. Next: Publish queued.'
+            : (r.tip || 'Nothing to requeue — Generate week first.'),
+          r.requeued > 0
+        );
       } catch (e) {
         setContentStatus(String(e.message));
         setContentMsg(e.message, false);
