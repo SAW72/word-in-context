@@ -98,10 +98,10 @@ const CONTENT_BRAND = {
   preferredHour: Number(process.env.CONTENT_PREFERRED_HOUR || 9),
   timezone: process.env.CONTENT_TIMEZONE || 'America/New_York',
   networks: (() => {
-    const allowed = new Set(['facebook', 'instagram', 'linkedin', 'x']);
-    const nets = envList('CONTENT_NETWORKS', 'facebook,instagram').filter((n) =>
-      allowed.has(n)
-    );
+    const allowed = new Set(['facebook', 'instagram', 'linkedin', 'x', 'tiktok']);
+    const nets = envList('CONTENT_NETWORKS', 'facebook,instagram')
+      .map((s) => (s === 'twitter' ? 'x' : s))
+      .filter((n) => allowed.has(n));
     return nets.length ? nets : ['facebook', 'instagram'];
   })(),
 };

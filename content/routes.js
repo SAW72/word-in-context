@@ -102,6 +102,7 @@ function mountContentRoutes(app, { requireAdmin }) {
             ...(health.facebook ? ['facebook'] : []),
             ...(health.instagram ? ['instagram'] : []),
             ...(health.x ? ['x'] : []),
+            ...(health.tiktok ? ['tiktok'] : []),
           ],
           caption:
             'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments. Reading the surrounding passage protects us from slogan-theology.\n\n(Study aid — open the text yourself.)\n\nTry The Word in Context: voice-first Scripture study.\n' +

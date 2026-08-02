@@ -12,13 +12,15 @@ Bible **Q&A** social posts (question + short study answer + trial CTA), schedule
 BUFFER_API_KEY=...                    # Buffer personal key (WIC brand only)
 XAI_API_KEY=...                       # already used by the app
 SHARE_SITE_URL=https://www.thewordincontext.org
-# Free Buffer = 3 channels max. FB + IG + X uses all three.
+# Free Buffer = 3 channels max. Pick three, e.g. FB+IG+X or FB+IG+TikTok.
 CONTENT_NETWORKS=facebook,instagram,x
+# Or: CONTENT_NETWORKS=facebook,instagram,tiktok
 # Free queue tight? CONTENT_NETWORKS=facebook
 # Optional pin if auto-match fails:
 # BUFFER_CHANNEL_FACEBOOK=...
 # BUFFER_CHANNEL_INSTAGRAM=...
 # BUFFER_CHANNEL_X=...
+# BUFFER_CHANNEL_TIKTOK=...
 CONTENT_TIMEZONE=America/New_York
 ADMIN_PASSWORD=...                    # already used for /admin
 ```

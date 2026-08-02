@@ -77,6 +77,7 @@ function matchChannels(channels, networks) {
     instagram: (process.env.BUFFER_CHANNEL_INSTAGRAM || '').trim(),
     x: (process.env.BUFFER_CHANNEL_X || process.env.BUFFER_CHANNEL_TWITTER || '').trim(),
     twitter: (process.env.BUFFER_CHANNEL_X || process.env.BUFFER_CHANNEL_TWITTER || '').trim(),
+    tiktok: (process.env.BUFFER_CHANNEL_TIKTOK || '').trim(),
   };
   const active = channels.filter((c) => !c.isDisconnected);
   const out = [];
@@ -92,6 +93,7 @@ function matchChannels(channels, networks) {
       if (net === 'linkedin') return c.service === 'linkedin';
       // Buffer service id for X is "twitter"
       if (net === 'x' || net === 'twitter') return c.service === 'twitter';
+      if (net === 'tiktok') return c.service === 'tiktok';
       return false;
     });
     if (hit) out.push({ network: net === 'twitter' ? 'x' : net, channelId: hit.id });
@@ -114,6 +116,7 @@ function metadataForNetwork(network) {
   }
   // Buffer uses service "twitter" for X
   if (n === 'x' || n === 'twitter') return { twitter: {} };
+  if (n === 'tiktok' || n === 'tt') return { tiktok: {} };
   return {};
 }
 
@@ -192,10 +195,15 @@ async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) 
   const dueAt = ensureFutureDueAt(scheduledAt);
   const net = (network || '').toLowerCase();
   const isX = net === 'x' || net === 'twitter';
+  const isTikTok = net === 'tiktok' || net === 'tt';
   const baseText = fitCaptionForNetwork(text, net);
   const metadata = metadataForNetwork(net);
-  const requireImage = net === 'instagram';
-  if (requireImage && !imageUrl) throw new Error('Instagram requires image URL');
+  const requireImage = net === 'instagram' || isTikTok;
+  if (requireImage && !imageUrl) {
+    throw new Error(
+      isTikTok ? 'TikTok requires image/video URL' : 'Instagram requires image URL'
+    );
+  }
 
   const attempts = [];
   const build = (mode, withImage, due) => {
@@ -234,6 +242,10 @@ async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) 
     if (dueAt) push('scheduled+text', 'customScheduled', false, dueAt);
     push('queue+image', 'addToQueue', true);
     push('shareNext+text', 'shareNext', false);
+  } else if (isTikTok) {
+    push('queue+image', 'addToQueue', true);
+    if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
+    push('shareNext+image', 'shareNext', true);
   } else {
     push('queue+image', 'addToQueue', true);
     if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
@@ -262,6 +274,7 @@ async function bufferHealth() {
     const fb = channels.find((c) => c.service === 'facebook' && !c.isDisconnected);
     const ig = channels.find((c) => c.service === 'instagram' && !c.isDisconnected);
     const tw = channels.find((c) => c.service === 'twitter' && !c.isDisconnected);
+    const tt = channels.find((c) => c.service === 'tiktok' && !c.isDisconnected);
     let networks = ['facebook', 'instagram'];
     try {
       networks = require('./brand').CONTENT_BRAND.networks || networks;
@@ -277,6 +290,7 @@ async function bufferHealth() {
       instagram: ig ? `${ig.name} (${ig.id})` : undefined,
       x: tw ? `${tw.name} (${tw.id})` : undefined,
       twitter: tw ? `${tw.name} (${tw.id})` : undefined,
+      tiktok: tt ? `${tt.name} (${tt.id})` : undefined,
     };
   } catch (e) {
     return { configured: true, channels: [], error: e.message };
