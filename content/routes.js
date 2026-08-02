@@ -73,13 +73,13 @@ function mountContentRoutes(app, { requireAdmin }) {
           return res.status(400).json({ ok: false, error: 'BUFFER_API_KEY not set' });
         }
         const health = await bufferHealth();
-        const ready = Boolean(health.facebook || health.instagram);
+        const ready = Boolean(health.facebook || health.instagram || health.x);
         res.json({
           ok: !health.error && ready,
           ...health,
           next: ready
-            ? 'Ready — Generate week → Publish queued'
-            : 'Connect FB/IG in Buffer first',
+            ? 'Ready — Generate week → Publish queued (set CONTENT_NETWORKS=facebook,instagram,x for X)'
+            : 'Connect FB/IG/X in Buffer first',
         });
       } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
@@ -101,6 +101,7 @@ function mountContentRoutes(app, { requireAdmin }) {
           networks: [
             ...(health.facebook ? ['facebook'] : []),
             ...(health.instagram ? ['instagram'] : []),
+            ...(health.x ? ['x'] : []),
           ],
           caption:
             'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments. Reading the surrounding passage protects us from slogan-theology.\n\n(Study aid — open the text yourself.)\n\nTry The Word in Context: voice-first Scripture study.\n' +
@@ -116,7 +117,7 @@ function mountContentRoutes(app, { requireAdmin }) {
           scheduledAt: new Date(Date.now() + 3600_000).toISOString(),
         };
         if (!smoke.networks.length) {
-          return res.status(400).json({ ok: false, error: 'No FB/IG channels', health });
+          return res.status(400).json({ ok: false, error: 'No FB/IG/X channels', health });
         }
         const result = await publishPost(smoke);
         res.json({

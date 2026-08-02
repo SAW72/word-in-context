@@ -75,20 +75,26 @@ function matchChannels(channels, networks) {
   const envMap = {
     facebook: (process.env.BUFFER_CHANNEL_FACEBOOK || '').trim(),
     instagram: (process.env.BUFFER_CHANNEL_INSTAGRAM || '').trim(),
+    x: (process.env.BUFFER_CHANNEL_X || process.env.BUFFER_CHANNEL_TWITTER || '').trim(),
+    twitter: (process.env.BUFFER_CHANNEL_X || process.env.BUFFER_CHANNEL_TWITTER || '').trim(),
   };
   const active = channels.filter((c) => !c.isDisconnected);
   const out = [];
   for (const net of networks) {
-    if (envMap[net]) {
-      out.push({ network: net, channelId: envMap[net] });
+    const key = net === 'twitter' ? 'x' : net;
+    if (envMap[key] || envMap[net]) {
+      out.push({ network: key === 'twitter' ? 'x' : key, channelId: envMap[key] || envMap[net] });
       continue;
     }
     const hit = active.find((c) => {
       if (net === 'facebook') return c.service === 'facebook';
       if (net === 'instagram') return c.service === 'instagram';
+      if (net === 'linkedin') return c.service === 'linkedin';
+      // Buffer service id for X is "twitter"
+      if (net === 'x' || net === 'twitter') return c.service === 'twitter';
       return false;
     });
-    if (hit) out.push({ network: net, channelId: hit.id });
+    if (hit) out.push({ network: net === 'twitter' ? 'x' : net, channelId: hit.id });
   }
   return out;
 }
@@ -102,11 +108,49 @@ function ensureFutureDueAt(iso) {
 
 function metadataForNetwork(network) {
   const n = (network || '').toLowerCase();
-  if (n === 'facebook') return { facebook: { type: 'post' } };
-  if (n === 'instagram') {
+  if (n === 'facebook' || n === 'fb') return { facebook: { type: 'post' } };
+  if (n === 'instagram' || n === 'ig') {
     return { instagram: { type: 'post', shouldShareToFeed: true } };
   }
+  // Buffer uses service "twitter" for X
+  if (n === 'x' || n === 'twitter') return { twitter: {} };
   return {};
+}
+
+/** Free X: 280 chars — keep a little headroom */
+function fitCaptionForNetwork(text, network) {
+  const n = (network || '').toLowerCase();
+  const t = String(text || '').trim();
+  if (n === 'x' || n === 'twitter') {
+    const max = 270;
+    if (t.length <= max) return t;
+    const cut = t.slice(0, max - 1);
+    const breakAt = Math.max(
+      cut.lastIndexOf('\n'),
+      cut.lastIndexOf('. '),
+      cut.lastIndexOf('! '),
+      cut.lastIndexOf('? ')
+    );
+    const body = (breakAt > 80 ? cut.slice(0, breakAt + 1) : cut).trim();
+    return `${body}…`;
+  }
+  return t.slice(0, 2200);
+}
+
+/** Prefer live CONTENT_NETWORKS so adding x works without regenerating every post */
+function resolvePublishNetworks(post) {
+  try {
+    const { CONTENT_BRAND } = require('./brand');
+    if (CONTENT_BRAND?.networks?.length) return [...CONTENT_BRAND.networks];
+  } catch {
+    /* ignore */
+  }
+  const fromEnv = (process.env.CONTENT_NETWORKS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (fromEnv.length) return fromEnv;
+  return post.networks?.length ? [...post.networks] : ['facebook', 'instagram'];
 }
 
 function resolveImageUrl(post) {
@@ -146,9 +190,11 @@ async function createPostOnce(input) {
 
 async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) {
   const dueAt = ensureFutureDueAt(scheduledAt);
-  const baseText = String(text || '').slice(0, 2200);
-  const metadata = metadataForNetwork(network);
-  const requireImage = network === 'instagram';
+  const net = (network || '').toLowerCase();
+  const isX = net === 'x' || net === 'twitter';
+  const baseText = fitCaptionForNetwork(text, net);
+  const metadata = metadataForNetwork(net);
+  const requireImage = net === 'instagram';
   if (requireImage && !imageUrl) throw new Error('Instagram requires image URL');
 
   const attempts = [];
@@ -171,8 +217,8 @@ async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) 
             },
           ]
         : [],
-      metadata,
     };
+    if (Object.keys(metadata).length) input.metadata = metadata;
     if (due && mode === 'customScheduled') input.dueAt = due;
     return input;
   };
@@ -182,10 +228,18 @@ async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) 
     if (input) attempts.push({ label, input });
   };
 
-  push('queue+image', 'addToQueue', true);
-  if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
-  if (!requireImage) push('queue+text', 'addToQueue', false);
-  push('shareNext+image', 'shareNext', true);
+  // X: text-first (280 char), then optional image
+  if (isX) {
+    push('queue+text', 'addToQueue', false);
+    if (dueAt) push('scheduled+text', 'customScheduled', false, dueAt);
+    push('queue+image', 'addToQueue', true);
+    push('shareNext+text', 'shareNext', false);
+  } else {
+    push('queue+image', 'addToQueue', true);
+    if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
+    if (!requireImage) push('queue+text', 'addToQueue', false);
+    push('shareNext+image', 'shareNext', true);
+  }
 
   const errors = [];
   for (const a of attempts) {
@@ -207,12 +261,22 @@ async function bufferHealth() {
     const channels = await listAllChannels();
     const fb = channels.find((c) => c.service === 'facebook' && !c.isDisconnected);
     const ig = channels.find((c) => c.service === 'instagram' && !c.isDisconnected);
+    const tw = channels.find((c) => c.service === 'twitter' && !c.isDisconnected);
+    let networks = ['facebook', 'instagram'];
+    try {
+      networks = require('./brand').CONTENT_BRAND.networks || networks;
+    } catch {
+      /* ignore */
+    }
     return {
       configured: true,
       organizations,
       channels,
+      networksWanted: networks,
       facebook: fb ? `${fb.name} (${fb.id})` : undefined,
       instagram: ig ? `${ig.name} (${ig.id})` : undefined,
+      x: tw ? `${tw.name} (${tw.id})` : undefined,
+      twitter: tw ? `${tw.name} (${tw.id})` : undefined,
     };
   } catch (e) {
     return { configured: true, channels: [], error: e.message };
@@ -225,14 +289,18 @@ async function publishPost(post) {
   }
   try {
     const channels = await listAllChannels();
-    const targets = matchChannels(channels, post.networks || ['facebook', 'instagram']);
+    const networks = resolvePublishNetworks(post);
+    const targets = matchChannels(channels, networks);
     if (!targets.length) {
       return {
         ok: false,
         publisher: 'buffer',
         postId: post.id,
-        error: 'No FB/IG channels matched in Buffer',
-        detail: channels.map((c) => `${c.service}:${c.name}`).join(' | '),
+        error:
+          'No Buffer channels matched. Connect FB/IG/X in Buffer, set CONTENT_NETWORKS=facebook,instagram,x, or BUFFER_CHANNEL_* ids.',
+        detail: `Wanted: ${networks.join(', ')}. Found: ${channels
+          .map((c) => `${c.service}:${c.name}`)
+          .join(' | ')}`,
       };
     }
 
@@ -244,17 +312,30 @@ async function publishPost(post) {
     );
 
     for (const t of ordered) {
+      const isX = t.network === 'x' || t.network === 'twitter';
       let text = (
         t.network === 'instagram'
           ? post.captionIg || post.caption
           : post.caption
       || '').trim();
       const tags = (post.hashtags || []).filter(Boolean);
+      // X: skip dumping all hashtags (burns the 280 budget) — keep 1–2 short ones max
       if (tags.length) {
-        const already =
-          tags.filter((h) => text.toLowerCase().includes(h.toLowerCase()))
-            .length >= Math.min(2, tags.length);
-        if (!already) text = `${text}\n\n${tags.join(' ')}`;
+        if (isX) {
+          const short = tags.slice(0, 2).join(' ');
+          if (short && !text.toLowerCase().includes(tags[0].toLowerCase())) {
+            text = fitCaptionForNetwork(`${text}\n\n${short}`, 'x');
+          } else {
+            text = fitCaptionForNetwork(text, 'x');
+          }
+        } else {
+          const already =
+            tags.filter((h) => text.toLowerCase().includes(h.toLowerCase()))
+              .length >= Math.min(2, tags.length);
+          if (!already) text = `${text}\n\n${tags.join(' ')}`;
+        }
+      } else if (isX) {
+        text = fitCaptionForNetwork(text, 'x');
       }
       try {
         const id = await createOnChannel(
