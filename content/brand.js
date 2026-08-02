@@ -44,10 +44,10 @@ const CONTENT_BRAND = {
     '#BibleContext',
   ],
   ctaLines: [
-    'Ask deeper questions in The Word in Context — free trial.',
-    'Voice-first Scripture study: thewordincontext.org',
-    'Study the text in context — open the app.',
-    'Try The Word in Context: questions, context, original-language insight.',
+    `Ask deeper questions in The Word in Context — free trial. ${PUBLIC_URL}`,
+    `Voice-first Scripture study: ${PUBLIC_URL}`,
+    `Study the text in context — ${PUBLIC_URL}/app`,
+    `Try The Word in Context: ${PUBLIC_URL}`,
   ],
   /** Pillars are Q&A themes */
   pillars: [

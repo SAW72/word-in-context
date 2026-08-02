@@ -332,6 +332,21 @@ async function publishPost(post) {
           ? post.captionIg || post.caption
           : post.caption
       || '').trim();
+      try {
+        const { CONTENT_BRAND } = require('./brand');
+        const site = (CONTENT_BRAND.website || CONTENT_BRAND.appUrl || '').replace(
+          /\/$/,
+          ''
+        );
+        if (site) {
+          const host = site.replace(/^https?:\/\//i, '').toLowerCase();
+          if (!text.toLowerCase().includes(host)) {
+            text = `${text}\n\n${site}`;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
       const tags = (post.hashtags || []).filter(Boolean);
       // X: skip dumping all hashtags (burns the 280 budget) — keep 1–2 short ones max
       if (tags.length) {

@@ -38,20 +38,39 @@ function scheduledAtForDay(day, hour, tz) {
   return new Date(utcMs).toISOString();
 }
 
+function brandLink(brand) {
+  return (brand.website || brand.appUrl || '').replace(/\/$/, '');
+}
+
+function ensureWebsiteInCaption(caption, website) {
+  const url = (website || '').replace(/\/$/, '').trim();
+  if (!url) return (caption || '').trim();
+  const host = url.replace(/^https?:\/\//i, '').toLowerCase();
+  const body = (caption || '').trim();
+  const lower = body.toLowerCase();
+  if (lower.includes(host) || lower.includes(url.toLowerCase())) {
+    return body;
+  }
+  return `${body}\n\n${url}`;
+}
+
 function demoCopy(brand, pillarLabel, angle) {
   const cta = brand.ctaLines[Math.floor(Math.random() * brand.ctaLines.length)];
-  const caption = [
-    `Q: ${pillarLabel}?`,
-    '',
-    `A: ${angle}`,
-    '',
-    '(Study aid — read the passage yourself in context.)',
-    '',
-    brand.tagline,
-    '',
-    cta,
-    brand.appUrl,
-  ].join('\n');
+  const link = brandLink(brand);
+  const caption = ensureWebsiteInCaption(
+    [
+      `Q: ${pillarLabel}?`,
+      '',
+      `A: ${angle}`,
+      '',
+      '(Study aid — read the passage yourself in context.)',
+      '',
+      brand.tagline,
+      '',
+      cta,
+    ].join('\n'),
+    link
+  );
   return {
     caption,
     captionIg: caption.slice(0, 2100),
@@ -92,6 +111,7 @@ async function generateWeekCopyBatch(brand, slots) {
   );
   const model = process.env.XAI_MODEL || 'grok-4.3';
 
+  const link = brandLink(brand);
   const system = `You write short social posts for ${brand.productName}, a voice-first Bible study app.
 Voice: ${brand.voice}
 
@@ -99,9 +119,10 @@ FORMAT (required for every post):
 1) First line: Q: <honest study question people actually ask>
 2) Then A: <2–5 short sentences>. Prefer real references (e.g. John 1:1–14) when you cite.
 3) One soft line: study aid / read the passage yourself.
-4) End with CTA + app URL.
+4) End with CTA + the full website URL on its own line: ${link}
 
 Rules:
+- REQUIRED: every caption AND captionIg MUST include ${link}
 - Do NOT invent exact Greek/Hebrew spellings if unsure; paraphrase carefully.
 - No denomi-bait, no politics, no rage content.
 - No hashtags in the caption body (we append them).
@@ -112,6 +133,7 @@ posts length MUST equal ${slots.length} in order.`;
 
   const user = `Brand: ${brand.name}
 Tagline: ${brand.tagline}
+Website (REQUIRED in every post): ${link}
 App: ${brand.appUrl}
 Hashtag pool: ${brand.hashtags.join(', ')}
 CTA pool: ${brand.ctaLines.join(' | ')}
@@ -229,6 +251,7 @@ async function generatePosts({ days = 7, mode = 'replace' } = {}) {
 
   const copies = await generateWeekCopyBatch(brand, slots);
   const now = new Date().toISOString();
+  const link = brandLink(brand);
   const created = slots.map((slot, i) => {
     const copy =
       copies[i] || demoCopy(brand, slot.pillar.label, slot.pillar.angle);
@@ -236,6 +259,8 @@ async function generatePosts({ days = 7, mode = 'replace' } = {}) {
       ? copy.hashtags
       : brand.hashtags.slice(0, 6);
     const cta = copy.cta || brand.ctaLines[0];
+    const rawCap = (copy.caption || '').trim();
+    const rawIg = (copy.captionIg || copy.caption || '').trim() || rawCap;
     return {
       id: newId(),
       brandId: brand.id,
@@ -248,8 +273,8 @@ async function generatePosts({ days = 7, mode = 'replace' } = {}) {
         brand.timezone
       ),
       networks: [...brand.networks],
-      caption: (copy.caption || '').trim(),
-      captionIg: (copy.captionIg || copy.caption || '').trim(),
+      caption: ensureWebsiteInCaption(rawCap, link),
+      captionIg: ensureWebsiteInCaption(rawIg, link),
       question: copy.question || slot.pillar.label,
       hashtags,
       imageKey: slot.imageKey,
