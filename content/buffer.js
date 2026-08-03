@@ -191,66 +191,105 @@ async function createPostOnce(input) {
   }
 }
 
-async function createOnChannel(channelId, text, scheduledAt, imageUrl, network) {
+async function createOnChannel(
+  channelId,
+  text,
+  scheduledAt,
+  imageUrl,
+  network,
+  videoUrl
+) {
   const dueAt = ensureFutureDueAt(scheduledAt);
   const net = (network || '').toLowerCase();
   const isX = net === 'x' || net === 'twitter';
   const isTikTok = net === 'tiktok' || net === 'tt';
   const baseText = fitCaptionForNetwork(text, net);
   const metadata = metadataForNetwork(net);
-  const requireImage = net === 'instagram' || isTikTok;
-  if (requireImage && !imageUrl) {
+  const hasVideo = Boolean(videoUrl);
+  const requireMedia = net === 'instagram' || isTikTok;
+  if (requireMedia && !imageUrl && !hasVideo) {
     throw new Error(
-      isTikTok ? 'TikTok requires image/video URL' : 'Instagram requires image URL'
+      isTikTok
+        ? 'TikTok requires image/video URL (Generate videos first)'
+        : 'Instagram requires image URL'
     );
   }
 
   const attempts = [];
-  const build = (mode, withImage, due) => {
-    const useImage = withImage && imageUrl;
-    if (requireImage && !useImage) return null;
+  const build = (mode, opts) => {
+    const useVideo = opts.withVideo && hasVideo;
+    const useImage = !useVideo && opts.withImage && Boolean(imageUrl);
+    if (requireMedia && !useVideo && !useImage) return null;
+    const assets = [];
+    if (useVideo) {
+      assets.push({
+        video: {
+          url: videoUrl,
+          metadata: { thumbnailOffset: 500 },
+        },
+      });
+    } else if (useImage) {
+      assets.push({
+        image: {
+          url: imageUrl,
+          metadata: { altText: 'The Word in Context' },
+        },
+      });
+    }
     const input = {
       channelId,
       text: baseText,
       mode,
       schedulingType: 'automatic',
       needsApproval: false,
-      assets: useImage
-        ? [
-            {
-              image: {
-                url: imageUrl,
-                metadata: { altText: 'The Word in Context' },
-              },
-            },
-          ]
-        : [],
+      assets,
     };
     if (Object.keys(metadata).length) input.metadata = metadata;
-    if (due && mode === 'customScheduled') input.dueAt = due;
+    if (opts.due && mode === 'customScheduled') input.dueAt = opts.due;
     return input;
   };
 
-  const push = (label, mode, withImage, due) => {
-    const input = build(mode, withImage, due);
+  const push = (label, mode, opts) => {
+    const input = build(mode, opts);
     if (input) attempts.push({ label, input });
   };
 
-  // X: text-first (280 char), then optional image
   if (isX) {
-    push('queue+text', 'addToQueue', false);
-    if (dueAt) push('scheduled+text', 'customScheduled', false, dueAt);
-    push('queue+image', 'addToQueue', true);
-    push('shareNext+text', 'shareNext', false);
+    push('queue+text', 'addToQueue', { withImage: false, withVideo: false });
+    if (imageUrl) {
+      push('queue+image', 'addToQueue', { withImage: true, withVideo: false });
+    }
   } else if (isTikTok) {
-    push('queue+image', 'addToQueue', true);
-    if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
-    push('shareNext+image', 'shareNext', true);
+    if (hasVideo) {
+      push('queue+video', 'addToQueue', { withImage: false, withVideo: true });
+    }
+    push('queue+image', 'addToQueue', { withImage: true, withVideo: false });
   } else {
-    push('queue+image', 'addToQueue', true);
-    if (dueAt) push('scheduled+image', 'customScheduled', true, dueAt);
-    if (!requireImage) push('queue+text', 'addToQueue', false);
-    push('shareNext+image', 'shareNext', true);
+    if (hasVideo) {
+      push('queue+video', 'addToQueue', { withImage: false, withVideo: true });
+    }
+    push('queue+image', 'addToQueue', { withImage: true, withVideo: false });
+  }
+  if (dueAt && attempts.length < 3) {
+    if (isX) {
+      push('scheduled+text', 'customScheduled', {
+        withImage: false,
+        withVideo: false,
+        due: dueAt,
+      });
+    } else if (hasVideo) {
+      push('scheduled+video', 'customScheduled', {
+        withImage: false,
+        withVideo: true,
+        due: dueAt,
+      });
+    } else {
+      push('scheduled+image', 'customScheduled', {
+        withImage: true,
+        withVideo: false,
+        due: dueAt,
+      });
+    }
   }
 
   const errors = [];
@@ -319,6 +358,7 @@ async function publishPost(post) {
     }
 
     const imageUrl = resolveImageUrl(post);
+    const videoUrl = post.videoUrl || undefined;
     const externalIds = {};
     const errors = [];
     const ordered = [...targets].sort((a, b) =>
@@ -372,7 +412,8 @@ async function publishPost(post) {
           text,
           post.scheduledAt,
           imageUrl,
-          t.network
+          t.network,
+          videoUrl
         );
         externalIds[t.network] = id;
       } catch (e) {

@@ -13,23 +13,39 @@ const {
   publishPost,
   publishQueued,
 } = require('./buffer');
+const {
+  generateVideosForQueued,
+  contentVideoStatus,
+  videoDir,
+} = require('./video');
 
 /**
  * @param {import('express').Application} app
  * @param {{ requireAdmin: (req: any, res: any) => boolean }} deps
  */
 function mountContentRoutes(app, { requireAdmin }) {
+  const express = require('express');
   const mediaDirs = [
     path.join(__dirname, '..', 'public', 'icons'),
     path.join(__dirname, '..', 'public', 'content-media'),
   ];
   for (const dir of mediaDirs) {
     if (fs.existsSync(dir)) {
-      const express = require('express');
       app.use('/content-media', express.static(dir, { maxAge: '7d', index: false }));
       console.log(`[content] media → ${dir}`);
       break;
     }
+  }
+
+  try {
+    const vdir = videoDir();
+    app.use(
+      '/content-media/videos',
+      express.static(vdir, { maxAge: '1d', index: false })
+    );
+    console.log(`[content] videos → ${vdir}`);
+  } catch (e) {
+    console.warn('[content] video dir', e.message);
   }
 
   app.get('/api/content/status', (req, res) => {
@@ -37,6 +53,7 @@ function mountContentRoutes(app, { requireAdmin }) {
     void (async () => {
       try {
         const health = await bufferHealth();
+        const video = contentVideoStatus();
         res.json({
           brand: {
             id: CONTENT_BRAND.id,
@@ -51,11 +68,13 @@ function mountContentRoutes(app, { requireAdmin }) {
             total: loadQueue().posts.length,
             byStatus: countByStatus(),
           },
+          video,
           publicUrl: PUBLIC_URL,
           xaiConfigured: Boolean((process.env.XAI_API_KEY || '').trim()),
           tips: [
             'Separate Buffer FB/IG for The Word in Context (not IA or Trail Tracker).',
-            'BUFFER_API_KEY + XAI_API_KEY on Render. SHARE_SITE_URL for image URLs.',
+            'BUFFER_API_KEY + XAI_API_KEY on Render. SHARE_SITE_URL for image/video URLs.',
+            'Flow: Generate week → Generate videos → Publish queued (TikTok uses MP4).',
             'Posts are Q: question / A: short study answer + trial CTA.',
           ],
         });
@@ -221,6 +240,33 @@ function mountContentRoutes(app, { requireAdmin }) {
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  app.post('/api/content/generate-videos', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    void (async () => {
+      try {
+        const limit = Math.min(Number(req.body?.limit) || 7, 14);
+        const out = await generateVideosForQueued({ limit });
+        const ok = out.results.filter((r) => r.ok).length;
+        const failed = out.results.length - ok;
+        const video = contentVideoStatus();
+        res.json({
+          ok: ok > 0 || out.results.length === 0,
+          summary: { ok, failed, attempted: out.results.length },
+          results: out.results,
+          videoStatus: video,
+          tip:
+            out.results.length === 0
+              ? 'No posts need video (none queued, or all already have videoUrl). Generate week first.'
+              : ok
+                ? `${ok} reel(s) ready. Next: Publish queued (TikTok uses video).`
+                : out.results[0]?.error || 'Video generation failed',
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    })();
   });
 
   app.post('/api/content/publish', (req, res) => {

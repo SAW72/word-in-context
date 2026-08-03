@@ -54,7 +54,7 @@ Free plan: no first-comment field; ~10 scheduled posts/channel.
 3. **AI content → Buffer (Bible Q&A)**  
    - Status / test  
    - Smoke (1 post)  
-   - Generate week  
+   - Generate week → **Generate videos** → Publish  
    - **Requeue Instagram only** (after IG disconnect — does not re-post Facebook)  
    - Publish queued  
    - Export pack / Copy  

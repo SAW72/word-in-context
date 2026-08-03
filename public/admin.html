@@ -94,11 +94,13 @@
 
     <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">AI content → Buffer (Bible Q&amp;A)</h3>
-      <p class="small">Generate FB/IG posts: honest study <strong>questions</strong> + short <strong>answers</strong> + free trial CTA. Use a separate Buffer brand from IA / Trail Tracker. Free Buffer: no first-comment; ~10 posts/channel.</p>
+      <p class="small">Generate FB/IG/TikTok posts: study <strong>questions</strong> + short <strong>answers</strong> + free trial CTA. Separate Buffer brand from IA / Trail Tracker.
+        Flow: <strong>Generate week</strong> → <strong>Generate videos</strong> → <strong>Publish queued</strong>. Free Buffer: ~10 posts/channel.</p>
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <button type="button" class="btn" id="btn-content-status">Status / test</button>
         <button type="button" class="btn" id="btn-content-smoke">Smoke (1 post)</button>
         <button type="button" class="btn" id="btn-content-generate">Generate week</button>
+        <button type="button" class="btn" id="btn-content-videos">Generate videos (reels)</button>
         <button type="button" class="btn gray" id="btn-content-requeue-ig">Requeue Instagram only</button>
         <button type="button" class="btn" id="btn-content-publish">Publish queued</button>
         <button type="button" class="btn gray" id="btn-content-export">Export pack</button>
@@ -540,6 +542,9 @@
           (st.buffer?.instagram ? 'IG: ' + st.buffer.instagram + '\n' : '') +
           (st.buffer?.error ? 'Buffer err: ' + st.buffer.error + '\n' : '') +
           'Test: ' + (t.ok ? 'OK' : (t.error || 'fail')) + '\n' +
+          'Video ffmpeg: ' + (st.video?.ffmpeg ? 'yes' : 'NO') +
+          (st.video?.videoCount != null ? ' · files: ' + st.video.videoCount : '') +
+          (st.video?.note ? '\n' + st.video.note : '') + '\n' +
           'Queue: ' + (st.queue?.total || 0) +
           (q.queued ? ' · ' + q.queued + ' queued' : '') +
           (q.scheduled ? ' · ' + q.scheduled + ' scheduled' : '') +
@@ -578,6 +583,35 @@
           (r.tip || '') + '\n' + (r.warnings || []).slice(0, 6).join('\n')
         );
         setContentMsg(r.tip || ('Created ' + (r.summary?.created || 0)), true);
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-videos')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Building reels (voice + image)… keep tab open.', true);
+        setContentStatus('Generating videos… TTS + ffmpeg. Keep this open.');
+        const r = await contentApi('/api/content/generate-videos', {
+          method: 'POST',
+          body: JSON.stringify({ limit: 7 }),
+        });
+        const ok = r.summary?.ok ?? 0;
+        const fail = r.summary?.failed ?? 0;
+        setContentStatus(
+          (r.tip || ('Videos: ' + ok + ' ok, ' + fail + ' failed')) +
+          (r.videoStatus
+            ? '\nffmpeg: ' + r.videoStatus.ffmpeg + ' · files: ' + r.videoStatus.videoCount +
+              (r.videoStatus.note ? '\n' + r.videoStatus.note : '')
+            : '') +
+          (r.results || []).filter((x) => !x.ok).slice(0, 3).map((x) => '\n' + (x.error || '')).join('')
+        );
+        setContentMsg(
+          ok > 0
+            ? ok + ' reel(s) ready — next: Publish queued'
+            : (r.tip || r.error || 'No videos — Generate week first'),
+          ok > 0
+        );
       } catch (e) {
         setContentStatus(String(e.message));
         setContentMsg(e.message, false);
