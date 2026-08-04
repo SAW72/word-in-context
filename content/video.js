@@ -44,15 +44,28 @@ async function ffmpegHasDrawtext(ffmpeg) {
   return drawtextCached;
 }
 
+/**
+ * Low-memory reels for Render Starter (~512MB).
+ * 720x1280 + ultrafast + 1 thread keeps ffmpeg under OOM.
+ * Override: CONTENT_VIDEO_HEIGHT=1920 for full HD on larger plans.
+ */
+function reelSize() {
+  const h = Number(process.env.CONTENT_VIDEO_HEIGHT || 1280);
+  if (h >= 1800) return { w: 1080, h: 1920 };
+  return { w: 720, h: 1280 };
+}
+
 function baseVideoFilters() {
+  const { w, h } = reelSize();
   return [
-    'scale=1080:1920:force_original_aspect_ratio=increase',
-    'crop=1080:1920',
+    `scale=${w}:${h}:force_original_aspect_ratio=increase`,
+    `crop=${w}:${h}`,
     'eq=brightness=0.02:saturation=1.05',
   ].join(',');
 }
 
 async function runFfmpegReel(opts) {
+  // threads=1 + ultrafast: critical on 512MB so Node + ffmpeg don't OOM
   await execFileAsync(
     opts.ffmpeg,
     [
@@ -67,22 +80,40 @@ async function runFfmpegReel(opts) {
       opts.vf,
       '-c:v',
       'libx264',
+      '-preset',
+      'ultrafast',
       '-tune',
       'stillimage',
+      '-crf',
+      '28',
+      '-threads',
+      '1',
       '-pix_fmt',
       'yuv420p',
       '-c:a',
       'aac',
       '-b:a',
-      '128k',
+      '96k',
+      '-ac',
+      '1',
       '-shortest',
       '-movflags',
       '+faststart',
       opts.outPath,
     ],
-    { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }
+    {
+      timeout: 180_000,
+      maxBuffer: 2 * 1024 * 1024,
+      env: {
+        ...process.env,
+        OMP_NUM_THREADS: '1',
+      },
+    }
   );
 }
+
+/** Only one reel encode at a time (ffmpeg is heavy). */
+let videoBusy = false;
 
 function resolveDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
@@ -264,10 +295,16 @@ async function generateVideoForPost(post) {
     let usedOverlay = false;
 
     try {
-      if (canDraw && font) {
+      // Skip drawtext on small instances — overlay doubles peak RAM
+      const allowOverlay =
+        canDraw &&
+        font &&
+        process.env.CONTENT_VIDEO_OVERLAY !== '0' &&
+        Number(process.env.CONTENT_VIDEO_HEIGHT || 1280) >= 1800;
+      if (allowOverlay && font) {
         const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
         const textEsc = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-        const vfWithText = `${vfBase},drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:fontsize=46:fontcolor=white:borderw=3:bordercolor=black@0.85:line_spacing=10:x=(w-text_w)/2:y=h*0.70:box=1:boxcolor=black@0.45:boxborderw=16`;
+        const vfWithText = `${vfBase},drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:fontsize=36:fontcolor=white:borderw=2:bordercolor=black@0.85:line_spacing=8:x=(w-text_w)/2:y=h*0.70:box=1:boxcolor=black@0.45:boxborderw=12`;
         await runFfmpegReel({
           ffmpeg,
           imagePath,
@@ -335,11 +372,20 @@ async function generateVideoForPost(post) {
         .filter((f) => f.endsWith('.mp4'))
         .map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
         .sort((a, b) => b.t - a.t);
-      for (const old of files.slice(40)) {
+      // Keep only last 12 reels on disk (disk + inode + RAM pressure)
+      for (const old of files.slice(12)) {
         fs.unlinkSync(path.join(dir, old.f));
       }
     } catch {
       /* ignore */
+    }
+
+    if (typeof global.gc === 'function') {
+      try {
+        global.gc();
+      } catch {
+        /* ignore */
+      }
     }
 
     console.log('[content-video] ok', post.id, fileName, videoUrl);
@@ -364,17 +410,66 @@ async function generateVideoForPost(post) {
   }
 }
 
+/**
+ * Generate reels for queued posts.
+ * Default limit=1 on small instances so one ffmpeg encode can't OOM the box.
+ * Admin can call repeatedly to fill the week (Generate next video).
+ */
 async function generateVideosForQueued(opts = {}) {
-  const limit = Math.min(opts.limit ?? 7, 14);
+  if (videoBusy) {
+    return {
+      results: [
+        {
+          ok: false,
+          postId: '',
+          error:
+            'Video encode already running. Wait for it to finish, then click Generate videos again.',
+        },
+      ],
+      ffmpeg: Boolean(resolveFfmpeg()),
+      busy: true,
+    };
+  }
+
+  const defaultLimit = Number(process.env.CONTENT_VIDEO_BATCH || 1);
+  const limit = Math.min(
+    Math.max(1, Number(opts.limit) || defaultLimit || 1),
+    3
+  ); // hard cap 3/request on Starter
   const posts = listPosts({ limit: 40 }).filter((p) =>
     ['queued', 'failed', 'draft', 'scheduled'].includes(p.status)
   );
   const need = posts.filter((p) => !p.videoUrl).slice(0, limit);
+  const remaining = posts.filter((p) => !p.videoUrl).length - need.length;
+
+  videoBusy = true;
   const results = [];
-  for (const p of need) {
-    results.push(await generateVideoForPost(p));
+  try {
+    for (const p of need) {
+      results.push(await generateVideoForPost(p));
+      // Let OS reclaim pages between encodes
+      await new Promise((r) => setTimeout(r, 800));
+      if (typeof global.gc === 'function') {
+        try {
+          global.gc();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } finally {
+    videoBusy = false;
   }
-  return { results, ffmpeg: Boolean(resolveFfmpeg()) };
+
+  return {
+    results,
+    ffmpeg: Boolean(resolveFfmpeg()),
+    remainingWithoutVideo: Math.max(0, remaining),
+    tip:
+      remaining > 0
+        ? `Made ${results.filter((r) => r.ok).length} reel(s). ${remaining} still need video — click Generate videos again (1 at a time keeps RAM low).`
+        : undefined,
+  };
 }
 
 function contentVideoStatus() {
@@ -385,16 +480,18 @@ function contentVideoStatus() {
   } catch {
     videoCount = 0;
   }
+  const { w, h } = reelSize();
   return {
     ffmpeg: Boolean(resolveFfmpeg()),
     font: Boolean(resolveFont()),
     drawtext: drawtextCached,
     videoCount,
     dir,
+    size: `${w}x${h}`,
+    batchDefault: Number(process.env.CONTENT_VIDEO_BATCH || 1),
+    busy: videoBusy,
     note:
-      drawtextCached === false
-        ? 'ffmpeg has no drawtext — reels are image + voice (post caption still has full text/link).'
-        : undefined,
+      'Low-memory mode: 720x1280, 1 video/request by default. Click Generate videos repeatedly to finish the week. CONTENT_VIDEO_HEIGHT=1920 on larger plans.',
   };
 }
 

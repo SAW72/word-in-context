@@ -242,26 +242,38 @@ function mountContentRoutes(app, { requireAdmin }) {
     }
   });
 
+  /**
+   * Generate talking-card reels (still + TTS voice → 9:16 MP4).
+   * Default 1 reel/request — ffmpeg OOMs Starter (512MB) if you batch 7.
+   */
   app.post('/api/content/generate-videos', (req, res) => {
     if (!requireAdmin(req, res)) return;
     void (async () => {
       try {
-        const limit = Math.min(Number(req.body?.limit) || 7, 14);
+        const limit = Math.min(Number(req.body?.limit) || 1, 3);
         const out = await generateVideosForQueued({ limit });
         const ok = out.results.filter((r) => r.ok).length;
-        const failed = out.results.length - ok;
+        const failed = out.results.filter((r) => !r.ok).length;
         const video = contentVideoStatus();
         res.json({
-          ok: ok > 0 || out.results.length === 0,
-          summary: { ok, failed, attempted: out.results.length },
+          ok: ok > 0 || (out.results.length === 0 && !out.busy),
+          summary: {
+            ok,
+            failed,
+            attempted: out.results.length,
+            remainingWithoutVideo: out.remainingWithoutVideo ?? 0,
+          },
           results: out.results,
           videoStatus: video,
           tip:
-            out.results.length === 0
-              ? 'No posts need video (none queued, or all already have videoUrl). Generate week first.'
-              : ok
-                ? `${ok} reel(s) ready. Next: Publish queued (TikTok uses video).`
-                : out.results[0]?.error || 'Video generation failed',
+            out.busy
+              ? out.results[0]?.error
+              : out.results.length === 0
+                ? 'No posts need video (none queued, or all already have videoUrl). Generate week first.'
+                : out.tip ||
+                  (ok
+                    ? `${ok} reel(s) ready. Click Generate videos again for more (1 at a time saves RAM), then Publish.`
+                    : out.results[0]?.error || 'Video generation failed'),
         });
       } catch (e) {
         res.status(500).json({ error: e.message });
