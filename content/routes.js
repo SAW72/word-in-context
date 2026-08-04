@@ -278,10 +278,12 @@ function mountContentRoutes(app, { requireAdmin }) {
         res.json({
           ...out,
           summary: {
-            ok: out.results.filter((r) => r.ok).length,
-            failed: fails.length,
+            ok: out.summary?.ok ?? out.results.filter((r) => r.ok).length,
+            failed: out.summary?.failed ?? fails.length,
             publisher: out.publisher,
+            channelsFull: out.summary?.channelsFull || [],
           },
+          tip: out.tip,
           firstError: fails[0]?.error || null,
           sampleErrors: fails.slice(0, 3).map((f) => f.error).filter(Boolean),
         });

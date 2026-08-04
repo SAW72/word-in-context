@@ -102,7 +102,7 @@
         <button type="button" class="btn" id="btn-content-generate">Generate week</button>
         <button type="button" class="btn" id="btn-content-videos">Generate videos (reels)</button>
         <button type="button" class="btn gray" id="btn-content-requeue-ig">Requeue Instagram only</button>
-        <button type="button" class="btn" id="btn-content-publish">Publish queued</button>
+        <button type="button" class="btn" id="btn-content-publish">Publish (fill free slots)</button>
         <button type="button" class="btn gray" id="btn-content-export">Export pack</button>
         <button type="button" class="btn gray" id="btn-content-copy">Copy status</button>
       </div>
@@ -647,11 +647,17 @@
         const r = await contentApi('/api/content/publish', { method: 'POST', body: '{}' });
         const ok = r.summary?.ok ?? 0;
         const fail = r.summary?.failed ?? 0;
+        const full = r.summary?.channelsFull || [];
         setContentStatus(
           'Publish via ' + r.publisher + ': ' + ok + ' ok, ' + fail + ' failed' +
+          (full.length ? '\nFull channels (at ~10): ' + full.join(', ') : '') +
+          (r.tip ? '\n' + r.tip : '') +
           (r.firstError ? '\n' + r.firstError : '')
         );
-        setContentMsg(fail && !ok ? 'Publish failed' : ('Publish ' + ok + ' ok'), !(fail && !ok));
+        setContentMsg(
+          r.tip || (fail && !ok ? 'Publish failed' : ('Filled slots · ' + ok + ' ok')),
+          !!(ok || full.length)
+        );
       } catch (e) {
         setContentStatus(String(e.message));
         setContentMsg(e.message, false);

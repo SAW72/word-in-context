@@ -336,24 +336,68 @@ async function bufferHealth() {
   }
 }
 
-async function publishPost(post) {
+function isChannelFullError(msg) {
+  return /LimitReached|limit reached|queue is full|maximum number|free plan limit|scheduled post limit|too many scheduled/i.test(
+    String(msg || '')
+  );
+}
+
+function isRateLimitError(msg) {
+  return /rate limit|Too many requests|RATE_LIMIT|429/i.test(String(msg || ''));
+}
+
+/**
+ * Publish one post. Fills free-plan slots on channels that still have room.
+ * opts.skipNetworks = Set of networks already at capacity (batch-level).
+ * Already-posted networks (externalIds) are skipped.
+ * Video failures fall back to image.
+ */
+async function publishPost(post, opts = {}) {
   if (!isConfigured()) {
     return { ok: false, publisher: 'buffer', postId: post.id, error: 'BUFFER_API_KEY not set' };
   }
+  const skipNetworks = opts.skipNetworks || new Set();
   try {
     const channels = await listAllChannels();
-    const networks = resolvePublishNetworks(post);
+    let networks = resolvePublishNetworks(post);
+    // Prefer remaining networks if partial publish already stored them
+    if (Array.isArray(post.networksRemaining) && post.networksRemaining.length) {
+      networks = post.networksRemaining;
+    }
+    networks = networks.filter((n) => !skipNetworks.has(n));
+    // Skip networks already successfully sent
+    const already = post.externalIds || {};
+    networks = networks.filter((n) => !already[n]);
+
     const targets = matchChannels(channels, networks);
     if (!targets.length) {
+      if (Object.keys(already).length) {
+        // Nothing left to send (all done or all skipped as full)
+        if (post.id && post.id !== 'smoke') {
+          updatePost(post.id, {
+            status: 'scheduled',
+            publisher: 'buffer',
+            error: undefined,
+          });
+        }
+        return {
+          ok: true,
+          publisher: 'buffer',
+          postId: post.id,
+          externalIds: already,
+          fullNetworks: [...skipNetworks],
+          detail: 'Already published to available channels (others full or done)',
+        };
+      }
       return {
         ok: false,
         publisher: 'buffer',
         postId: post.id,
         error:
-          'No Buffer channels matched. Connect FB/IG/X in Buffer, set CONTENT_NETWORKS=facebook,instagram,x, or BUFFER_CHANNEL_* ids.',
-        detail: `Wanted: ${networks.join(', ')}. Found: ${channels
-          .map((c) => `${c.service}:${c.name}`)
-          .join(' | ')}`,
+          skipNetworks.size
+            ? `Channels at free-plan limit: ${[...skipNetworks].join(', ')}. Clear Buffer queue or wait for posts to go live, then Publish again to fill remaining slots.`
+            : 'No Buffer channels matched. Connect FB/IG/X, set CONTENT_NETWORKS, or BUFFER_CHANNEL_* ids.',
+        fullNetworks: [...skipNetworks],
       };
     }
 
@@ -361,11 +405,13 @@ async function publishPost(post) {
     const videoUrl = post.videoUrl || undefined;
     const externalIds = {};
     const errors = [];
+    const fullNetworks = [];
     const ordered = [...targets].sort((a, b) =>
       a.network === 'facebook' ? -1 : b.network === 'facebook' ? 1 : 0
     );
 
     for (const t of ordered) {
+      if (skipNetworks.has(t.network)) continue;
       const isX = t.network === 'x' || t.network === 'twitter';
       let text = (
         t.network === 'instagram'
@@ -388,7 +434,6 @@ async function publishPost(post) {
         /* ignore */
       }
       const tags = (post.hashtags || []).filter(Boolean);
-      // X: skip dumping all hashtags (burns the 280 budget) — keep 1–2 short ones max
       if (tags.length) {
         if (isX) {
           const short = tags.slice(0, 2).join(' ');
@@ -398,71 +443,145 @@ async function publishPost(post) {
             text = fitCaptionForNetwork(text, 'x');
           }
         } else {
-          const already =
+          const alreadyTags =
             tags.filter((h) => text.toLowerCase().includes(h.toLowerCase()))
               .length >= Math.min(2, tags.length);
-          if (!already) text = `${text}\n\n${tags.join(' ')}`;
+          if (!alreadyTags) text = `${text}\n\n${tags.join(' ')}`;
         }
       } else if (isX) {
         text = fitCaptionForNetwork(text, 'x');
       }
-      try {
-        const id = await createOnChannel(
+
+      const tryChannel = async (vid) =>
+        createOnChannel(
           t.channelId,
           text,
           post.scheduledAt,
           imageUrl,
           t.network,
-          videoUrl
+          vid
         );
+
+      try {
+        let id;
+        try {
+          id = await tryChannel(videoUrl);
+        } catch (vidErr) {
+          // Video often fails (URL/hosting) — fall back to still image
+          if (videoUrl && !isChannelFullError(vidErr.message)) {
+            id = await tryChannel(undefined);
+          } else {
+            throw vidErr;
+          }
+        }
         externalIds[t.network] = id;
       } catch (e) {
-        errors.push(`${t.network}: ${e.message}`);
+        const msg = e.message || String(e);
+        if (isRateLimitError(msg)) {
+          return {
+            ok: Object.keys(externalIds).length > 0,
+            publisher: 'buffer',
+            postId: post.id,
+            externalIds: { ...already, ...externalIds },
+            fullNetworks,
+            error: msg,
+            rateLimited: true,
+          };
+        }
+        if (isChannelFullError(msg)) {
+          fullNetworks.push(t.network);
+          errors.push(`${t.network}: free queue full (limit ~10)`);
+          continue;
+        }
+        errors.push(`${t.network}: ${msg}`);
       }
+      await new Promise((r) => setTimeout(r, 350));
     }
 
-    if (!Object.keys(externalIds).length) {
+    const merged = { ...already, ...externalIds };
+    const intended = resolvePublishNetworks(post);
+    const missing = intended.filter((n) => !merged[n]);
+    const missingOpen = missing.filter(
+      (n) => !fullNetworks.includes(n) && !skipNetworks.has(n)
+    );
+
+    if (!Object.keys(externalIds).length && !Object.keys(already).length) {
       if (post.id && post.id !== 'smoke') {
-        updatePost(post.id, { status: 'failed', error: errors.join(' · ') });
+        updatePost(post.id, {
+          status: 'failed',
+          error: errors.join(' · ') || 'publish failed',
+          fullNetworks: [...new Set([...(post.fullNetworks || []), ...fullNetworks])],
+        });
       }
       return {
         ok: false,
         publisher: 'buffer',
         postId: post.id,
         error: errors.join(' · ') || 'publish failed',
+        fullNetworks,
       };
     }
 
+    // Partial fill: keep queued only for networks still open; remember full ones
+    const allFull = missing.length > 0 && missingOpen.length === 0;
+    const status = missingOpen.length > 0 ? 'queued' : 'scheduled';
+
     if (post.id && post.id !== 'smoke') {
       updatePost(post.id, {
-        status: 'scheduled',
+        status,
         publisher: 'buffer',
-        externalIds: { ...(post.externalIds || {}), ...externalIds },
-        error: undefined,
+        externalIds: merged,
+        networksRemaining: missingOpen.length ? missingOpen : undefined,
+        fullNetworks: [...new Set([...(post.fullNetworks || []), ...fullNetworks])],
+        error: errors.length ? errors.join(' · ') : undefined,
         publishedAt: new Date().toISOString(),
       });
     }
+
     return {
       ok: true,
       publisher: 'buffer',
       postId: post.id,
-      externalIds,
+      externalIds: merged,
+      fullNetworks,
       detail:
-        `Buffer: ${Object.keys(externalIds).join(', ')}` +
-        (errors.length ? ` (partial: ${errors.join(' · ')})` : ''),
+        `Buffer: ${Object.keys(externalIds).join(', ') || 'none new'}` +
+        (Object.keys(already).length
+          ? ` (had: ${Object.keys(already).join(', ')})`
+          : '') +
+        (fullNetworks.length
+          ? ` · full: ${fullNetworks.join(', ')}`
+          : '') +
+        (missingOpen.length
+          ? ` · still need: ${missingOpen.join(', ')}`
+          : allFull
+            ? ' · other channels at free limit'
+            : '') +
+        (errors.length && !fullNetworks.length
+          ? ` · ${errors.join(' · ')}`
+          : ''),
     };
   } catch (e) {
     if (post.id && post.id !== 'smoke') {
       updatePost(post.id, { status: 'failed', error: e.message });
     }
-    return { ok: false, publisher: 'buffer', postId: post.id, error: e.message };
+    return {
+      ok: false,
+      publisher: 'buffer',
+      postId: post.id,
+      error: e.message,
+    };
   }
 }
 
+/**
+ * Fill free-plan slots (~10/channel). Stops filling a channel when Buffer
+ * says full; keeps filling other channels that still have room.
+ */
 async function publishQueued(limit = 20) {
   const { listPosts: lp, updatePost: up } = require('./queue');
-  const queued = lp({ status: 'queued', limit });
-  const failed = lp({ status: 'failed', limit });
+  const queued = lp({ status: 'queued', limit: 50 });
+  const failed = lp({ status: 'failed', limit: 50 });
   const seen = new Set();
   const posts = [...queued, ...failed]
     .filter((p) => {
@@ -472,12 +591,52 @@ async function publishQueued(limit = 20) {
     })
     .slice(0, limit);
 
+  const skipNetworks = new Set();
   const results = [];
+  let slotsFilled = 0;
+
   for (const p of posts) {
     if (p.status === 'failed') up(p.id, { status: 'queued', error: undefined });
-    results.push(await publishPost(p));
+    const r = await publishPost(p, { skipNetworks });
+    results.push(r);
+    for (const n of r.fullNetworks || []) skipNetworks.add(n);
+    if (r.externalIds) {
+      // count only newly succeeded networks is hard; count keys on success
+      if (r.ok) slotsFilled += 1;
+    }
+    if (r.rateLimited) {
+      console.warn('[content] stopping batch after Buffer rate limit');
+      break;
+    }
+    // All known product networks full → stop burning API
+    const allNets = new Set(
+      posts.flatMap((x) => resolvePublishNetworks(x))
+    );
+    if ([...allNets].every((n) => skipNetworks.has(n))) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 600));
   }
-  return { results, publisher: 'buffer' };
+
+  const ok = results.filter((r) => r.ok).length;
+  const fail = results.filter((r) => !r.ok).length;
+  const full = [...skipNetworks];
+  return {
+    results,
+    publisher: 'buffer',
+    summary: {
+      ok,
+      failed: fail,
+      publisher: 'buffer',
+      channelsFull: full,
+    },
+    tip:
+      full.length
+        ? `Filled available free-plan slots. Full channels: ${full.join(', ')} (~10 each). When some posts go live, Publish again to fill remaining.`
+        : ok
+          ? `Published/updated ${ok} post(s).`
+          : undefined,
+  };
 }
 
 module.exports = {
