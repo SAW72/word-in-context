@@ -16,6 +16,7 @@ const {
 const {
   generateVideosForQueued,
   contentVideoStatus,
+  listVideoFiles,
   videoDir,
 } = require('./video');
 
@@ -26,9 +27,15 @@ const {
 function mountContentRoutes(app, { requireAdmin }) {
   const express = require('express');
 
-  // Generated reels first (public so Buffer can fetch MP4s)
+  // Generated reels first (public so Buffer / Mac download can fetch MP4s)
   try {
     const vdir = videoDir();
+    app.use('/content-media/videos', (req, res, next) => {
+      if (req.query.download === '1' || req.query.download === 'true') {
+        res.setHeader('Content-Disposition', 'attachment');
+      }
+      next();
+    });
     app.use(
       '/content-media/videos',
       express.static(vdir, {
@@ -47,6 +54,78 @@ function mountContentRoutes(app, { requireAdmin }) {
   } catch (e) {
     console.warn('[content] video dir', e.message);
   }
+
+  /** List reel MP4s + public URLs (manual Buffer upload / Mac download). */
+  app.get('/api/content/videos', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const listed = listVideoFiles();
+      res.json({
+        ok: true,
+        ...listed,
+        zipUrl: '/api/content/videos/zip',
+        tip:
+          listed.count > 0
+            ? 'Download ZIP or open each URL on your Mac, then upload to Buffer.'
+            : 'No reels on disk yet — Generate videos first.',
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  /** ZIP all reels for one-click Mac download. */
+  app.get('/api/content/videos/zip', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    void (async () => {
+      try {
+        const { execFile } = require('child_process');
+        const { promisify } = require('util');
+        const execFileAsync = promisify(execFile);
+        const listed = listVideoFiles();
+        if (!listed.files.length) {
+          res.status(404).json({
+            error: 'No reels on disk. Generate videos first, then download.',
+          });
+          return;
+        }
+        const dir = videoDir();
+        const stamp = new Date().toISOString().slice(0, 10);
+        const zipName = `word-in-context-reels-${stamp}.zip`;
+        const zipPath = path.join(dir, `_${zipName}`);
+        const names = listed.files.map((f) => f.fileName);
+        try {
+          await execFileAsync('zip', ['-j', '-q', zipPath, ...names], {
+            cwd: dir,
+            timeout: 120_000,
+            maxBuffer: 4 * 1024 * 1024,
+          });
+        } catch (zipErr) {
+          const msg = zipErr instanceof Error ? zipErr.message : String(zipErr);
+          if (/ENOENT|zip/i.test(msg) && listed.files[0]) {
+            res.download(
+              path.join(dir, listed.files[0].fileName),
+              listed.files[0].fileName
+            );
+            return;
+          }
+          throw zipErr;
+        }
+        res.download(zipPath, zipName, (err) => {
+          try {
+            if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+          } catch {
+            /* ignore */
+          }
+          if (err && !res.headersSent) {
+            res.status(500).json({ error: err.message });
+          }
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    })();
+  });
 
   const mediaDirs = [
     path.join(__dirname, '..', 'public', 'icons'),

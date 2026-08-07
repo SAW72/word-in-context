@@ -101,6 +101,7 @@
         <button type="button" class="btn" id="btn-content-smoke">Smoke (1 post)</button>
         <button type="button" class="btn" id="btn-content-generate">Generate week</button>
         <button type="button" class="btn" id="btn-content-videos">Generate videos (reels)</button>
+        <button type="button" class="btn gray" id="btn-content-download-reels">Download reels (Mac)</button>
         <button type="button" class="btn gray" id="btn-content-requeue-ig">Requeue Instagram only</button>
         <button type="button" class="btn" id="btn-content-publish">Publish (fill free slots)</button>
         <button type="button" class="btn gray" id="btn-content-export">Export pack</button>
@@ -594,12 +595,17 @@
         setContentStatus('Generating videos… TTS + ffmpeg. Keep this open.');
         const r = await contentApi('/api/content/generate-videos', {
           method: 'POST',
-          body: JSON.stringify({ limit: 7 }),
+          body: JSON.stringify({ limit: 1 }),
         });
         const ok = r.summary?.ok ?? 0;
         const fail = r.summary?.failed ?? 0;
+        const vidLinks = (r.results || [])
+          .filter((x) => x.ok && x.videoUrl)
+          .map((x) => x.videoUrl)
+          .join('\n');
         setContentStatus(
           (r.tip || ('Videos: ' + ok + ' ok, ' + fail + ' failed')) +
+          (vidLinks ? '\n\nDownload MP4:\n' + vidLinks : '') +
           (r.videoStatus
             ? '\nffmpeg: ' + r.videoStatus.ffmpeg + ' · files: ' + r.videoStatus.videoCount +
               (r.videoStatus.note ? '\n' + r.videoStatus.note : '')
@@ -608,9 +614,48 @@
         );
         setContentMsg(
           ok > 0
-            ? ok + ' reel(s) ready — next: Publish queued'
+            ? ok + ' reel(s) ready — use Download reels (Mac) or Publish'
             : (r.tip || r.error || 'No videos — Generate week first'),
           ok > 0
+        );
+      } catch (e) {
+        setContentStatus(String(e.message));
+        setContentMsg(e.message, false);
+      }
+    });
+    document.getElementById('btn-content-download-reels')?.addEventListener('click', async () => {
+      try {
+        setContentMsg('Listing reels…', true);
+        const r = await contentApi('/api/content/videos');
+        const files = r.files || [];
+        if (!files.length) {
+          setContentStatus(r.tip || 'No reels on disk. Generate videos first.');
+          setContentMsg('No reels yet — Generate videos first', false);
+          return;
+        }
+        const lines = files.map((f, i) =>
+          (i + 1) + '. ' + f.fileName + ' (' + Math.round((f.bytes || 0) / 1024) + ' KB)\n   ' + (f.downloadUrl || f.url)
+        ).join('\n');
+        setContentStatus(
+          files.length + ' reel(s) on server.\nZIP download starts next.\n\n' + lines
+        );
+        const res = await fetch(base + '/api/content/videos/zip', {
+          headers: { Authorization: 'Bearer ' + adminToken },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('Zip failed ' + res.status));
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'word-in-context-reels-' + new Date().toISOString().slice(0, 10) + '.zip';
+        a.click();
+        URL.revokeObjectURL(url);
+        setContentMsg(
+          'Downloaded ' + files.length + ' reel(s) as ZIP. Unzip on Mac, upload MP4s in Buffer.',
+          true
         );
       } catch (e) {
         setContentStatus(String(e.message));

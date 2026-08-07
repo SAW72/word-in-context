@@ -506,10 +506,47 @@ function contentVideoStatus() {
   };
 }
 
+/** List MP4s on disk with public download URLs (for manual Buffer upload). */
+function listVideoFiles() {
+  const dir = videoDir();
+  const base = (PUBLIC_URL || '').replace(/\/$/, '');
+  let files = [];
+  try {
+    files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.mp4') && !f.startsWith('_'))
+      .map((f) => {
+        const st = fs.statSync(path.join(dir, f));
+        return {
+          fileName: f,
+          bytes: st.size,
+          mtime: st.mtime.toISOString(),
+          url: `${base}/content-media/videos/${encodeURIComponent(f)}`,
+          downloadUrl: `${base}/content-media/videos/${encodeURIComponent(f)}?download=1`,
+        };
+      })
+      .sort((a, b) => (b.mtime || '').localeCompare(a.mtime || ''));
+  } catch {
+    files = [];
+  }
+  const posts = listPosts({ limit: 80 })
+    .filter((p) => p.videoUrl || p.videoKey)
+    .map((p) => ({
+      id: p.id,
+      targetDate: p.targetDate,
+      status: p.status,
+      videoKey: p.videoKey,
+      videoUrl: p.videoUrl,
+      caption: (p.caption || '').slice(0, 100),
+    }));
+  return { dir, files, posts, count: files.length };
+}
+
 module.exports = {
   generateVideoForPost,
   generateVideosForQueued,
   contentVideoStatus,
+  listVideoFiles,
   videoDir,
   resolveFfmpeg,
 };
