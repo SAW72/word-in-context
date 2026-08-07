@@ -2162,24 +2162,27 @@
         </ul>
 
         <h4>What "Context" Means in This App</h4>
-        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word — examining a passage within its proper literary, grammatical, and canonical setting rather than in isolation. It includes:</p>
+        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word — and of reading each passage as the product of a real author writing at a real time in the history of revelation, not as floating words with no writer or date. It includes:</p>
         <ul>
+          <li><strong>Author &amp; composition</strong>: Who wrote this book (as The Word claims, or by historic church attribution), to whom, and approximately when relative to other books. You cannot treat Matthew, Mark, Luke, and Paul as if they all wrote at the same moment.</li>
+          <li><strong>Writing order</strong>: Earlier books and later books stand in a real sequence. Default for the Gospels in this app: Matthew first, then Mark, then Luke, then John (Acts with Luke). Letters and Prophets likewise sit in a progressive timeline of revelation.</li>
           <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
           <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
           <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, or in the broader literature of the period.</li>
           <li><strong>Historical &amp; cultural context</strong>: The world of the original audience (ancient Near East for the Old Testament; 1st-century Greco-Roman world for the New Testament).</li>
-          <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story.</li>
+          <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story — always respecting who wrote each witness and in what order.</li>
         </ul>
 
         <h4>How to Understand Greek &amp; Hebrew in Context (the Process)</h4>
         <ol>
           <li>Begin with the literal text supplied by the app (SBL Greek New Testament for the NT; Westminster Leningrad Codex for the Hebrew OT).</li>
-          <li>Read the surrounding verses and chapters to grasp the author's immediate purpose.</li>
+          <li>Name the author and place the book in relative composition order before drawing conclusions from parallels.</li>
+          <li>Read the surrounding verses and chapters to grasp the author's immediate purpose and audience.</li>
           <li>Identify significant words or constructions and study their usage in the original language (the app surfaces these when you ask about a specific term).</li>
           <li>Analyze the grammar: Who is acting? What is the tense, aspect, or emphasis? How does the sentence structure shape meaning?</li>
           <li>Consider genre (narrative, poetry, epistle, prophecy, etc.) because different genres use language differently.</li>
-          <li>Compare the same words, themes, or constructions elsewhere in the author's writings and the wider canon.</li>
-          <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew guide us.</li>
+          <li>Compare the same words, themes, or constructions elsewhere in the author's writings first, then the wider canon — noting which books were written earlier or later.</li>
+          <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew, the author, and composition order guide us.</li>
         </ol>
         <p class="sources-modal-dim">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
 
@@ -2338,7 +2341,7 @@
 
     // ====================== CONFIG ======================
     // Client-side prompt (server-side SYSTEM_PROMPT in server.js is the authoritative one)
-    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures (The Word) in their original languages and literary contexts.
+    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures (The Word) in their original languages and literary contexts — including who wrote each book and in what order books were written.
 
 STRICT RULES — FOLLOW THESE ALWAYS:
 
@@ -2350,20 +2353,26 @@ STRICT RULES — FOLLOW THESE ALWAYS:
 2. Original Languages Priority:
    - Always reference the Greek, Hebrew, or Aramaic when it clarifies meaning.
    - Give the actual word(s), transliteration, and the range of meaning or grammatical significance.
-   - Distinguish what the text itself says from later theological interpretation.
+   - Distinguish what The Word itself says from later theological interpretation.
 
-3. Voice-Friendly Responses:
+3. Authorship and composition chronology (required):
+   - Never study a passage as floating words with no author or date.
+   - Name the human author (what The Word claims, or historic church attribution) and original audience.
+   - When comparing books, state relative writing order. Default Gospel order for this app: Matthew first, then Mark, then Luke, then John.
+   - Prefer that author's own usage of a word before wider canon. Do not invent exact years as if Scripture printed them.
+
+4. Voice-Friendly Responses:
    - Keep answers clear and natural when read aloud.
    - Use complete sentences. Avoid walls of text.
 
-4. Application to today (any question about present-day practice):
+5. Application to today (any question about present-day practice):
    - Answer the user's question plainly first — what The Word permits, forbids, or leaves unstated for today.
-   - State the speaker/author's intent in context, or say intent cannot be determined.
+   - State the speaker/author's intent and composition setting, or say intent cannot be determined.
    - Explain primary verses in Greek, Hebrew, or Aramaic (transliteration + literal sense).
-   - When Old Testament is involved: explain what it said then, how the New Testament changes or clarifies it, and why the OT form is not binding today as far as NT witnesses indicate.
+   - When Old Testament is involved: explain what it said then (author/audience), how a later New Testament witness changes or clarifies it, and why the OT form is not binding today as far as NT witnesses indicate.
    - State how it applies today, or say application cannot be determined from these passages alone.
 
-5. Wording (strict):
+6. Wording (strict):
    - When citing Scripture, ALWAYS say "The Word states...", "The Word indicates...", or "The Word says..."
    - NEVER say "the text states", "the text indicates", "this text states", or "the passage states"
    - Only use "text" for original-language manuscripts (Hebrew/Greek), not as a substitute for "The Word"
