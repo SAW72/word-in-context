@@ -108,11 +108,23 @@ function ensureFutureDueAt(iso) {
   return new Date(Math.max(t, Date.now() + 20 * 60_000)).toISOString();
 }
 
-function metadataForNetwork(network) {
+/**
+ * FB/IG require metadata.type. Video assets must use "reel" — type "post" +
+ * video is often rejected, then we used to fall back to stills silently.
+ */
+function metadataForNetwork(network, opts = {}) {
   const n = (network || '').toLowerCase();
-  if (n === 'facebook' || n === 'fb') return { facebook: { type: 'post' } };
+  const hasVideo = Boolean(opts.hasVideo);
+  if (n === 'facebook' || n === 'fb') {
+    return { facebook: { type: hasVideo ? 'reel' : 'post' } };
+  }
   if (n === 'instagram' || n === 'ig') {
-    return { instagram: { type: 'post', shouldShareToFeed: true } };
+    return {
+      instagram: {
+        type: hasVideo ? 'reel' : 'post',
+        shouldShareToFeed: true,
+      },
+    };
   }
   // Buffer uses service "twitter" for X
   if (n === 'x' || n === 'twitter') return { twitter: {} };
@@ -197,14 +209,14 @@ async function createOnChannel(
   scheduledAt,
   imageUrl,
   network,
-  videoUrl
+  videoUrl,
+  altText = 'The Word in Context'
 ) {
   const dueAt = ensureFutureDueAt(scheduledAt);
   const net = (network || '').toLowerCase();
   const isX = net === 'x' || net === 'twitter';
   const isTikTok = net === 'tiktok' || net === 'tt';
   const baseText = fitCaptionForNetwork(text, net);
-  const metadata = metadataForNetwork(net);
   const hasVideo = Boolean(videoUrl);
   const requireMedia = net === 'instagram' || isTikTok;
   if (requireMedia && !imageUrl && !hasVideo) {
@@ -230,12 +242,11 @@ async function createOnChannel(
       });
     } else if (useImage) {
       assets.push({
-        image: {
-          url: imageUrl,
-          metadata: { altText: 'The Word in Context' },
-        },
+        image: { url: imageUrl, metadata: { altText } },
       });
     }
+    // Metadata type must match asset (reel vs post) or Buffer rejects the video
+    const metadata = metadataForNetwork(net, { hasVideo: useVideo });
     const input = {
       channelId,
       text: baseText,
@@ -246,15 +257,16 @@ async function createOnChannel(
     };
     if (Object.keys(metadata).length) input.metadata = metadata;
     if (opts.due && mode === 'customScheduled') input.dueAt = opts.due;
-    return input;
+    return { input, usedVideo: useVideo };
   };
 
   const push = (label, mode, opts) => {
-    const input = build(mode, opts);
-    if (input) attempts.push({ label, input });
+    const built = build(mode, opts);
+    if (built) attempts.push({ label, input: built.input, usedVideo: built.usedVideo });
   };
 
   if (isX) {
+    // X: stills/text only (long reels often rejected)
     push('queue+text', 'addToQueue', { withImage: false, withVideo: false });
     if (imageUrl) {
       push('queue+image', 'addToQueue', { withImage: true, withVideo: false });
@@ -295,7 +307,7 @@ async function createOnChannel(
   const errors = [];
   for (const a of attempts) {
     const r = await createPostOnce(a.input);
-    if (r.ok) return r.id;
+    if (r.ok) return { id: r.id, usedVideo: a.usedVideo };
     errors.push(`${a.label}: ${r.error}`);
   }
   throw new Error(errors.slice(0, 3).join(' · '));
@@ -306,7 +318,9 @@ function isConfigured() {
 }
 
 async function bufferHealth() {
-  if (!isConfigured()) return { configured: false, channels: [] };
+  if (!isConfigured()) {
+    return { configured: false, channels: [] };
+  }
   try {
     const organizations = await listOrganizations();
     const channels = await listAllChannels();
@@ -349,31 +363,36 @@ function isRateLimitError(msg) {
 /**
  * Publish one post. Fills free-plan slots on channels that still have room.
  * opts.skipNetworks = Set of networks already at capacity (batch-level).
- * Already-posted networks (externalIds) are skipped.
- * Video failures fall back to image.
+ * opts.forceVideo = re-push even if externalIds exist (after reel generation).
+ * Video failures fall back to image (surfaced via videoFailed).
  */
 async function publishPost(post, opts = {}) {
   if (!isConfigured()) {
     return { ok: false, publisher: 'buffer', postId: post.id, error: 'BUFFER_API_KEY not set' };
   }
   const skipNetworks = opts.skipNetworks || new Set();
+  const videoUrl = post.videoUrl || undefined;
+  const videoAlreadyPushed = Boolean(post.meta?.videoPublishedToBuffer);
+  const forceVideo =
+    Boolean(opts.forceVideo) || (Boolean(videoUrl) && !videoAlreadyPushed);
+
   try {
     const channels = await listAllChannels();
     let networks = resolvePublishNetworks(post);
-    // Prefer remaining networks if partial publish already stored them
-    if (Array.isArray(post.networksRemaining) && post.networksRemaining.length) {
+    if (!forceVideo && Array.isArray(post.networksRemaining) && post.networksRemaining.length) {
       networks = post.networksRemaining;
     }
     networks = networks.filter((n) => !skipNetworks.has(n));
-    // Skip networks already successfully sent
-    const already = post.externalIds || {};
-    networks = networks.filter((n) => !already[n]);
+    const prior = post.externalIds || {};
+    const already = forceVideo ? {} : prior;
+    if (!forceVideo) {
+      networks = networks.filter((n) => !already[n]);
+    }
 
     const targets = matchChannels(channels, networks);
     if (!targets.length) {
-      if (Object.keys(already).length) {
-        // Nothing left to send (all done or all skipped as full)
-        if (post.id && post.id !== 'smoke') {
+      if (Object.keys(prior).length || Object.keys(already).length) {
+        if (post.id && post.id !== 'smoke' && !forceVideo) {
           updatePost(post.id, {
             status: 'scheduled',
             publisher: 'buffer',
@@ -384,9 +403,11 @@ async function publishPost(post, opts = {}) {
           ok: true,
           publisher: 'buffer',
           postId: post.id,
-          externalIds: already,
+          externalIds: prior,
           fullNetworks: [...skipNetworks],
-          detail: 'Already published to available channels (others full or done)',
+          detail: forceVideo
+            ? 'Video ready but no Buffer channels matched to push reels'
+            : 'Already published to available channels (others full or done)',
         };
       }
       return {
@@ -402,10 +423,11 @@ async function publishPost(post, opts = {}) {
     }
 
     const imageUrl = resolveImageUrl(post);
-    const videoUrl = post.videoUrl || undefined;
     const externalIds = {};
     const errors = [];
     const fullNetworks = [];
+    let anyUsedVideo = false;
+    let anyVideoAttemptFailed = false;
     const ordered = [...targets].sort((a, b) =>
       a.network === 'facebook' ? -1 : b.network === 'facebook' ? 1 : 0
     );
@@ -452,6 +474,7 @@ async function publishPost(post, opts = {}) {
         text = fitCaptionForNetwork(text, 'x');
       }
 
+      const channelVideoUrl = isX ? undefined : videoUrl;
       const tryChannel = async (vid) =>
         createOnChannel(
           t.channelId,
@@ -459,22 +482,33 @@ async function publishPost(post, opts = {}) {
           post.scheduledAt,
           imageUrl,
           t.network,
-          vid
+          vid,
+          'The Word in Context'
         );
 
       try {
-        let id;
+        let created;
         try {
-          id = await tryChannel(videoUrl);
+          created = await tryChannel(channelVideoUrl);
         } catch (vidErr) {
-          // Video often fails (URL/hosting) — fall back to still image
-          if (videoUrl && !isChannelFullError(vidErr.message)) {
-            id = await tryChannel(undefined);
+          if (
+            channelVideoUrl &&
+            !isChannelFullError(vidErr.message) &&
+            !isRateLimitError(vidErr.message)
+          ) {
+            anyVideoAttemptFailed = true;
+            console.warn(
+              `[buffer] video failed for ${t.network}, falling back to image:`,
+              String(vidErr.message || vidErr).slice(0, 200)
+            );
+            created = await tryChannel(undefined);
           } else {
             throw vidErr;
           }
         }
-        externalIds[t.network] = id;
+        externalIds[t.network] = created.id;
+        if (created.usedVideo) anyUsedVideo = true;
+        else if (channelVideoUrl) anyVideoAttemptFailed = true;
       } catch (e) {
         const msg = e.message || String(e);
         if (isRateLimitError(msg)) {
@@ -482,8 +516,10 @@ async function publishPost(post, opts = {}) {
             ok: Object.keys(externalIds).length > 0,
             publisher: 'buffer',
             postId: post.id,
-            externalIds: { ...already, ...externalIds },
+            externalIds: { ...prior, ...externalIds },
             fullNetworks,
+            usedVideo: anyUsedVideo,
+            videoFailed: anyVideoAttemptFailed && !anyUsedVideo,
             error: msg,
             rateLimited: true,
           };
@@ -498,14 +534,16 @@ async function publishPost(post, opts = {}) {
       await new Promise((r) => setTimeout(r, 350));
     }
 
-    const merged = { ...already, ...externalIds };
+    const merged = forceVideo
+      ? { ...prior, ...externalIds }
+      : { ...already, ...externalIds };
     const intended = resolvePublishNetworks(post);
     const missing = intended.filter((n) => !merged[n]);
     const missingOpen = missing.filter(
       (n) => !fullNetworks.includes(n) && !skipNetworks.has(n)
     );
 
-    if (!Object.keys(externalIds).length && !Object.keys(already).length) {
+    if (!Object.keys(externalIds).length && !Object.keys(prior).length) {
       if (post.id && post.id !== 'smoke') {
         updatePost(post.id, {
           status: 'failed',
@@ -519,10 +557,26 @@ async function publishPost(post, opts = {}) {
         postId: post.id,
         error: errors.join(' · ') || 'publish failed',
         fullNetworks,
+        usedVideo: false,
+        videoFailed: Boolean(videoUrl),
       };
     }
 
-    // Partial fill: keep queued only for networks still open; remember full ones
+    if (!Object.keys(externalIds).length && forceVideo && videoUrl) {
+      return {
+        ok: false,
+        publisher: 'buffer',
+        postId: post.id,
+        fullNetworks,
+        usedVideo: false,
+        videoFailed: true,
+        error:
+          errors.join(' · ') ||
+          'Could not push video to Buffer (channels full or video rejected)',
+        detail: `videoUrl=${videoUrl}`,
+      };
+    }
+
     const allFull = missing.length > 0 && missingOpen.length === 0;
     const status = missingOpen.length > 0 ? 'queued' : 'scheduled';
 
@@ -535,6 +589,14 @@ async function publishPost(post, opts = {}) {
         fullNetworks: [...new Set([...(post.fullNetworks || []), ...fullNetworks])],
         error: errors.length ? errors.join(' · ') : undefined,
         publishedAt: new Date().toISOString(),
+        meta: {
+          ...(post.meta || {}),
+          videoPublishedToBuffer: Boolean(
+            anyUsedVideo || post.meta?.videoPublishedToBuffer
+          ),
+          lastPublishUsedVideo: anyUsedVideo,
+          lastPublishVideoFailed: Boolean(videoUrl) && !anyUsedVideo && anyVideoAttemptFailed,
+        },
       });
     }
 
@@ -544,10 +606,17 @@ async function publishPost(post, opts = {}) {
       postId: post.id,
       externalIds: merged,
       fullNetworks,
+      usedVideo: anyUsedVideo,
+      videoFailed: Boolean(videoUrl) && !anyUsedVideo && anyVideoAttemptFailed,
       detail:
         `Buffer: ${Object.keys(externalIds).join(', ') || 'none new'}` +
-        (Object.keys(already).length
-          ? ` (had: ${Object.keys(already).join(', ')})`
+        (anyUsedVideo
+          ? ' · video attached'
+          : videoUrl
+            ? ' · image only (video not accepted)'
+            : '') +
+        (Object.keys(prior).length && !forceVideo
+          ? ` (had: ${Object.keys(prior).join(', ')})`
           : '') +
         (fullNetworks.length
           ? ` · full: ${fullNetworks.join(', ')}`
@@ -579,7 +648,7 @@ async function publishPost(post, opts = {}) {
  * says full; keeps filling other channels that still have room.
  */
 async function publishQueued(limit = 20) {
-  const { listPosts: lp, updatePost: up } = require('./queue');
+  const { listPosts: lp, updatePost: up, getPost } = require('./queue');
   const queued = lp({ status: 'queued', limit: 50 });
   const failed = lp({ status: 'failed', limit: 50 });
   const seen = new Set();
@@ -593,22 +662,22 @@ async function publishQueued(limit = 20) {
 
   const skipNetworks = new Set();
   const results = [];
-  let slotsFilled = 0;
 
   for (const p of posts) {
     if (p.status === 'failed') up(p.id, { status: 'queued', error: undefined });
-    const r = await publishPost(p, { skipNetworks });
+    const fresh = (getPost && getPost(p.id)) || p;
+    const needsVideoPush =
+      Boolean(fresh.videoUrl) && !fresh.meta?.videoPublishedToBuffer;
+    const r = await publishPost(fresh, {
+      skipNetworks,
+      forceVideo: needsVideoPush,
+    });
     results.push(r);
     for (const n of r.fullNetworks || []) skipNetworks.add(n);
-    if (r.externalIds) {
-      // count only newly succeeded networks is hard; count keys on success
-      if (r.ok) slotsFilled += 1;
-    }
     if (r.rateLimited) {
       console.warn('[content] stopping batch after Buffer rate limit');
       break;
     }
-    // All known product networks full → stop burning API
     const allNets = new Set(
       posts.flatMap((x) => resolvePublishNetworks(x))
     );
@@ -620,6 +689,8 @@ async function publishQueued(limit = 20) {
 
   const ok = results.filter((r) => r.ok).length;
   const fail = results.filter((r) => !r.ok).length;
+  const videoOk = results.filter((r) => r.usedVideo).length;
+  const videoFail = results.filter((r) => r.videoFailed).length;
   const full = [...skipNetworks];
   return {
     results,
@@ -629,13 +700,19 @@ async function publishQueued(limit = 20) {
       failed: fail,
       publisher: 'buffer',
       channelsFull: full,
+      videosAttached: videoOk,
+      videosFailed: videoFail,
     },
     tip:
       full.length
         ? `Filled available free-plan slots. Full channels: ${full.join(', ')} (~10 each). When some posts go live, Publish again to fill remaining.`
-        : ok
-          ? `Published/updated ${ok} post(s).`
-          : undefined,
+        : videoOk
+          ? `Published ${ok} post(s); ${videoOk} with video reels in Buffer.`
+          : videoFail
+            ? `Published ${ok} as image only — Buffer rejected video. Check public MP4 URLs.`
+            : ok
+              ? `Published/updated ${ok} post(s).`
+              : undefined,
   };
 }
 

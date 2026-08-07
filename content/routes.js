@@ -5,7 +5,7 @@
 const path = require('path');
 const fs = require('fs');
 const { CONTENT_BRAND, PUBLIC_URL } = require('./brand');
-const { listPosts, loadQueue, requeuePostsForNetworks } = require('./queue');
+const { listPosts, loadQueue, getPost, requeuePostsForNetworks } = require('./queue');
 const { generatePosts, buildCopyPack, countByStatus } = require('./generator');
 const {
   isConfigured,
@@ -25,6 +25,29 @@ const {
  */
 function mountContentRoutes(app, { requireAdmin }) {
   const express = require('express');
+
+  // Generated reels first (public so Buffer can fetch MP4s)
+  try {
+    const vdir = videoDir();
+    app.use(
+      '/content-media/videos',
+      express.static(vdir, {
+        maxAge: '1d',
+        index: false,
+        fallthrough: true,
+        setHeaders(res) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        },
+      })
+    );
+    app.use('/content-media/videos', (_req, res) => {
+      res.status(404).json({ error: 'Video not found' });
+    });
+    console.log(`[content] videos → ${vdir}`);
+  } catch (e) {
+    console.warn('[content] video dir', e.message);
+  }
+
   const mediaDirs = [
     path.join(__dirname, '..', 'public', 'icons'),
     path.join(__dirname, '..', 'public', 'content-media'),
@@ -35,17 +58,6 @@ function mountContentRoutes(app, { requireAdmin }) {
       console.log(`[content] media → ${dir}`);
       break;
     }
-  }
-
-  try {
-    const vdir = videoDir();
-    app.use(
-      '/content-media/videos',
-      express.static(vdir, { maxAge: '1d', index: false })
-    );
-    console.log(`[content] videos → ${vdir}`);
-  } catch (e) {
-    console.warn('[content] video dir', e.message);
   }
 
   app.get('/api/content/status', (req, res) => {
@@ -74,7 +86,7 @@ function mountContentRoutes(app, { requireAdmin }) {
           tips: [
             'Separate Buffer FB/IG for The Word in Context (not IA or Trail Tracker).',
             'BUFFER_API_KEY + XAI_API_KEY on Render. SHARE_SITE_URL for image/video URLs.',
-            'Flow: Generate week → Generate videos → Publish queued (TikTok uses MP4).',
+            'Flow: Generate week → Generate videos (auto-pushes reels to Buffer).',
             'Posts are Q: question / A: short study answer + trial CTA.',
           ],
         });
@@ -244,16 +256,43 @@ function mountContentRoutes(app, { requireAdmin }) {
 
   /**
    * Generate talking-card reels (still + TTS voice → 9:16 MP4).
-   * Default 1 reel/request — ffmpeg OOMs Starter (512MB) if you batch 7.
+   * Auto-pushes successful reels to Buffer unless body.publish === false.
    */
   app.post('/api/content/generate-videos', (req, res) => {
     if (!requireAdmin(req, res)) return;
     void (async () => {
       try {
         const limit = Math.min(Number(req.body?.limit) || 1, 3);
+        const shouldPublish = req.body?.publish !== false;
         const out = await generateVideosForQueued({ limit });
         const ok = out.results.filter((r) => r.ok).length;
         const failed = out.results.filter((r) => !r.ok).length;
+        const okIds = out.results.filter((r) => r.ok).map((r) => r.postId);
+
+        let publishResults = [];
+        let pushTip = '';
+        if (shouldPublish && okIds.length && isConfigured()) {
+          for (const id of okIds) {
+            const post = getPost(id);
+            if (!post?.videoUrl) continue;
+            const r = await publishPost(post, { forceVideo: true });
+            publishResults.push(r);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+          const videoAttached = publishResults.filter((r) => r.usedVideo).length;
+          const pubOk = publishResults.filter((r) => r.ok).length;
+          pushTip =
+            videoAttached > 0
+              ? `Pushed ${videoAttached} reel(s) to Buffer — check calendar/queue.`
+              : pubOk > 0
+                ? 'Buffer accepted posts as images only (video rejected). Check public MP4 URL.'
+                : publishResults[0]?.error
+                  ? `Buffer push failed: ${publishResults[0].error}`
+                  : 'Videos ready — tap Publish queued if Buffer did not attach reels.';
+        } else if (okIds.length && !isConfigured()) {
+          pushTip = 'Videos on disk — set BUFFER_API_KEY or tap Publish queued.';
+        }
+
         const video = contentVideoStatus();
         res.json({
           ok: ok > 0 || (out.results.length === 0 && !out.busy),
@@ -262,17 +301,21 @@ function mountContentRoutes(app, { requireAdmin }) {
             failed,
             attempted: out.results.length,
             remainingWithoutVideo: out.remainingWithoutVideo ?? 0,
+            published: publishResults.filter((r) => r.ok).length,
+            videosInBuffer: publishResults.filter((r) => r.usedVideo).length,
           },
           results: out.results,
+          publish: publishResults.length ? { results: publishResults } : undefined,
           videoStatus: video,
           tip:
             out.busy
               ? out.results[0]?.error
               : out.results.length === 0
                 ? 'No posts need video (none queued, or all already have videoUrl). Generate week first.'
-                : out.tip ||
+                : pushTip ||
+                  out.tip ||
                   (ok
-                    ? `${ok} reel(s) ready. Click Generate videos again for more (1 at a time saves RAM), then Publish.`
+                    ? `${ok} reel(s) ready. Click Generate videos again for more (1 at a time saves RAM).`
                     : out.results[0]?.error || 'Video generation failed'),
         });
       } catch (e) {

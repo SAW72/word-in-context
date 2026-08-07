@@ -62,6 +62,10 @@ function listPosts(opts = {}) {
   return posts;
 }
 
+function getPost(id) {
+  return loadQueue().posts.find((p) => p.id === id) || null;
+}
+
 function upsertPosts(posts) {
   const q = loadQueue();
   const byId = new Map(q.posts.map((p) => [p.id, p]));
@@ -165,6 +169,7 @@ function nextImage(brand) {
 module.exports = {
   loadQueue,
   listPosts,
+  getPost,
   upsertPosts,
   updatePost,
   removePostsByIds,

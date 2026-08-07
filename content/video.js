@@ -348,14 +348,25 @@ async function generateVideoForPost(post) {
     }
 
     const videoUrl = publicVideoUrl(fileName);
+    // Re-queue so Publish / auto-push can send the reel (image-only Buffer
+    // posts leave status=scheduled + externalIds, which used to skip video).
+    const wasPublished = ['scheduled', 'posted'].includes(post.status);
     updatePost(post.id, {
       videoKey: fileName,
       videoUrl,
       voiceScript,
+      status: wasPublished || post.status === 'failed' ? 'queued' : post.status,
+      externalIds: wasPublished ? undefined : post.externalIds,
+      networksRemaining: undefined,
+      error: undefined,
       meta: {
         ...(post.meta || {}),
         videoGeneratedAt: new Date().toISOString(),
         videoHasTextOverlay: usedOverlay,
+        videoPublishedToBuffer: false,
+        priorExternalIds: wasPublished
+          ? post.externalIds || post.meta?.priorExternalIds
+          : post.meta?.priorExternalIds,
       },
     });
 
