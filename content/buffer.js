@@ -9,6 +9,7 @@ const {
   ensureWebsiteInCaption,
   fitCaptionPreservingWebsite,
   captionMentionsWebsite,
+  buildXCaption,
 } = require('./brand');
 const { updatePost } = require('./queue');
 
@@ -430,42 +431,41 @@ async function publishPost(post, opts = {}) {
     for (const t of ordered) {
       if (skipNetworks.has(t.network)) continue;
       const isX = t.network === 'x' || t.network === 'twitter';
-      let text = (
-        t.network === 'instagram'
-          ? post.captionIg || post.caption
-          : post.caption
-      || '').trim();
       const site = (CANONICAL_SITE_URL || PUBLIC_URL || '').replace(/\/$/, '');
-      // Always force site into caption before length limits / hashtags
-      text = ensureWebsiteInCaption(text, site);
-      const tags = (post.hashtags || []).filter(Boolean);
-      if (tags.length) {
-        if (isX) {
-          const short = tags.slice(0, 2).join(' ');
-          if (short && !text.toLowerCase().includes(tags[0].toLowerCase())) {
-            text = fitCaptionForNetwork(`${text}\n\n${short}`, 'x');
-          } else {
-            text = fitCaptionForNetwork(text, 'x');
-          }
-        } else {
+      let text;
+
+      if (isX) {
+        // X: dedicated short caption — URL always last (FB/IG length was killing the link)
+        text = buildXCaption({
+          question: post.question,
+          caption: post.caption,
+          captionIg: post.captionIg,
+          hashtags: post.hashtags,
+        });
+        if (!captionMentionsWebsite(text, site)) {
+          text = fitCaptionPreservingWebsite(
+            ensureWebsiteInCaption(text, site),
+            'x',
+            site
+          );
+        }
+      } else {
+        // Instagram / Facebook / TikTok: full caption; still force site
+        text = (
+          t.network === 'instagram'
+            ? post.captionIg || post.caption
+            : post.caption
+        || '').trim();
+        text = ensureWebsiteInCaption(text, site);
+        const tags = (post.hashtags || []).filter(Boolean);
+        if (tags.length) {
           const alreadyTags =
             tags.filter((h) => text.toLowerCase().includes(h.toLowerCase()))
               .length >= Math.min(2, tags.length);
           if (!alreadyTags) text = `${text}\n\n${tags.join(' ')}`;
-          text = ensureWebsiteInCaption(text, site);
         }
-      } else if (isX) {
-        text = fitCaptionForNetwork(text, 'x');
-      } else {
         text = ensureWebsiteInCaption(text, site);
-      }
-      // Final guard after any truncation
-      if (!captionMentionsWebsite(text, site)) {
-        text = fitCaptionPreservingWebsite(
-          ensureWebsiteInCaption(text, site),
-          t.network,
-          site
-        );
+        text = fitCaptionForNetwork(text, t.network);
       }
 
       const channelVideoUrl = isX ? undefined : videoUrl;
