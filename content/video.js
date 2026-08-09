@@ -150,66 +150,101 @@ async function runFfmpegReel(opts) {
 }
 
 /**
- * Burn Q/A + brand + site onto the still with Jimp (works without ffmpeg drawtext/fonts).
- * ffmpeg-static on Render often has no drawtext — this is the reliable path.
+ * Burn Q/A + brand + site onto the still with Jimp (works without ffmpeg drawtext).
+ * Uses an opaque dark panel + shadow text so JPEG (no alpha) still shows readable copy.
  */
 async function bakeTextOntoStill(imagePath, overlayText, outPath) {
   const { w, h } = reelSize();
   const img = await Jimp.read(imagePath);
   img.cover(w, h);
 
-  // Darken lower 55% so white text is readable
-  const top = Math.floor(h * 0.42);
-  img.scan(0, top, w, h - top, function (x, y, idx) {
-    const factor = 0.28 + 0.35 * ((y - top) / Math.max(1, h - top)); // darker toward bottom
-    this.bitmap.data[idx] = Math.floor(this.bitmap.data[idx] * factor);
-    this.bitmap.data[idx + 1] = Math.floor(this.bitmap.data[idx + 1] * factor);
-    this.bitmap.data[idx + 2] = Math.floor(this.bitmap.data[idx + 2] * factor);
-  });
+  // Opaque dark panel (JPEG drops alpha — never use translucent cards)
+  const panelTop = Math.floor(h * 0.44);
+  const panelH = h - panelTop - 20;
+  const panelX = 16;
+  const panelW = w - 32;
+  // Warm near-black so it matches the brand still
+  const panel = new Jimp(panelW, panelH, 0x140e08ff);
+  // Gold-ish top edge bar
+  const bar = new Jimp(panelW, 6, 0xc9a227ff);
+  panel.composite(bar, 0, 0);
+  img.composite(panel, panelX, panelTop);
 
-  // Semi-opaque card
-  const card = new Jimp(w - 48, Math.floor(h * 0.48), 0x000000aa);
-  img.composite(card, 24, Math.floor(h * 0.48));
-
-  const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-  const fontSm = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+  const fontWhite = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+  const fontWhiteSm = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+  let fontBlack = null;
+  let fontBlackSm = null;
+  try {
+    fontBlack = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+    fontBlackSm = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
+  } catch {
+    /* optional shadow */
+  }
 
   const lines = String(overlayText || '')
     .split('\n')
     .map((s) => s.trimEnd())
+    .filter((s, i, arr) => s || (i > 0 && arr[i - 1])) // keep single blank gaps
     .slice(0, 14);
 
-  let y = Math.floor(h * 0.5);
-  const maxW = w - 80;
+  if (!lines.some((l) => l && l.trim())) {
+    lines.push('The Word in Context', 'thewordincontext.org');
+  }
+
+  let y = panelTop + 28;
   for (const line of lines) {
-    if (!line) {
+    if (!line || !line.trim()) {
       y += 14;
       continue;
     }
     const isFooter =
-      /the word in context/i.test(line) || /thewordincontext\.org/i.test(line);
-    const f = isFooter ? fontSm : font;
-    const lineH = isFooter ? 22 : 38;
-    img.print(
-      f,
-      40,
-      y,
-      {
-        text: line,
-        alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
-        alignmentY: Jimp.VERTICAL_ALIGN_TOP,
-      },
-      maxW,
-      lineH + 4
-    );
+      /the word in context/i.test(line) || /thewordincontext/i.test(line);
+    const fW = isFooter ? fontWhiteSm : fontWhite;
+    const fB = isFooter ? fontBlackSm : fontBlack;
+    const lineH = isFooter ? 26 : 42;
+
+    // Truncate lines that are wider than the panel
+    let text = line;
+    let tw = Jimp.measureText(fW, text);
+    const maxTw = panelW - 36;
+    while (tw > maxTw && text.length > 8) {
+      text = `${text.slice(0, -2)}…`;
+      tw = Jimp.measureText(fW, text);
+    }
+    const x = panelX + Math.max(12, Math.floor((panelW - tw) / 2));
+
+    // Drop shadow then white glyph (simple print — alignment object can fail silently)
+    if (fB) img.print(fB, x + 2, y + 2, text);
+    img.print(fW, x, y, text);
+
     y += lineH;
-    if (y > h - 40) break;
+    if (y > h - 36) break;
   }
 
-  await img.quality(88).writeAsync(outPath);
-  if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 500) {
-    throw new Error('Failed to bake text onto still');
+  await img.quality(90).writeAsync(outPath);
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 2000) {
+    throw new Error('Failed to bake text onto still (empty file)');
   }
+
+  // Verify we actually painted light pixels in the panel (catch silent font failures)
+  const check = await Jimp.read(outPath);
+  let bright = 0;
+  check.scan(panelX + 8, panelTop + 8, panelW - 16, Math.min(panelH - 16, 500), function (
+    _x,
+    _y,
+    idx
+  ) {
+    const r = this.bitmap.data[idx];
+    const g = this.bitmap.data[idx + 1];
+    const b = this.bitmap.data[idx + 2];
+    if (r + g + b > 420) bright += 1;
+  });
+  if (bright < 400) {
+    throw new Error(
+      `Text bake produced too few light pixels (${bright}) — fonts may have failed`
+    );
+  }
+  console.log('[content-video] text baked', outPath, `bright=${bright}`);
   return outPath;
 }
 
@@ -497,63 +532,63 @@ async function generateVideoForPost(post) {
       throw new Error('TTS wrote no usable audio file');
     }
 
-    // 2) Bake Q/A + brand + URL onto still (Jimp — no ffmpeg drawtext needed)
+    // 2) Bake Q/A + brand + URL onto still — REQUIRED (do not ship voice-only blank stills)
     fs.writeFileSync(textPath, overlay, 'utf8');
     let usedOverlay = false;
-    let stillForVideo = imagePath;
-    try {
-      if (process.env.CONTENT_VIDEO_OVERLAY !== '0') {
+    if (process.env.CONTENT_VIDEO_OVERLAY === '0') {
+      console.warn('[content-video] CONTENT_VIDEO_OVERLAY=0 — text disabled by env');
+    } else {
+      try {
         await bakeTextOntoStill(imagePath, overlay, stillPath);
-        stillForVideo = stillPath;
         usedOverlay = true;
-      }
-    } catch (bakeErr) {
-      console.warn(
-        '[content-video] Jimp text bake failed, trying drawtext fallback',
-        bakeErr.message || bakeErr
-      );
-      // Optional drawtext fallback if system fonts exist
-      const font = resolveFont();
-      const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
-      if (canDraw && allowTextOverlay(canDraw, font)) {
-        const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
-        const textEsc = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-        const vf =
-          `${baseVideoFilters()},` +
-          `drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:` +
-          `fontsize=32:fontcolor=white:borderw=2:bordercolor=black@0.9:` +
-          `line_spacing=10:x=(w-text_w)/2:y=h*0.52:` +
-          `box=1:boxcolor=black@0.55:boxborderw=16`;
-        const durationSec =
-          (await probeAudioDurationSec(ffmpeg, audioPath)) ||
-          Math.max(6, Math.ceil(voiceScript.length / 14));
-        await runFfmpegReel({
-          ffmpeg,
-          imagePath,
-          audioPath,
-          outPath,
-          vf,
-          durationSec,
-        });
-        usedOverlay = true;
-        // skip second encode below
-        stillForVideo = null;
-      } else {
+      } catch (bakeErr) {
         console.warn(
-          '[content-video] no text bake available — reel will be background + voice only'
+          '[content-video] Jimp bake failed, trying drawtext',
+          bakeErr.message || bakeErr
         );
+        const font = resolveFont();
+        const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
+        if (!canDraw) {
+          throw new Error(
+            `Could not put text on reel: ${bakeErr.message || bakeErr}. ` +
+              'Install fonts or fix jimp. Refusing silent background-only reel.'
+          );
+        }
+        // drawtext path encodes in one step below
+        usedOverlay = 'drawtext';
       }
     }
 
-    // 3) Encode still + voice (if not already encoded via drawtext path)
-    if (stillForVideo) {
-      const durationSec =
-        (await probeAudioDurationSec(ffmpeg, audioPath)) ||
-        Math.max(6, Math.ceil(voiceScript.length / 14));
-      // Still already sized/text-baked — light scale only if dimensions differ
-      const { w, h } = reelSize();
+    // 3) Encode still + voice
+    const durationSec =
+      (await probeAudioDurationSec(ffmpeg, audioPath)) ||
+      Math.max(6, Math.ceil(voiceScript.length / 14));
+    const { w, h } = reelSize();
+
+    if (usedOverlay === 'drawtext') {
+      const font = resolveFont();
+      const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
+      const textEsc = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+      const vf =
+        `${baseVideoFilters()},` +
+        `drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:` +
+        `fontsize=32:fontcolor=white:borderw=3:bordercolor=black@0.95:` +
+        `line_spacing=10:x=(w-text_w)/2:y=h*0.52:` +
+        `box=1:boxcolor=black@0.75:boxborderw=18`;
+      await runFfmpegReel({
+        ffmpeg,
+        imagePath,
+        audioPath,
+        outPath,
+        vf,
+        durationSec,
+      });
+      usedOverlay = true;
+    } else {
+      const stillForVideo = usedOverlay ? stillPath : imagePath;
+      // Baked JPEG is already 720x1280 — avoid filters that could drop detail; only pad if needed
       const vf = usedOverlay
-        ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`
+        ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x140e08`
         : baseVideoFilters();
       await runFfmpegReel({
         ffmpeg,
@@ -563,6 +598,12 @@ async function generateVideoForPost(post) {
         vf,
         durationSec,
       });
+    }
+
+    if (!usedOverlay) {
+      console.warn(
+        '[content-video] WARNING: reel encoded without text overlay (CONTENT_VIDEO_OVERLAY=0?)'
+      );
     }
 
     if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 2000) {
