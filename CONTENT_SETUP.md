@@ -85,6 +85,21 @@ Every caption **must** include the site. The generator and Buffer publish path f
 `https://www.thewordincontext.org` (or bare `thewordincontext.org`) if the model omits it.  
 Set `SHARE_SITE_URL=https://www.thewordincontext.org` on Render if media URLs look wrong.
 
+## Reels (video)
+
+Generate videos burns **Q/A text + thewordincontext.org** onto the parchment still  
+(so reels are not a blank background). Requires ffmpeg with `drawtext` + a system font  
+(DejaVu on Render Linux is usual).
+
+```bash
+# Optional
+CONTENT_VIDEO_OVERLAY=0   # disable burned-in text (not recommended)
+CONTENT_VIDEO_HEIGHT=1280 # default; 1920 on larger plans
+CONTENT_VIDEO_BATCH=1     # videos per Generate click (keep 1 on Starter)
+```
+
+After deploy: **Generate videos** again (old MP4s were background-only).
+
 ---
 
 ## API (Bearer admin JWT)

@@ -132,6 +132,7 @@ function mountContentRoutes(app, { requireAdmin }) {
     })();
   });
 
+  // Serve brand stills from icons + optional content-media (both mapped under /content-media)
   const mediaDirs = [
     path.join(__dirname, '..', 'public', 'icons'),
     path.join(__dirname, '..', 'public', 'content-media'),
@@ -140,7 +141,6 @@ function mountContentRoutes(app, { requireAdmin }) {
     if (fs.existsSync(dir)) {
       app.use('/content-media', express.static(dir, { maxAge: '7d', index: false }));
       console.log(`[content] media → ${dir}`);
-      break;
     }
   }
 

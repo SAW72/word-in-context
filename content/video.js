@@ -60,16 +60,20 @@ function baseVideoFilters() {
   return [
     `scale=${w}:${h}:force_original_aspect_ratio=increase`,
     `crop=${w}:${h}`,
-    'eq=brightness=0.02:saturation=1.05',
+    // Slight darken so white caption text stays readable on parchment/cross stills
+    'eq=brightness=-0.06:saturation=1.05',
   ].join(',');
 }
 
 async function runFfmpegReel(opts) {
   // threads=1 + ultrafast: critical on 512MB so Node + ffmpeg don't OOM
+  // -framerate 30 before still image avoids blank/zero-frame quirks on some ffmpeg builds
   await execFileAsync(
     opts.ffmpeg,
     [
       '-y',
+      '-framerate',
+      '30',
       '-loop',
       '1',
       '-i',
@@ -90,6 +94,8 @@ async function runFfmpegReel(opts) {
       '1',
       '-pix_fmt',
       'yuv420p',
+      '-r',
+      '30',
       '-c:a',
       'aac',
       '-b:a',
@@ -189,15 +195,76 @@ function voiceScriptFromPost(post) {
   return t;
 }
 
+/** Word-wrap a single line for drawtext (approx by chars). */
+function wrapLine(line, maxChars = 28) {
+  const words = String(line || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+  if (!words.length) return [];
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const next = cur ? `${cur} ${w}` : w;
+    if (next.length <= maxChars) cur = next;
+    else {
+      if (cur) lines.push(cur);
+      cur = w.length > maxChars ? `${w.slice(0, maxChars - 1)}…` : w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/**
+ * Multi-line card text burned onto reels.
+ * Without this, Starter-plan reels are only the background still (looks "blank").
+ */
 function overlayTextFromPost(post) {
   const raw = (post.caption || post.captionIg || '').trim();
-  const line = raw
+  const linesIn = raw
     .split('\n')
     .map((s) => s.trim())
-    .find((s) => s && !s.startsWith('#') && !/^https?:/i.test(s));
-  let t = (line || raw).replace(/#[\w]+/g, '').trim();
-  if (t.length > 90) t = t.slice(0, 87).trim() + '…';
-  return t || 'The Word in Context';
+    .filter((s) => s && !s.startsWith('#') && !/^https?:/i.test(s));
+
+  let q =
+    linesIn.find((s) => /^Q:\s*/i.test(s)) ||
+    (post.question ? `Q: ${post.question}` : '') ||
+    linesIn[0] ||
+    '';
+  q = q.replace(/^Q:\s*/i, 'Q: ').replace(/#[\w]+/g, '').trim();
+
+  let a = linesIn.find((s) => /^A:\s*/i.test(s)) || '';
+  a = a.replace(/^A:\s*/i, 'A: ').replace(/#[\w]+/g, '').trim();
+
+  const bodyLines = [];
+  for (const piece of wrapLine(q, 30).slice(0, 3)) bodyLines.push(piece);
+  if (a) {
+    bodyLines.push('');
+    for (const piece of wrapLine(a, 30).slice(0, 4)) bodyLines.push(piece);
+  }
+  if (!bodyLines.length) {
+    bodyLines.push('Study Scripture', 'in context');
+  }
+
+  // Footer always on the card
+  bodyLines.push('');
+  bodyLines.push('The Word in Context');
+  bodyLines.push('thewordincontext.org');
+
+  // Cap total lines so drawtext stays light on RAM
+  const capped = bodyLines.slice(0, 12);
+  return capped.join('\n') || 'The Word in Context\nthewordincontext.org';
+}
+
+/** Whether to burn caption text onto the reel (default: ON). */
+function allowTextOverlay(canDraw, font) {
+  if (!canDraw || !font) return false;
+  // Explicit off only
+  if (process.env.CONTENT_VIDEO_OVERLAY === '0') return false;
+  // Default ON for 720p and 1080p — blank stills without text look empty on IG/TikTok
+  return true;
 }
 
 async function synthesizeVoiceMp3(script, outPath) {
@@ -293,18 +360,23 @@ async function generateVideoForPost(post) {
     const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
     const vfBase = baseVideoFilters();
     let usedOverlay = false;
+    const { h: reelH } = reelSize();
+    // Smaller type on 720p keeps RAM lower; still readable on phone reels
+    const fontSize = reelH >= 1800 ? 40 : 32;
+    const yPos = reelH >= 1800 ? 'h*0.58' : 'h*0.52';
 
     try {
-      // Skip drawtext on small instances — overlay doubles peak RAM
-      const allowOverlay =
-        canDraw &&
-        font &&
-        process.env.CONTENT_VIDEO_OVERLAY !== '0' &&
-        Number(process.env.CONTENT_VIDEO_HEIGHT || 1280) >= 1800;
-      if (allowOverlay && font) {
+      const allowOverlay = allowTextOverlay(canDraw, font);
+      if (allowOverlay) {
         const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
         const textEsc = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-        const vfWithText = `${vfBase},drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:fontsize=36:fontcolor=white:borderw=2:bordercolor=black@0.85:line_spacing=8:x=(w-text_w)/2:y=h*0.70:box=1:boxcolor=black@0.45:boxborderw=12`;
+        // Bottom card: Q/A + brand + site — without this reels look like a blank still
+        const vfWithText =
+          `${vfBase},` +
+          `drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:` +
+          `fontsize=${fontSize}:fontcolor=white:borderw=2:bordercolor=black@0.9:` +
+          `line_spacing=10:x=(w-text_w)/2:y=${yPos}:` +
+          `box=1:boxcolor=black@0.55:boxborderw=16`;
         await runFfmpegReel({
           ffmpeg,
           imagePath,
@@ -314,6 +386,9 @@ async function generateVideoForPost(post) {
         });
         usedOverlay = true;
       } else {
+        console.warn(
+          '[content-video] no drawtext/font — reel is background only (set fonts on host or install freetype ffmpeg)'
+        );
         await runFfmpegReel({
           ffmpeg,
           imagePath,
@@ -324,10 +399,10 @@ async function generateVideoForPost(post) {
       }
     } catch (firstErr) {
       const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-      if (/drawtext|No such filter/i.test(msg) || usedOverlay || canDraw) {
+      if (/drawtext|No such filter|font/i.test(msg) || usedOverlay || canDraw) {
         console.warn(
-          '[content-video] overlay failed, image+audio only',
-          msg.slice(0, 120)
+          '[content-video] overlay failed, retrying image+audio only',
+          msg.slice(0, 160)
         );
         drawtextCached = false;
         await runFfmpegReel({
