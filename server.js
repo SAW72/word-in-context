@@ -18,6 +18,7 @@ const os = require('os');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
+const { Webhook: StandardWebhook } = require('standardwebhooks');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -30,8 +31,9 @@ const PORT = process.env.PORT || 8787;
 
 // Raw body for payment webhooks MUST be the very first middleware (before any express.json or body parsers)
 // so that req.body is the raw Buffer/string for signature verification.
-app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
-app.use('/api/whop-webhook', express.raw({ type: 'application/json' }));
+// Accept any content-type — Whop may send application/json or application/json; charset=utf-8.
+app.use('/api/stripe-webhook', express.raw({ type: () => true, limit: '2mb' }));
+app.use('/api/whop-webhook', express.raw({ type: () => true, limit: '2mb' }));
 
 // === SQLite DB for users (with Render persistent disk support) ===
 // IMPORTANT: On Render, when adding the disk in the dashboard:
@@ -244,49 +246,93 @@ function paymentProvider() {
   return null;
 }
 
-function whopWebhookSigningKey(secret) {
-  const s = String(secret || '').trim();
-  if (s.startsWith('whsec_')) return Buffer.from(s.slice(6), 'base64');
-  return Buffer.from(s, 'base64');
+/** Normalize Express / proxy headers for Standard Webhooks (lowercase string values). */
+function normalizeWebhookHeaders(headers) {
+  const out = {};
+  if (!headers || typeof headers !== 'object') return out;
+  for (const [k, v] of Object.entries(headers)) {
+    if (v == null) continue;
+    const val = Array.isArray(v) ? v[0] : v;
+    out[String(k).toLowerCase()] = String(val);
+  }
+  return out;
 }
 
+/**
+ * Verify Whop webhooks (Standard Webhooks / Svix-style).
+ * Tries the dashboard secret as-is, then common mis-copy variants so a wrong
+ * encoding of WHOP_WEBHOOK_SECRET on Render does not hard-fail forever.
+ */
 function verifyWhopWebhook(rawBody, headers) {
-  const secret = process.env.WHOP_WEBHOOK_SECRET;
+  const secret = String(process.env.WHOP_WEBHOOK_SECRET || '').trim().replace(/^["']|["']$/g, '');
   if (!secret) throw new Error('WHOP_WEBHOOK_SECRET not configured');
 
-  const id = headers['webhook-id'] || headers['Webhook-Id'];
-  const timestamp = headers['webhook-timestamp'] || headers['Webhook-Timestamp'];
-  const signatureHeader = headers['webhook-signature'] || headers['Webhook-Signature'];
-  if (!id || !timestamp || !signatureHeader) {
-    throw new Error('Missing Whop webhook headers');
-  }
-
-  const ts = parseInt(timestamp, 10);
-  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
-    throw new Error('Whop webhook timestamp outside tolerance');
-  }
-
   const bodyText = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody || '');
-  const signedContent = `${id}.${timestamp}.${bodyText}`;
-  const key = whopWebhookSigningKey(secret);
-  const expected = crypto.createHmac('sha256', key).update(signedContent).digest('base64');
+  if (!bodyText) throw new Error('Empty webhook body (raw body required for signature verification)');
 
-  const signatures = String(signatureHeader).split(/\s+/);
-  for (const sig of signatures) {
-    const comma = sig.indexOf(',');
-    if (comma === -1) continue;
-    const version = sig.slice(0, comma);
-    const value = sig.slice(comma + 1);
-    if (version !== 'v1' || !value) continue;
-    try {
-      const a = Buffer.from(value);
-      const b = Buffer.from(expected);
-      if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
-        return JSON.parse(bodyText);
-      }
-    } catch (_) {}
+  const h = normalizeWebhookHeaders(headers);
+  if (!h['webhook-id'] || !h['webhook-timestamp'] || !h['webhook-signature']) {
+    throw new Error('Missing Whop webhook headers (webhook-id, webhook-timestamp, webhook-signature)');
   }
-  throw new Error('Invalid Whop webhook signature');
+
+  // Candidate secrets: as stored, and common mistakes (extra base64 wrap, no whsec_ prefix)
+  const candidates = [];
+  const push = (s) => {
+    if (s && typeof s === 'string' && !candidates.includes(s)) candidates.push(s);
+  };
+  push(secret);
+  if (!secret.startsWith('whsec_')) push(`whsec_${secret}`);
+  // Whop docs sometimes show webhookKey: btoa(WHOP_WEBHOOK_SECRET) — reverse that if stored that way
+  try {
+    const asUtf8 = Buffer.from(secret, 'base64').toString('utf8');
+    if (asUtf8.startsWith('whsec_') || asUtf8.length >= 16) push(asUtf8);
+  } catch (_) {}
+
+  let lastErr = null;
+  for (const key of candidates) {
+    try {
+      const wh = new StandardWebhook(key);
+      // standardwebhooks returns the parsed JSON on success
+      return wh.verify(bodyText, h);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  // Manual HMAC fallback (same Standard Webhooks formula) for environments where
+  // the standardwebhooks package behaves differently on base64 edge cases.
+  for (const keyStr of candidates) {
+    try {
+      let keyBuf;
+      if (keyStr.startsWith('whsec_')) {
+        keyBuf = Buffer.from(keyStr.slice(6), 'base64');
+      } else {
+        keyBuf = Buffer.from(keyStr, 'base64');
+      }
+      const signedContent = `${h['webhook-id']}.${h['webhook-timestamp']}.${bodyText}`;
+      const expected = crypto.createHmac('sha256', keyBuf).update(signedContent).digest('base64');
+      const signatures = String(h['webhook-signature']).split(/\s+/);
+      for (const sig of signatures) {
+        const comma = sig.indexOf(',');
+        if (comma === -1) continue;
+        const version = sig.slice(0, comma);
+        const value = sig.slice(comma + 1);
+        if (version !== 'v1' || !value) continue;
+        const a = Buffer.from(value);
+        const b = Buffer.from(expected);
+        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+          return JSON.parse(bodyText);
+        }
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  const msg = lastErr && lastErr.message ? lastErr.message : 'Invalid Whop webhook signature';
+  throw new Error(msg.includes('signature') || msg.includes('timestamp') || msg.includes('header')
+    ? msg
+    : `Invalid Whop webhook signature (${msg})`);
 }
 
 function buildWhopCheckoutUrl(email, billing = 'monthly') {
@@ -298,10 +344,18 @@ function buildWhopCheckoutUrl(email, billing = 'monthly') {
 }
 
 function whopPayloadEmail(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  // Whop nests email under different shapes depending on event type / API version.
   return normalizeEmail(
     payload?.user?.email
     || payload?.member?.user?.email
     || payload?.member?.email
+    || payload?.membership?.user?.email
+    || payload?.membership?.member?.user?.email
+    || payload?.membership?.member?.email
+    || payload?.membership?.email
+    || payload?.customer?.email
+    || payload?.metadata?.email
     || payload?.email
   );
 }
@@ -325,14 +379,24 @@ function formatWhopDate(iso) {
 }
 
 function whopPayloadPlanId(payload) {
-  return payload?.plan?.id || payload?.plan_id || null;
+  if (!payload || typeof payload !== 'object') return null;
+  return (
+    payload?.plan?.id
+    || payload?.plan_id
+    || payload?.membership?.plan?.id
+    || payload?.membership?.plan_id
+    || payload?.product?.plan?.id
+    || null
+  );
 }
 
 function whopMembershipIsAllowed(payload) {
   const allowed = whopPlanIds();
   if (!allowed.length) return true;
   const planId = whopPayloadPlanId(payload);
-  return !planId || allowed.includes(planId);
+  // Missing plan id: allow (do not drop legitimate activations over incomplete payloads)
+  if (!planId) return true;
+  return allowed.includes(planId);
 }
 
 function mapWhopStatusToUserStatus(whopStatus) {
@@ -2244,13 +2308,17 @@ app.post('/api/admin/set-access', (req, res) => {
 
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
   if (!whopMembershipIsAllowed(payload)) {
-    console.warn(`[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)}`);
+    console.warn(
+      `[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)} — not in WHOP_PLAN_IDS (${whopPlanIds().join(',')})`
+    );
     return null;
   }
 
   const email = whopPayloadEmail(payload);
   if (!email) {
-    console.warn(`[whop:${source}] membership ${payload?.id || '(unknown)'} missing email`);
+    console.warn(
+      `[whop:${source}] membership ${payload?.id || '(unknown)'} missing email — check Whop webhook permissions include member:email:read`
+    );
     return null;
   }
 
@@ -2508,6 +2576,7 @@ app.post('/api/stripe-webhook', async (req, res) => {
 
 app.post('/api/whop-webhook', async (req, res) => {
   if (!whopWebhookConfigured()) {
+    console.error('[whop:webhook] WHOP_WEBHOOK_SECRET missing — set it on Render to the secret from Whop Developer → Webhooks');
     return res.status(503).send('Whop webhook not configured');
   }
 
@@ -2516,20 +2585,23 @@ app.post('/api/whop-webhook', async (req, res) => {
     event = verifyWhopWebhook(req.body, req.headers);
   } catch (err) {
     console.error('Whop webhook signature error:', err.message);
+    console.error('[whop:webhook] tip: URL must be https://www.thewordincontext.org/api/whop-webhook (use www — bare domain redirects). Secret must match the Whop dashboard webhook secret exactly (usually starts with whsec_).');
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
     const type = event?.type;
-    const data = event?.data || {};
+    // Some Whop API versions put the membership object at the root after unwrap
+    const data = event?.data != null ? event.data : event;
+    console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
-    if (type === 'membership.activated' || type === 'membership.went_valid') {
+    if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
       await activateWhopMembership(data, 'webhook');
-    } else if (type === 'membership.deactivated' || type === 'membership.went_invalid') {
+    } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
     } else if (type === 'payment.succeeded') {
       const membership = data?.membership || data;
-      if (membership?.id || membership?.status) {
+      if (membership?.id || membership?.status || membership?.user || membership?.member) {
         await activateWhopMembership(membership, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
@@ -2538,20 +2610,40 @@ app.post('/api/whop-webhook', async (req, res) => {
           if (user) {
             db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
+          } else {
+            console.warn(`[whop:webhook-payment] payment.succeeded for unknown email ${email} — no user row yet`);
           }
+        } else {
+          console.warn('[whop:webhook-payment] payment.succeeded with no email in payload');
         }
       }
     } else if (type === 'membership.trial_ending_soon') {
       await handleWhopTrialEndingSoon(data, 'webhook');
     } else if (type === 'payment.failed') {
       await handleWhopPaymentFailed(data, 'webhook');
+    } else {
+      console.log(`[whop:webhook] ignored event type=${type}`);
     }
   } catch (err) {
     console.error('Whop webhook handler error:', err);
     return res.status(500).json({ error: 'Webhook handler failed' });
   }
 
+  // Always 2xx quickly so Whop does not retry on unknown event types
   res.json({ received: true });
+});
+
+// Public health for webhook setup (no secrets). Useful when debugging Whop dashboard failures.
+app.get('/api/whop-webhook', (req, res) => {
+  res.json({
+    ok: true,
+    endpoint: 'POST /api/whop-webhook',
+    preferredUrl: 'https://www.thewordincontext.org/api/whop-webhook',
+    configured: whopWebhookConfigured(),
+    paymentProvider: paymentProvider(),
+    planIdsConfigured: whopPlanIds().length,
+    tip: 'In Whop Dashboard → Developer → Webhooks use the www URL. Paste the webhook secret into Render env WHOP_WEBHOOK_SECRET (starts with whsec_). Subscribe to membership.activated, membership.deactivated, payment.succeeded, payment.failed, membership.trial_ending_soon.',
+  });
 });
 
 // Simple success page after checkout (Whop redirect or Stripe session_id)
