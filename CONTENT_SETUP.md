@@ -74,10 +74,16 @@ A: <short answer with context / references when possible>
 
 (Study aid — read the passage yourself.)
 
-CTA + thewordincontext.org/app
+Soft CTA
+
+https://www.thewordincontext.org
 
 #TheWordInContext #BibleStudy …
 ```
+
+Every caption **must** include the site. The generator and Buffer publish path force  
+`https://www.thewordincontext.org` (or bare `thewordincontext.org`) if the model omits it.  
+Set `SHARE_SITE_URL=https://www.thewordincontext.org` on Render if media URLs look wrong.
 
 ---
 

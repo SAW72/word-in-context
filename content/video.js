@@ -184,7 +184,7 @@ function voiceScriptFromPost(post) {
   }
   if (!t) {
     t =
-      'Trail Tracker. The Word in Context. Hear the text. Study the words. Grow in understanding.';
+      'The Word in Context. Hear the text. Study the words. Grow in understanding. Visit thewordincontext.org.';
   }
   return t;
 }

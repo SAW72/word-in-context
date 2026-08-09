@@ -3,7 +3,13 @@
  * No firstComment (paid). Hashtags in body. type=post for FB/IG.
  */
 
-const { PUBLIC_URL } = require('./brand');
+const {
+  PUBLIC_URL,
+  CANONICAL_SITE_URL,
+  ensureWebsiteInCaption,
+  fitCaptionPreservingWebsite,
+  captionMentionsWebsite,
+} = require('./brand');
 const { updatePost } = require('./queue');
 
 const BUFFER_GQL = 'https://api.buffer.com/graphql';
@@ -132,24 +138,13 @@ function metadataForNetwork(network, opts = {}) {
   return {};
 }
 
-/** Free X: 280 chars — keep a little headroom */
+/** Free X: 280 chars — keep a little headroom; always keep website URL */
 function fitCaptionForNetwork(text, network) {
-  const n = (network || '').toLowerCase();
-  const t = String(text || '').trim();
-  if (n === 'x' || n === 'twitter') {
-    const max = 270;
-    if (t.length <= max) return t;
-    const cut = t.slice(0, max - 1);
-    const breakAt = Math.max(
-      cut.lastIndexOf('\n'),
-      cut.lastIndexOf('. '),
-      cut.lastIndexOf('! '),
-      cut.lastIndexOf('? ')
-    );
-    const body = (breakAt > 80 ? cut.slice(0, breakAt + 1) : cut).trim();
-    return `${body}…`;
-  }
-  return t.slice(0, 2200);
+  return fitCaptionPreservingWebsite(
+    text,
+    network,
+    CANONICAL_SITE_URL || PUBLIC_URL
+  );
 }
 
 /** Prefer live CONTENT_NETWORKS so adding x works without regenerating every post */
@@ -440,21 +435,9 @@ async function publishPost(post, opts = {}) {
           ? post.captionIg || post.caption
           : post.caption
       || '').trim();
-      try {
-        const { CONTENT_BRAND } = require('./brand');
-        const site = (CONTENT_BRAND.website || CONTENT_BRAND.appUrl || '').replace(
-          /\/$/,
-          ''
-        );
-        if (site) {
-          const host = site.replace(/^https?:\/\//i, '').toLowerCase();
-          if (!text.toLowerCase().includes(host)) {
-            text = `${text}\n\n${site}`;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
+      const site = (CANONICAL_SITE_URL || PUBLIC_URL || '').replace(/\/$/, '');
+      // Always force site into caption before length limits / hashtags
+      text = ensureWebsiteInCaption(text, site);
       const tags = (post.hashtags || []).filter(Boolean);
       if (tags.length) {
         if (isX) {
@@ -469,9 +452,20 @@ async function publishPost(post, opts = {}) {
             tags.filter((h) => text.toLowerCase().includes(h.toLowerCase()))
               .length >= Math.min(2, tags.length);
           if (!alreadyTags) text = `${text}\n\n${tags.join(' ')}`;
+          text = ensureWebsiteInCaption(text, site);
         }
       } else if (isX) {
         text = fitCaptionForNetwork(text, 'x');
+      } else {
+        text = ensureWebsiteInCaption(text, site);
+      }
+      // Final guard after any truncation
+      if (!captionMentionsWebsite(text, site)) {
+        text = fitCaptionPreservingWebsite(
+          ensureWebsiteInCaption(text, site),
+          t.network,
+          site
+        );
       }
 
       const channelVideoUrl = isX ? undefined : videoUrl;

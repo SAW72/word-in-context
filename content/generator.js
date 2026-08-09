@@ -1,4 +1,9 @@
-const { CONTENT_BRAND, publicMediaUrl } = require('./brand');
+const {
+  CONTENT_BRAND,
+  publicMediaUrl,
+  ensureWebsiteInCaption,
+  CANONICAL_SITE_URL,
+} = require('./brand');
 const {
   loadQueue,
   listPosts,
@@ -39,19 +44,12 @@ function scheduledAtForDay(day, hour, tz) {
 }
 
 function brandLink(brand) {
-  return (brand.website || brand.appUrl || '').replace(/\/$/, '');
-}
-
-function ensureWebsiteInCaption(caption, website) {
-  const url = (website || '').replace(/\/$/, '').trim();
-  if (!url) return (caption || '').trim();
-  const host = url.replace(/^https?:\/\//i, '').toLowerCase();
-  const body = (caption || '').trim();
-  const lower = body.toLowerCase();
-  if (lower.includes(host) || lower.includes(url.toLowerCase())) {
-    return body;
-  }
-  return `${body}\n\n${url}`;
+  return (
+    brand.website ||
+    brand.appUrl ||
+    CANONICAL_SITE_URL ||
+    'https://www.thewordincontext.org'
+  ).replace(/\/$/, '');
 }
 
 function demoCopy(brand, pillarLabel, angle) {
@@ -119,10 +117,13 @@ FORMAT (required for every post):
 1) First line: Q: <honest study question people actually ask>
 2) Then A: <2–5 short sentences>. Prefer real references (e.g. John 1:1–14) when you cite.
 3) One soft line: study aid / read the passage yourself.
-4) End with CTA + the full website URL on its own line: ${link}
+4) Soft CTA, then the full website URL alone on the LAST line exactly:
+${link}
 
 Rules:
-- REQUIRED: every caption AND captionIg MUST include ${link}
+- REQUIRED: every caption AND captionIg MUST end with the website URL on its own line: ${link}
+- Never omit the URL. Never replace it with a different domain.
+- Also acceptable bare form on last line: thewordincontext.org (prefer full ${link})
 - Do NOT invent exact Greek/Hebrew spellings if unsure; paraphrase carefully.
 - No denomi-bait, no politics, no rage content.
 - No hashtags in the caption body (we append them).
@@ -133,7 +134,8 @@ posts length MUST equal ${slots.length} in order.`;
 
   const user = `Brand: ${brand.name}
 Tagline: ${brand.tagline}
-Website (REQUIRED in every post): ${link}
+Website (REQUIRED on its own last line of every caption): ${link}
+Also write as: thewordincontext.org if you shorten — but prefer full ${link}
 App: ${brand.appUrl}
 Hashtag pool: ${brand.hashtags.join(', ')}
 CTA pool: ${brand.ctaLines.join(' | ')}
@@ -185,7 +187,18 @@ ${slots
         : [];
     return slots.map((s, i) => {
       const p = arr[i];
-      if (p?.caption?.trim()) return p;
+      if (p?.caption?.trim()) {
+        // Force URL even if the model dropped it
+        return {
+          ...p,
+          caption: ensureWebsiteInCaption(p.caption, link),
+          captionIg: ensureWebsiteInCaption(
+            p.captionIg || p.caption,
+            link
+          ),
+          cta: p.cta || brand.ctaLines[0],
+        };
+      }
       return demoCopy(brand, s.pillar.label, s.pillar.angle);
     });
   } catch (err) {

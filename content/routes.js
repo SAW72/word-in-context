@@ -4,7 +4,12 @@
  */
 const path = require('path');
 const fs = require('fs');
-const { CONTENT_BRAND, PUBLIC_URL } = require('./brand');
+const {
+  CONTENT_BRAND,
+  PUBLIC_URL,
+  ensureWebsiteInCaption,
+  CANONICAL_SITE_URL,
+} = require('./brand');
 const { listPosts, loadQueue, getPost, requeuePostsForNetworks } = require('./queue');
 const { generatePosts, buildCopyPack, countByStatus } = require('./generator');
 const {
@@ -214,14 +219,14 @@ function mountContentRoutes(app, { requireAdmin }) {
             ...(health.x ? ['x'] : []),
             ...(health.tiktok ? ['tiktok'] : []),
           ],
-          caption:
-            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments. Reading the surrounding passage protects us from slogan-theology.\n\n(Study aid — open the text yourself.)\n\nTry The Word in Context: voice-first Scripture study.\n' +
-            PUBLIC_URL +
-            '/app',
-          captionIg:
-            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments.\n\nTry The Word in Context → ' +
-            PUBLIC_URL +
-            '/app',
+          caption: ensureWebsiteInCaption(
+            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments. Reading the surrounding passage protects us from slogan-theology.\n\n(Study aid — open the text yourself.)\n\nTry The Word in Context: voice-first Scripture study.',
+            CANONICAL_SITE_URL || PUBLIC_URL
+          ),
+          captionIg: ensureWebsiteInCaption(
+            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments.\n\nTry The Word in Context.',
+            CANONICAL_SITE_URL || PUBLIC_URL
+          ),
           hashtags: ['#TheWordInContext', '#BibleStudy', '#Scripture'],
           imageKey: 'share-bg-vertical.jpg',
           imageUrl,

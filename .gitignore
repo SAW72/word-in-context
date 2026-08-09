@@ -8,6 +8,10 @@ node_modules/
 users.db
 *.db
 
+# Content engine queue / generated reels (runtime data on disk)
+data/content-queue.json
+data/content-videos/
+
 # OS / editor
 .DS_Store
 *.swp
