@@ -7,6 +7,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
+const Jimp = require('jimp');
 const { updatePost, listPosts } = require('./queue');
 const { PUBLIC_URL } = require('./brand');
 
@@ -65,57 +66,151 @@ function baseVideoFilters() {
   ].join(',');
 }
 
+/**
+ * Probe audio duration via ffmpeg (prints Duration on stderr, exits non-zero).
+ */
+async function probeAudioDurationSec(ffmpeg, audioPath) {
+  try {
+    await execFileAsync(ffmpeg, ['-i', audioPath], {
+      timeout: 20_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+  } catch (e) {
+    const err = `${e.stderr || ''}\n${e.message || ''}`;
+    const m = err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (m) {
+      const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      if (Number.isFinite(sec) && sec > 0.4) return sec;
+    }
+  }
+  return null;
+}
+
 async function runFfmpegReel(opts) {
   // threads=1 + ultrafast: critical on 512MB so Node + ffmpeg don't OOM
-  // -framerate 30 before still image avoids blank/zero-frame quirks on some ffmpeg builds
-  await execFileAsync(
-    opts.ffmpeg,
-    [
-      '-y',
-      '-framerate',
-      '30',
-      '-loop',
-      '1',
-      '-i',
-      opts.imagePath,
-      '-i',
-      opts.audioPath,
-      '-vf',
-      opts.vf,
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-tune',
-      'stillimage',
-      '-crf',
-      '28',
-      '-threads',
-      '1',
-      '-pix_fmt',
-      'yuv420p',
-      '-r',
-      '30',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '96k',
-      '-ac',
-      '1',
-      '-shortest',
-      '-movflags',
-      '+faststart',
-      opts.outPath,
-    ],
-    {
-      timeout: 180_000,
-      maxBuffer: 2 * 1024 * 1024,
-      env: {
-        ...process.env,
-        OMP_NUM_THREADS: '1',
-      },
+  // Explicit -map ensures voice is never dropped. -t matches audio length.
+  const args = [
+    '-y',
+    '-framerate',
+    '30',
+    '-loop',
+    '1',
+    '-i',
+    opts.imagePath,
+    '-i',
+    opts.audioPath,
+    '-map',
+    '0:v:0',
+    '-map',
+    '1:a:0?',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-tune',
+    'stillimage',
+    '-crf',
+    '26',
+    '-threads',
+    '1',
+    '-pix_fmt',
+    'yuv420p',
+    '-r',
+    '30',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '128k',
+    '-ac',
+    '1',
+    '-ar',
+    '44100',
+    '-shortest',
+    '-movflags',
+    '+faststart',
+  ];
+  if (opts.durationSec && Number(opts.durationSec) > 0.5) {
+    // Pad a hair so last syllable isn't cut
+    args.push('-t', String(Math.min(90, Number(opts.durationSec) + 0.35)));
+  }
+  // Still may already have text baked in — only scale if needed
+  if (opts.vf) {
+    args.push('-vf', opts.vf);
+  }
+  args.push(opts.outPath);
+
+  await execFileAsync(opts.ffmpeg, args, {
+    timeout: 180_000,
+    maxBuffer: 2 * 1024 * 1024,
+    env: {
+      ...process.env,
+      OMP_NUM_THREADS: '1',
+    },
+  });
+}
+
+/**
+ * Burn Q/A + brand + site onto the still with Jimp (works without ffmpeg drawtext/fonts).
+ * ffmpeg-static on Render often has no drawtext — this is the reliable path.
+ */
+async function bakeTextOntoStill(imagePath, overlayText, outPath) {
+  const { w, h } = reelSize();
+  const img = await Jimp.read(imagePath);
+  img.cover(w, h);
+
+  // Darken lower 55% so white text is readable
+  const top = Math.floor(h * 0.42);
+  img.scan(0, top, w, h - top, function (x, y, idx) {
+    const factor = 0.28 + 0.35 * ((y - top) / Math.max(1, h - top)); // darker toward bottom
+    this.bitmap.data[idx] = Math.floor(this.bitmap.data[idx] * factor);
+    this.bitmap.data[idx + 1] = Math.floor(this.bitmap.data[idx + 1] * factor);
+    this.bitmap.data[idx + 2] = Math.floor(this.bitmap.data[idx + 2] * factor);
+  });
+
+  // Semi-opaque card
+  const card = new Jimp(w - 48, Math.floor(h * 0.48), 0x000000aa);
+  img.composite(card, 24, Math.floor(h * 0.48));
+
+  const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+  const fontSm = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+
+  const lines = String(overlayText || '')
+    .split('\n')
+    .map((s) => s.trimEnd())
+    .slice(0, 14);
+
+  let y = Math.floor(h * 0.5);
+  const maxW = w - 80;
+  for (const line of lines) {
+    if (!line) {
+      y += 14;
+      continue;
     }
-  );
+    const isFooter =
+      /the word in context/i.test(line) || /thewordincontext\.org/i.test(line);
+    const f = isFooter ? fontSm : font;
+    const lineH = isFooter ? 22 : 38;
+    img.print(
+      f,
+      40,
+      y,
+      {
+        text: line,
+        alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP,
+      },
+      maxW,
+      lineH + 4
+    );
+    y += lineH;
+    if (y > h - 40) break;
+  }
+
+  await img.quality(88).writeAsync(outPath);
+  if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 500) {
+    throw new Error('Failed to bake text onto still');
+  }
+  return outPath;
 }
 
 /** Only one reel encode at a time (ffmpeg is heavy). */
@@ -271,9 +366,30 @@ async function synthesizeVoiceMp3(script, outPath) {
   const key = (process.env.XAI_API_KEY || '').trim();
   if (!key) throw new Error('XAI_API_KEY required for video voice-over');
 
-  const voice =
-    (process.env.CONTENT_VIDEO_VOICE || process.env.SHARE_TTS_VOICE || 'leo').trim() ||
-    'leo';
+  // Built-in voices first — cloned SHARE_TTS_VOICE ids often fail in batch reels
+  // (admin share voice is separate; content reels need a reliable default).
+  const preferredRaw = (
+    process.env.CONTENT_VIDEO_VOICE ||
+    process.env.SHARE_TTS_VOICE ||
+    'leo'
+  ).trim();
+  const preferred = preferredRaw || 'leo';
+  const builtins = ['leo', 'rex', 'ara', 'eve', 'sal'];
+  const chain = [];
+  const push = (v) => {
+    const id = String(v || '').trim();
+    if (id && !chain.includes(id)) chain.push(id);
+  };
+  // If preferred is a short built-in name, try it first; long hash-like IDs go last
+  if (builtins.includes(preferred.toLowerCase())) push(preferred.toLowerCase());
+  for (const b of builtins) push(b);
+  if (!builtins.includes(preferred.toLowerCase())) push(preferred);
+
+  const speak = String(script || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 900);
+  if (!speak) throw new Error('Empty voice script for TTS');
 
   async function call(voiceId) {
     const ac = new AbortController();
@@ -286,7 +402,7 @@ async function synthesizeVoiceMp3(script, outPath) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: script,
+          text: speak,
           voice_id: voiceId,
           language: 'en',
           speed: 0.98,
@@ -303,18 +419,39 @@ async function synthesizeVoiceMp3(script, outPath) {
     }
   }
 
-  let res = await call(voice);
-  if (!res.ok && voice.toLowerCase() !== 'leo') {
-    console.warn('[content-video] voice failed, retry leo', res.status);
-    res = await call('leo');
+  let lastErr = '';
+  for (const voiceId of chain) {
+    try {
+      const res = await call(voiceId);
+      if (!res.ok) {
+        lastErr = `${voiceId} HTTP ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}`;
+        console.warn('[content-video] TTS try failed', lastErr);
+        continue;
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      // Reject tiny/error payloads
+      if (!buf.length || buf.length < 500) {
+        lastErr = `${voiceId} empty/tiny audio (${buf.length}b)`;
+        continue;
+      }
+      // MP3 files usually start with ID3 or 0xFFEx
+      const head = buf.slice(0, 3).toString('ascii');
+      const isMp3 =
+        head.startsWith('ID3') || buf[0] === 0xff || buf[0] === 0x49;
+      if (!isMp3) {
+        lastErr = `${voiceId} not mp3 (${head})`;
+        console.warn('[content-video] TTS non-mp3', lastErr, buf.slice(0, 80).toString('utf8'));
+        continue;
+      }
+      fs.writeFileSync(outPath, buf);
+      console.log('[content-video] TTS ok', voiceId, `${buf.length}b`);
+      return { voiceId, bytes: buf.length };
+    } catch (e) {
+      lastErr = `${voiceId} ${e && e.name === 'AbortError' ? 'timeout' : e.message || e}`;
+      console.warn('[content-video] TTS error', lastErr);
+    }
   }
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(`TTS failed ${res.status}: ${err.slice(0, 200)}`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (!buf.length) throw new Error('Empty TTS audio');
-  fs.writeFileSync(outPath, buf);
+  throw new Error(`TTS failed for all voices: ${lastErr || 'unknown'}`);
 }
 
 function publicVideoUrl(fileName) {
@@ -347,79 +484,95 @@ async function generateVideoForPost(post) {
   const fileName = `${id}-${stamp}.mp4`;
   const outPath = path.join(dir, fileName);
   const audioPath = path.join(dir, `${id}-${stamp}.mp3`);
+  const stillPath = path.join(dir, `${id}-${stamp}-card.jpg`);
   const textPath = path.join(dir, `${id}-${stamp}.txt`);
 
   const voiceScript = voiceScriptFromPost(post);
   const overlay = overlayTextFromPost(post);
 
   try {
-    await synthesizeVoiceMp3(voiceScript, audioPath);
+    // 1) Voice first — fail hard if no audio (do not ship silent “blank” reels)
+    const tts = await synthesizeVoiceMp3(voiceScript, audioPath);
+    if (!fs.existsSync(audioPath) || fs.statSync(audioPath).size < 500) {
+      throw new Error('TTS wrote no usable audio file');
+    }
+
+    // 2) Bake Q/A + brand + URL onto still (Jimp — no ffmpeg drawtext needed)
     fs.writeFileSync(textPath, overlay, 'utf8');
-
-    const font = resolveFont();
-    const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
-    const vfBase = baseVideoFilters();
     let usedOverlay = false;
-    const { h: reelH } = reelSize();
-    // Smaller type on 720p keeps RAM lower; still readable on phone reels
-    const fontSize = reelH >= 1800 ? 40 : 32;
-    const yPos = reelH >= 1800 ? 'h*0.58' : 'h*0.52';
-
+    let stillForVideo = imagePath;
     try {
-      const allowOverlay = allowTextOverlay(canDraw, font);
-      if (allowOverlay) {
+      if (process.env.CONTENT_VIDEO_OVERLAY !== '0') {
+        await bakeTextOntoStill(imagePath, overlay, stillPath);
+        stillForVideo = stillPath;
+        usedOverlay = true;
+      }
+    } catch (bakeErr) {
+      console.warn(
+        '[content-video] Jimp text bake failed, trying drawtext fallback',
+        bakeErr.message || bakeErr
+      );
+      // Optional drawtext fallback if system fonts exist
+      const font = resolveFont();
+      const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
+      if (canDraw && allowTextOverlay(canDraw, font)) {
         const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
         const textEsc = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-        // Bottom card: Q/A + brand + site — without this reels look like a blank still
-        const vfWithText =
-          `${vfBase},` +
+        const vf =
+          `${baseVideoFilters()},` +
           `drawtext=fontfile='${fontEsc}':textfile='${textEsc}':reload=0:` +
-          `fontsize=${fontSize}:fontcolor=white:borderw=2:bordercolor=black@0.9:` +
-          `line_spacing=10:x=(w-text_w)/2:y=${yPos}:` +
+          `fontsize=32:fontcolor=white:borderw=2:bordercolor=black@0.9:` +
+          `line_spacing=10:x=(w-text_w)/2:y=h*0.52:` +
           `box=1:boxcolor=black@0.55:boxborderw=16`;
+        const durationSec =
+          (await probeAudioDurationSec(ffmpeg, audioPath)) ||
+          Math.max(6, Math.ceil(voiceScript.length / 14));
         await runFfmpegReel({
           ffmpeg,
           imagePath,
           audioPath,
           outPath,
-          vf: vfWithText,
+          vf,
+          durationSec,
         });
         usedOverlay = true;
+        // skip second encode below
+        stillForVideo = null;
       } else {
         console.warn(
-          '[content-video] no drawtext/font — reel is background only (set fonts on host or install freetype ffmpeg)'
+          '[content-video] no text bake available — reel will be background + voice only'
         );
-        await runFfmpegReel({
-          ffmpeg,
-          imagePath,
-          audioPath,
-          outPath,
-          vf: vfBase,
-        });
-      }
-    } catch (firstErr) {
-      const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-      if (/drawtext|No such filter|font/i.test(msg) || usedOverlay || canDraw) {
-        console.warn(
-          '[content-video] overlay failed, retrying image+audio only',
-          msg.slice(0, 160)
-        );
-        drawtextCached = false;
-        await runFfmpegReel({
-          ffmpeg,
-          imagePath,
-          audioPath,
-          outPath,
-          vf: vfBase,
-        });
-        usedOverlay = false;
-      } else {
-        throw firstErr;
       }
     }
 
-    if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 1000) {
+    // 3) Encode still + voice (if not already encoded via drawtext path)
+    if (stillForVideo) {
+      const durationSec =
+        (await probeAudioDurationSec(ffmpeg, audioPath)) ||
+        Math.max(6, Math.ceil(voiceScript.length / 14));
+      // Still already sized/text-baked — light scale only if dimensions differ
+      const { w, h } = reelSize();
+      const vf = usedOverlay
+        ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`
+        : baseVideoFilters();
+      await runFfmpegReel({
+        ffmpeg,
+        imagePath: stillForVideo,
+        audioPath,
+        outPath,
+        vf,
+        durationSec,
+      });
+    }
+
+    if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 2000) {
       throw new Error('ffmpeg produced empty or missing file');
+    }
+
+    // Soft check: file should be big enough to include audio (rough)
+    const mp4Size = fs.statSync(outPath).size;
+    if (mp4Size < 8000) {
+      console.warn('[content-video] suspiciously small mp4', mp4Size, 'tts', tts);
     }
 
     const videoUrl = publicVideoUrl(fileName);
@@ -438,6 +591,7 @@ async function generateVideoForPost(post) {
         ...(post.meta || {}),
         videoGeneratedAt: new Date().toISOString(),
         videoHasTextOverlay: usedOverlay,
+        videoVoiceId: tts?.voiceId || null,
         videoPublishedToBuffer: false,
         priorExternalIds: wasPublished
           ? post.externalIds || post.meta?.priorExternalIds
@@ -446,8 +600,9 @@ async function generateVideoForPost(post) {
     });
 
     try {
-      fs.unlinkSync(audioPath);
-      fs.unlinkSync(textPath);
+      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+      if (fs.existsSync(textPath)) fs.unlinkSync(textPath);
+      if (fs.existsSync(stillPath)) fs.unlinkSync(stillPath);
     } catch {
       /* ignore */
     }
@@ -489,6 +644,10 @@ async function generateVideoForPost(post) {
     try {
       if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
       if (fs.existsSync(textPath)) fs.unlinkSync(textPath);
+      if (fs.existsSync(stillPath)) fs.unlinkSync(stillPath);
+      if (fs.existsSync(outPath) && fs.statSync(outPath).size < 2000) {
+        fs.unlinkSync(outPath);
+      }
     } catch {
       /* ignore */
     }
@@ -571,13 +730,14 @@ function contentVideoStatus() {
     ffmpeg: Boolean(resolveFfmpeg()),
     font: Boolean(resolveFont()),
     drawtext: drawtextCached,
+    jimpTextBake: true,
     videoCount,
     dir,
     size: `${w}x${h}`,
     batchDefault: Number(process.env.CONTENT_VIDEO_BATCH || 1),
     busy: videoBusy,
     note:
-      'Low-memory mode: 720x1280, 1 video/request by default. Click Generate videos repeatedly to finish the week. CONTENT_VIDEO_HEIGHT=1920 on larger plans.',
+      'Reels: Jimp burns Q/A + site onto the still, then xAI TTS voice is muxed with ffmpeg. 1 video/request on Starter — click Generate videos again for the next.',
   };
 }
 

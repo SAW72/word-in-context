@@ -87,18 +87,22 @@ Set `SHARE_SITE_URL=https://www.thewordincontext.org` on Render if media URLs lo
 
 ## Reels (video)
 
-Generate videos burns **Q/A text + thewordincontext.org** onto the parchment still  
-(so reels are not a blank background). Requires ffmpeg with `drawtext` + a system font  
-(DejaVu on Render Linux is usual).
+Each reel is built as:
+1. **Voice** — xAI TTS (`leo` / built-in voices; long clone IDs are tried last)
+2. **Text on image** — Jimp bakes Q/A + **The Word in Context** + **thewordincontext.org** onto the still (works without ffmpeg drawtext)
+3. **Mux** — ffmpeg still + audio → 9:16 H.264 with explicit audio map
 
 ```bash
 # Optional
-CONTENT_VIDEO_OVERLAY=0   # disable burned-in text (not recommended)
-CONTENT_VIDEO_HEIGHT=1280 # default; 1920 on larger plans
-CONTENT_VIDEO_BATCH=1     # videos per Generate click (keep 1 on Starter)
+CONTENT_VIDEO_OVERLAY=0      # disable burned-in text (not recommended)
+CONTENT_VIDEO_VOICE=leo      # force a built-in voice (avoid long clone ids for batch)
+CONTENT_VIDEO_HEIGHT=1280    # default; 1920 on larger plans
+CONTENT_VIDEO_BATCH=1        # videos per Generate click (keep 1 on Starter)
+XAI_API_KEY=...              # required for voice
 ```
 
-After deploy: **Generate videos** again (old MP4s were background-only).
+After deploy: **Generate videos** again for every post (old blank/silent MP4s are obsolete).  
+If Generate fails, the admin response `error` field shows TTS/ffmpeg detail.
 
 ---
 
