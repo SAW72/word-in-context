@@ -259,9 +259,78 @@ function normalizeWebhookHeaders(headers) {
 }
 
 /**
- * Verify Whop webhooks (Standard Webhooks / Svix-style).
- * Tries the dashboard secret as-is, then common mis-copy variants so a wrong
- * encoding of WHOP_WEBHOOK_SECRET on Render does not hard-fail forever.
+ * Build HMAC key material for a Whop webhook secret.
+ *
+ * Whop secrets come in two common shapes:
+ *  - whsec_…  → Standard Webhooks (base64 key after the prefix)
+ *  - ws_…     → dashboard secret used as raw UTF-8 key material
+ *                (Whop SDK docs: webhookKey: btoa(WHOP_WEBHOOK_SECRET)
+ *                 → standardwebhooks then base64-decodes that back to the raw string bytes)
+ */
+function whopHmacKeyBuffers(secret) {
+  const s = String(secret || '').trim();
+  const keys = [];
+  const push = (buf, label) => {
+    if (!buf || !Buffer.isBuffer(buf) || !buf.length) return;
+    // de-dupe by hex
+    const hex = buf.toString('hex');
+    if (keys.some((k) => k.hex === hex)) return;
+    keys.push({ buf, label, hex });
+  };
+
+  if (s.startsWith('whsec_')) {
+    // Standard Webhooks: decode base64 after prefix
+    try { push(Buffer.from(s.slice(6), 'base64'), 'whsec-decoded'); } catch (_) {}
+    // Also try full string as raw (defensive)
+    push(Buffer.from(s, 'utf8'), 'whsec-raw-utf8');
+  } else if (s.startsWith('ws_')) {
+    // Whop dashboard secrets (ws_…) — raw UTF-8 is the HMAC key
+    push(Buffer.from(s, 'utf8'), 'ws-raw-utf8');
+    // If someone pasted without ws_ into another field, already handled by caller
+    // Also try base64 of remainder after ws_ in case of mixed formats
+    try {
+      const rest = s.slice(3);
+      if (rest.length >= 16) push(Buffer.from(rest, 'base64'), 'ws-rest-b64');
+      if (/^[0-9a-fA-F]+$/.test(rest) && rest.length % 2 === 0) {
+        push(Buffer.from(rest, 'hex'), 'ws-rest-hex');
+      }
+    } catch (_) {}
+  } else {
+    // Unknown prefix: try raw, base64, and whsec-style
+    push(Buffer.from(s, 'utf8'), 'raw-utf8');
+    try { push(Buffer.from(s, 'base64'), 'b64'); } catch (_) {}
+    if (s.startsWith('whsec_') === false) {
+      try { push(Buffer.from(s, 'base64'), 'b64-full'); } catch (_) {}
+    }
+  }
+
+  return keys;
+}
+
+function signaturesMatch(expectedB64, signatureHeader) {
+  const signatures = String(signatureHeader || '').split(/\s+/);
+  for (const sig of signatures) {
+    const comma = sig.indexOf(',');
+    if (comma === -1) continue;
+    const version = sig.slice(0, comma);
+    const value = sig.slice(comma + 1);
+    if ((version !== 'v1' && version !== 'v1a') || !value) continue;
+    try {
+      const a = Buffer.from(value);
+      const b = Buffer.from(expectedB64);
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+      // Some senders use base64url
+      const a2 = Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+      const b2 = Buffer.from(expectedB64, 'base64');
+      if (a2.length === b2.length && a2.length > 0 && crypto.timingSafeEqual(a2, b2)) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+/**
+ * Verify Whop webhooks (Standard Webhooks headers + HMAC-SHA256).
+ * Supports whsec_… and ws_… secrets from the Whop dashboard.
  */
 function verifyWhopWebhook(rawBody, headers) {
   const secret = String(process.env.WHOP_WEBHOOK_SECRET || '').trim().replace(/^["']|["']$/g, '');
@@ -275,64 +344,70 @@ function verifyWhopWebhook(rawBody, headers) {
     throw new Error('Missing Whop webhook headers (webhook-id, webhook-timestamp, webhook-signature)');
   }
 
-  // Candidate secrets: as stored, and common mistakes (extra base64 wrap, no whsec_ prefix)
-  const candidates = [];
-  const push = (s) => {
-    if (s && typeof s === 'string' && !candidates.includes(s)) candidates.push(s);
-  };
-  push(secret);
-  if (!secret.startsWith('whsec_')) push(`whsec_${secret}`);
-  // Whop docs sometimes show webhookKey: btoa(WHOP_WEBHOOK_SECRET) — reverse that if stored that way
-  try {
-    const asUtf8 = Buffer.from(secret, 'base64').toString('utf8');
-    if (asUtf8.startsWith('whsec_') || asUtf8.length >= 16) push(asUtf8);
-  } catch (_) {}
+  const ts = parseInt(h['webhook-timestamp'], 10);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
+    throw new Error('Whop webhook timestamp outside tolerance');
+  }
 
+  const signedContent = `${h['webhook-id']}.${h['webhook-timestamp']}.${bodyText}`;
   let lastErr = null;
-  for (const key of candidates) {
+
+  // 1) standardwebhooks package — correct for whsec_ secrets
+  try {
+    const wh = new StandardWebhook(secret);
+    return wh.verify(bodyText, h);
+  } catch (err) {
+    lastErr = err;
+  }
+
+  // Whop docs: webhookKey: btoa(WHOP_WEBHOOK_SECRET) — base64 of the full secret string
+  // standardwebhooks then base64-decodes → raw UTF-8 of secret (works for ws_…)
+  try {
+    const b64Key = Buffer.from(secret, 'utf8').toString('base64');
+    const wh = new StandardWebhook(b64Key);
+    return wh.verify(bodyText, h);
+  } catch (err) {
+    lastErr = err;
+  }
+
+  // standardwebhooks raw format (UTF-8 secret bytes as key)
+  try {
+    const wh = new StandardWebhook(secret, { format: 'raw' });
+    return wh.verify(bodyText, h);
+  } catch (err) {
+    lastErr = err;
+  }
+
+  // 2) Manual HMAC with every plausible key derivation
+  for (const { buf, label } of whopHmacKeyBuffers(secret)) {
     try {
-      const wh = new StandardWebhook(key);
-      // standardwebhooks returns the parsed JSON on success
-      return wh.verify(bodyText, h);
+      const expected = crypto.createHmac('sha256', buf).update(signedContent).digest('base64');
+      if (signaturesMatch(expected, h['webhook-signature'])) {
+        console.log(`[whop:webhook] verified with key mode=${label}`);
+        return JSON.parse(bodyText);
+      }
+      // Also try hex digest form (rare)
+      const expectedHex = crypto.createHmac('sha256', buf).update(signedContent).digest('hex');
+      if (String(h['webhook-signature']).includes(expectedHex)) {
+        console.log(`[whop:webhook] verified with key mode=${label}-hex`);
+        return JSON.parse(bodyText);
+      }
     } catch (err) {
       lastErr = err;
     }
   }
 
-  // Manual HMAC fallback (same Standard Webhooks formula) for environments where
-  // the standardwebhooks package behaves differently on base64 edge cases.
-  for (const keyStr of candidates) {
-    try {
-      let keyBuf;
-      if (keyStr.startsWith('whsec_')) {
-        keyBuf = Buffer.from(keyStr.slice(6), 'base64');
-      } else {
-        keyBuf = Buffer.from(keyStr, 'base64');
-      }
-      const signedContent = `${h['webhook-id']}.${h['webhook-timestamp']}.${bodyText}`;
-      const expected = crypto.createHmac('sha256', keyBuf).update(signedContent).digest('base64');
-      const signatures = String(h['webhook-signature']).split(/\s+/);
-      for (const sig of signatures) {
-        const comma = sig.indexOf(',');
-        if (comma === -1) continue;
-        const version = sig.slice(0, comma);
-        const value = sig.slice(comma + 1);
-        if (version !== 'v1' || !value) continue;
-        const a = Buffer.from(value);
-        const b = Buffer.from(expected);
-        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
-          return JSON.parse(bodyText);
-        }
-      }
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-
-  const msg = lastErr && lastErr.message ? lastErr.message : 'Invalid Whop webhook signature';
-  throw new Error(msg.includes('signature') || msg.includes('timestamp') || msg.includes('header')
-    ? msg
-    : `Invalid Whop webhook signature (${msg})`);
+  const kind = secret.startsWith('ws_')
+    ? 'ws_ secret'
+    : secret.startsWith('whsec_')
+      ? 'whsec_ secret'
+      : 'unknown secret format';
+  const msg = lastErr && lastErr.message ? lastErr.message : 'No matching signature found';
+  throw new Error(
+    `Invalid Whop webhook signature (${kind}). ` +
+    `Paste the FULL secret into Render WHOP_WEBHOOK_SECRET (including the ws_ or whsec_ prefix). ` +
+    `Detail: ${msg}`
+  );
 }
 
 function buildWhopCheckoutUrl(email, billing = 'monthly') {
@@ -2642,7 +2717,7 @@ app.get('/api/whop-webhook', (req, res) => {
     configured: whopWebhookConfigured(),
     paymentProvider: paymentProvider(),
     planIdsConfigured: whopPlanIds().length,
-    tip: 'In Whop Dashboard → Developer → Webhooks use the www URL. Paste the webhook secret into Render env WHOP_WEBHOOK_SECRET (starts with whsec_). Subscribe to membership.activated, membership.deactivated, payment.succeeded, payment.failed, membership.trial_ending_soon.',
+    tip: 'In Whop Dashboard → Developer → Webhooks use https://www.thewordincontext.org/api/whop-webhook. Paste the FULL webhook secret into Render WHOP_WEBHOOK_SECRET (ws_… or whsec_… — do not strip the prefix). Subscribe to membership.activated, membership.deactivated, payment.succeeded, payment.failed, membership.trial_ending_soon.',
   });
 });
 
