@@ -91,10 +91,11 @@ Each reel is built as:
 1. **Voice** — xAI TTS (`leo` / built-in voices; long clone IDs are tried last)
 2. **Text on image** — Jimp bakes Q/A + **The Word in Context** + **thewordincontext.org** onto the still (works without ffmpeg drawtext)
 3. **Mux** — ffmpeg still + audio → 9:16 H.264 with explicit audio map
+4. **Buffer** — Generate videos **auto-pushes** the MP4 as a FB/IG **reel** (not a still) unless `publish: false`
 
 ```bash
 # Optional
-CONTENT_VIDEO_OVERLAY=0      # disable burned-in text (not recommended)
+CONTENT_VIDEO_OVERLAY=0      # disable burned-in text (not recommended — kills scroll-stop)
 CONTENT_VIDEO_VOICE=leo      # force a built-in voice (avoid long clone ids for batch)
 CONTENT_VIDEO_HEIGHT=1280    # default; 1920 on larger plans
 CONTENT_VIDEO_BATCH=1        # videos per Generate click (keep 1 on Starter)
@@ -102,6 +103,7 @@ XAI_API_KEY=...              # required for voice
 ```
 
 After deploy: **Generate videos** again for every post (old blank/silent MP4s are obsolete).  
+Generate also **upgrades** posts marked `videoHasTextOverlay: false` (blank stills).  
 If Generate fails, the admin response `error` field shows TTS/ffmpeg detail.
 
 ---

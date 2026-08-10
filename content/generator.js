@@ -111,11 +111,12 @@ async function generateWeekCopyBatch(brand, slots) {
 
   const link = brandLink(brand);
   const system = `You write short social posts for ${brand.productName}, a voice-first Bible study app.
+These become Instagram/Facebook Reels (talking cards) — first line is the scroll-stopper.
 Voice: ${brand.voice}
 
 FORMAT (required for every post):
-1) First line: Q: <honest study question people actually ask>
-2) Then A: <2–5 short sentences>. Prefer real references (e.g. John 1:1–14) when you cite.
+1) First line: Q: <honest study question people actually ask — punchy, under 12 words when possible>
+2) Then A: <2–4 short sentences>. Prefer real references (e.g. John 1:1–14) when you cite. Speakable out loud.
 3) One soft line: study aid / read the passage yourself.
 4) Soft CTA, then the full website URL alone on the LAST line exactly:
 ${link}
@@ -124,10 +125,11 @@ Rules:
 - REQUIRED: every caption AND captionIg MUST end with the website URL on its own line: ${link}
 - Never omit the URL. Never replace it with a different domain.
 - Also acceptable bare form on last line: thewordincontext.org (prefer full ${link})
+- Hook first: Q: line must stop the scroll (curiosity, common misquote, or hard question).
 - Do NOT invent exact Greek/Hebrew spellings if unsure; paraphrase carefully.
 - No denomi-bait, no politics, no rage content.
 - No hashtags in the caption body (we append them).
-- Facebook: 70–160 words. Instagram can be slightly tighter.
+- Facebook: 60–140 words (shorter = better for reels). Instagram can be slightly tighter.
 - Return ONLY valid JSON:
 {"posts":[{"question":"...","caption":"...","captionIg":"...","hashtags":["#TheWordInContext"],"cta":"..."}]}
 posts length MUST equal ${slots.length} in order.`;

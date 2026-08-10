@@ -631,7 +631,9 @@ async function generateVideoForPost(post) {
       meta: {
         ...(post.meta || {}),
         videoGeneratedAt: new Date().toISOString(),
-        videoHasTextOverlay: usedOverlay,
+        // true if text baked, or if operator disabled overlay (done, don't re-upgrade loop)
+        videoHasTextOverlay:
+          Boolean(usedOverlay) || process.env.CONTENT_VIDEO_OVERLAY === '0',
         videoVoiceId: tts?.voiceId || null,
         videoPublishedToBuffer: false,
         priorExternalIds: wasPublished
@@ -696,10 +698,22 @@ async function generateVideoForPost(post) {
   }
 }
 
+function needsVideo(post, opts = {}) {
+  if (!post) return false;
+  if (!post.videoUrl) return true;
+  if (opts.force) return true;
+  // Upgrade blank stills from the old no-text pipeline
+  if (opts.upgradeBlank !== false) {
+    // false or missing = treat as blank (pre-Jimp reels)
+    if (post.meta?.videoHasTextOverlay !== true) return true;
+  }
+  return false;
+}
+
 /**
  * Generate reels for queued posts.
  * Default limit=1 on small instances so one ffmpeg encode can't OOM the box.
- * Admin can call repeatedly to fill the week (Generate next video).
+ * Upgrades blank (no-text) reels by default so Buffer gets scroll-stopping cards.
  */
 async function generateVideosForQueued(opts = {}) {
   if (videoBusy) {
@@ -725,8 +739,20 @@ async function generateVideosForQueued(opts = {}) {
   const posts = listPosts({ limit: 40 }).filter((p) =>
     ['queued', 'failed', 'draft', 'scheduled'].includes(p.status)
   );
-  const need = posts.filter((p) => !p.videoUrl).slice(0, limit);
-  const remaining = posts.filter((p) => !p.videoUrl).length - need.length;
+  const pickOpts = {
+    force: Boolean(opts.force),
+    upgradeBlank: opts.upgradeBlank !== false,
+  };
+  const need = posts
+    .filter((p) => needsVideo(p, pickOpts))
+    .sort((a, b) => {
+      const aBlank = a.videoUrl ? 1 : 0;
+      const bBlank = b.videoUrl ? 1 : 0;
+      return aBlank - bBlank;
+    })
+    .slice(0, limit);
+  const remaining =
+    posts.filter((p) => needsVideo(p, pickOpts)).length - need.length;
 
   videoBusy = true;
   const results = [];
