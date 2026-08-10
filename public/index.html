@@ -1021,6 +1021,89 @@
       padding: 0 14px; border-radius: 30px; font-size: 14px;
       cursor: pointer; height: 46px;
     }
+    /* Session recorder (screen + mic + tab audio) */
+    #session-record-btn {
+      background: #5c4630;
+      color: #f5e8d3;
+      border: 1px solid #c9a227;
+      padding: 0 12px;
+      border-radius: 30px;
+      font-size: 13px;
+      cursor: pointer;
+      height: 46px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    #session-record-btn:hover { background: #6e563c; }
+    #session-record-btn.recording {
+      background: #8b1e1e;
+      border-color: #e07070;
+      color: #fff;
+      animation: rec-pulse 1.4s ease infinite;
+    }
+    #session-record-btn .rec-dot,
+    .session-record-bar .rec-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #e74c3c;
+      display: inline-block;
+      box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.5);
+    }
+    #session-record-btn.recording .rec-dot {
+      animation: rec-dot-blink 1s step-end infinite;
+    }
+    @keyframes rec-dot-blink {
+      50% { opacity: 0.25; }
+    }
+    @keyframes rec-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(139, 30, 30, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(139, 30, 30, 0); }
+    }
+    .session-record-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      padding: 8px 14px;
+      background: #2c1810;
+      color: #f5e8d3;
+      border-top: 2px solid #c9a227;
+      font-size: 13px;
+    }
+    .session-record-bar[hidden] { display: none !important; }
+    .session-record-live {
+      font-weight: 700;
+      color: #ffb4b4;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      letter-spacing: 0.04em;
+    }
+    .session-record-time {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: #c9a227;
+    }
+    .session-record-hint {
+      flex: 1;
+      min-width: 140px;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    .session-record-stop {
+      background: #c9a227;
+      color: #1a1208;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .session-record-stop:hover { filter: brightness(1.08); }
     .voice-btn,
     .settings-btn {
       background: rgba(255,255,255,0.15); border: none;
@@ -1969,8 +2052,15 @@
                 <input type="checkbox" id="handsfree-toggle">
                 <span class="hf-text"></span>
               </label>
+              <button type="button" id="session-record-btn" title="Record screen + conversation (Chrome recommended)" aria-pressed="false">⏺ Record</button>
               <button class="stop-btn" id="stop-btn" style="display:none">Stop</button>
             </div>
+          </div>
+          <div id="session-record-bar" class="session-record-bar" hidden>
+            <span class="session-record-live"><span class="rec-dot"></span> REC</span>
+            <span id="session-record-time" class="session-record-time">00:00</span>
+            <span id="session-record-hint" class="session-record-hint"></span>
+            <button type="button" id="session-record-stop" class="session-record-stop">Stop &amp; download</button>
           </div>
           <div class="status" id="status">Secure • Powered by Grok 4.3 via local proxy</div>
         </div>
@@ -2278,6 +2368,7 @@
   <script src="/audio-engine.js?v=2"></script>
   <script src="/voice-picker.js?v=2"></script>
   <script src="/auth-api.js?v=2"></script>
+  <script src="/chat-recorder.js?v=1"></script>
   <script>
     // ====================== SUPPRESS EXTENSION NOISE ======================
     // These warnings come from browser extensions (especially MetaMask and other
@@ -7805,6 +7896,17 @@ Note: AI chat requires a free account. The Bible reader at /read is always free.
         closeVoiceBtn.addEventListener('click', () => {
           document.getElementById('voice-modal').style.display = 'none';
         });
+      }
+
+      // Screen + conversation recorder (Chrome/Edge: share this tab + tab audio + mic)
+      try {
+        if (typeof mountChatRecorderUI === 'function') {
+          window.__wicSessionRecorder = mountChatRecorderUI({
+            button: document.getElementById('session-record-btn'),
+          });
+        }
+      } catch (recErr) {
+        console.warn('[chat-recorder] init failed', recErr);
       }
 
       // Welcome only for brand new empty chats
