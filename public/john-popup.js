@@ -259,22 +259,58 @@
         flex-shrink: 0;
       }
       .john-popup-send:disabled { opacity: 0.5; cursor: not-allowed; }
-      .john-popup-sources {
-        margin: 0 12px 8px;
-        font-size: 12px;
+      .john-popup-scripture-sources {
+        font-size: 11px;
+        color: #8b5e3c;
+        margin-top: 8px;
+        cursor: pointer;
+        user-select: none;
         line-height: 1.45;
-        color: #5c4630;
-        background: #f8f1e3;
-        border: 1px solid #e8d9c2;
-        border-radius: 8px;
-        padding: 8px 10px;
       }
-      html[data-theme="dark"] .john-popup-sources {
+      .john-popup-scripture-sources .label { font-weight: 600; }
+      .john-popup-scripture-sources .ref {
+        font-family: ui-monospace, monospace;
+        background: rgba(139,94,60,0.1);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      .john-popup-scripture-sources:hover { text-decoration: underline; }
+      .john-popup-sources-detail {
+        margin-top: 6px;
+        font-size: 11.5px;
+        line-height: 1.4;
+        background: #f8f1e3;
+        padding: 8px;
+        border-radius: 6px;
+        border: 1px solid #e8d9c2;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      html[data-theme="dark"] .john-popup-scripture-sources { color: #d4b896; }
+      html[data-theme="dark"] .john-popup-scripture-sources .ref {
+        background: rgba(201,162,39,0.15);
+      }
+      html[data-theme="dark"] .john-popup-sources-detail {
         color: #e8e4dc;
-        background: #243040;
+        background: #1a222c;
         border-color: #3d5266;
       }
-      .john-popup-sources strong { display: block; margin-bottom: 4px; }
+      .john-popup-verse-block {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e8d9c2;
+      }
+      .john-popup-verse-block:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+      html[data-theme="dark"] .john-popup-verse-block { border-bottom-color: #3d5266; }
+      .john-popup-verse-ref {
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .john-popup-verse-text { white-space: pre-wrap; }
       .john-popup-signup-cta {
         padding: 10px 14px 12px;
         border-top: 1px solid var(--john-popup-border, #e8d9c2);
@@ -450,22 +486,73 @@
     if (loading) loading.remove();
   }
 
+  // Match /app attachSourcesUI: only editions that were actually fetched
+  // (named translation + verse text). Do not invent Byz/TR/SBL/WLC.
+  function normalizeFetchedSources(sources) {
+    if (!Array.isArray(sources)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const s of sources) {
+      if (!s || typeof s !== 'object') continue;
+      const reference = String(s.reference || '').trim();
+      const translation = String(s.translation || '').trim();
+      const text = String(s.text || '').trim();
+      if (!reference || !translation || !text) continue;
+      const key = `${reference}|${translation}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ reference, translation, text });
+    }
+    return out;
+  }
+
   function attachPopupSources(msgEl, sources) {
-    if (!sources || !sources.length || !msgEl || !msgEl.parentNode) return;
-    const box = document.createElement('div');
-    box.className = 'john-popup-sources';
-    const title = document.createElement('strong');
-    title.textContent = 'Live verses (bible.helloao.org)';
-    box.appendChild(title);
-    sources.slice(0, 8).forEach((s) => {
-      const line = document.createElement('div');
-      const ref = (s.reference || '').trim();
-      const trans = (s.translation || '').trim();
-      line.textContent = trans ? `${ref} — ${trans}` : ref;
-      box.appendChild(line);
+    const fetched = normalizeFetchedSources(sources);
+    if (!fetched.length || !msgEl) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'john-popup-scripture-sources';
+
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Sources (live from bible.helloao.org): ';
+    wrap.appendChild(label);
+
+    fetched.forEach((s, idx) => {
+      if (idx > 0) wrap.appendChild(document.createTextNode(' · '));
+      const refSpan = document.createElement('span');
+      refSpan.className = 'ref';
+      refSpan.textContent = `${s.reference} (${s.translation})`;
+      wrap.appendChild(refSpan);
     });
-    const row = msgEl.closest('.john-popup-msg-row') || msgEl;
-    row.parentNode.insertBefore(box, row.nextSibling);
+    wrap.title = 'Click to show or hide the exact verse text fetched live for this answer';
+
+    const detail = document.createElement('div');
+    detail.className = 'john-popup-sources-detail';
+    fetched.forEach((s) => {
+      const block = document.createElement('div');
+      block.className = 'john-popup-verse-block';
+
+      const refLine = document.createElement('div');
+      refLine.className = 'john-popup-verse-ref';
+      refLine.textContent = `${s.reference} (${s.translation})`;
+      block.appendChild(refLine);
+
+      const textLine = document.createElement('div');
+      textLine.className = 'john-popup-verse-text';
+      textLine.textContent = s.text;
+      block.appendChild(textLine);
+
+      detail.appendChild(block);
+    });
+
+    wrap.addEventListener('click', (e) => {
+      e.stopImmediatePropagation();
+      detail.hidden = !detail.hidden;
+    });
+
+    msgEl.appendChild(wrap);
+    msgEl.appendChild(detail);
   }
 
   function speakText(text) {
@@ -635,7 +722,7 @@
       const reply = data.reply || 'No response.';
       conversation.push({ role: 'assistant', content: reply });
       const msgEl = appendMessage(reply, 'assistant');
-      attachPopupSources(msgEl, data.sources);
+      attachPopupSources(msgEl, Array.isArray(data.sources) ? data.sources : []);
       if (landingTeaser && typeof data.demoRemaining === 'number') {
         teaserRemaining = data.demoRemaining;
       }
@@ -745,7 +832,7 @@
     });
   }
 
-  window.JohnPopup = { init, open, close };
+  window.JohnPopup = { init, open, close, attachSources: attachPopupSources, appendMessage };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => init());
   } else {

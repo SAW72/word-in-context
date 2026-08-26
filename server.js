@@ -26,6 +26,7 @@ const {
   isWordStudyFollowUp,
   getBlockedContentReason,
 } = require('./lib/scripture-refs');
+const { normalizeFetchedSources } = require('./lib/chat-sources');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -122,7 +123,7 @@ const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincont
 // Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
 // Bump when static JS/CSS/images change; keep ?v= in HTML/JS in sync (or set ASSET_VERSION env on Render).
-const ASSET_VERSION = process.env.ASSET_VERSION || '2';
+const ASSET_VERSION = process.env.ASSET_VERSION || '5';
 const CACHE_ONE_YEAR = 'public, max-age=31536000, immutable';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -2987,17 +2988,14 @@ app.post('/api/chat', (req, res, next) => {
       }
     }
 
-    // Deduplicate sources for the response, using nice display names
-    const seen = new Set();
-    const sources = [];
-    for (const p of fetchedPassages) {
-      const disp = getDisplayTrans(p.translation);
-      const key = `${p.reference}|${disp}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        sources.push({ reference: p.reference, translation: disp, text: p.text, rawId: p.translation });
-      }
-    }
+    // Deduplicate sources for the response, using nice display names.
+    // Landing teaser and /app share this payload — only include editions actually fetched.
+    const sources = normalizeFetchedSources(fetchedPassages.map((p) => ({
+      reference: p.reference,
+      translation: getDisplayTrans(p.translation),
+      text: p.text,
+      rawId: p.translation,
+    })));
 
     const payload = { reply, sources };
     if (req.landingTeaser) {
