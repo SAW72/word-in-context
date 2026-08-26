@@ -2033,7 +2033,7 @@
              and correct if needed (e.g. by speaking clearly or rephrasing). -->
         <div class="chat-bottom">
           <div id="live-transcript-container" style="display:none; margin: 0; padding: 8px 14px; background: #f5f0e6; border-top: 1px solid #e8d9c2; border-bottom: 1px solid #c9a227; font-size: 14px;">
-            <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
+            <div id="live-transcript-hint" style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
             <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
           </div>
           <div class="input-area">
@@ -2560,6 +2560,11 @@
     let isAwaitingResponse = false; // prevents auto-restart of mic while Grok is thinking or about to speak (reduces noise pickup + state thrashing)
     let wakeWordActiveUntil = 0; // timestamp until which we accept the next utterance as a command (after hearing the name with no command yet)
     let longPauseUntil = 0; // if user says "[wake] pause" or similar (or just pause words), we allow very long silence before auto-committing (up to this time)
+    // True when this listen session was started by tapping the mic. That turn must send
+    // like the Send button — no wake word, no 3s dead pause, flush on speech end.
+    let tapToTalkTurn = false;
+    let lastVoiceSendAt = 0;
+    let justReleasedLiveMic = false;
 
     // === Multi-conversation persistence (Grok-like history) ===
     let chats = [];
@@ -4649,6 +4654,11 @@
     // concurrent mic + TTS; mobile WebKit does not. Barge-in while AI is speaking is via the
     // mic / Stop button after this release (wake-word barge-in resumes after speech ends).
     function releaseMicForSpeechOutput() {
+      const hadLiveMic = !!(isListening || startingRecognition
+        || (mediaRecorder && mediaRecorder.state !== 'inactive')
+        || mediaStream);
+      if (hadLiveMic) justReleasedLiveMic = true;
+
       if (restartTimer) {
         clearTimeout(restartTimer);
         restartTimer = null;
@@ -5004,18 +5014,23 @@
       }
       startSpeechKeepAlive();
 
-      try {
-        if (synth.speaking || synth.pending) synth.cancel();
-      } catch (e) {}
+      // speak() already canceled any prior utterance. A second cancel() here forced
+      // Chrome/WebKit to settle, and the old 40ms/280ms timer made the answer sit
+      // on screen before John started talking. Mic was released when the question
+      // was sent, so after a chat reply there is nothing to wait for.
+      const needsIosMicFlip = justReleasedLiveMic && isIOSDevice();
+      justReleasedLiveMic = false;
 
-      // iOS needs a short gap after releasing getUserMedia/SpeechRecognition so the
-      // audio session can switch from record → playback. Desktop can start immediately.
-      const startDelay = isIOSDevice() ? 280 : 40;
-      setTimeout(() => {
+      const startNow = () => {
         try { synth.getVoices(); } catch (e) {}
         try { if (synth.paused) synth.resume(); } catch (e) {}
         speakNextInQueue(langHint, true);
-      }, startDelay);
+      };
+      if (needsIosMicFlip) {
+        setTimeout(startNow, 60);
+      } else {
+        startNow();
+      }
     }
 
     function stopSpeaking() {
@@ -5828,6 +5843,23 @@
         const sources = Array.isArray(data.sources) ? data.sources : [];
 
         const msgEl = addMessage(reply, false);
+
+        // TTS must start the same moment the bubble is on screen — do not wait for
+        // Sources UI, localStorage save, or sidebar render. Auto-speak is the toggle;
+        // hands-free is only required for the wake-word listen loop, not for speaking.
+        if (autoSpeakEnabled) {
+          if (voiceSettings.voiceSource !== 'local') {
+            voiceSettings.voiceSource = 'local';
+            localStorage.setItem('voice_source', 'local');
+          }
+          speak(reply);
+        } else if (handsFreeEnabled) {
+          isAwaitingResponse = false;
+          scheduleHandsFreeRestart(800);
+        } else {
+          isAwaitingResponse = false;
+        }
+
         attachAssistantMessageActions(msgEl, reply, userText);
 
         if (sources.length > 0) {
@@ -5841,31 +5873,6 @@
       renderSidebarChats(currentSearchTerm || '');
 
         enforceAuthRequired();
-
-        if (handsFreeEnabled && autoSpeakEnabled) {
-          // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
-          // No xAI or server voices for output. Clean any old notes.
-          // Keep isAwaitingResponse true until speak()/finishSpeechOutput so the mic does not
-          // restart and steal the iOS audio session before TTS starts.
-          const lastMsgForClean = document.querySelector('.messages .message:last-child');
-          if (lastMsgForClean) {
-            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-          }
-          // Ensure local.
-          if (voiceSettings.voiceSource !== 'local') {
-            voiceSettings.voiceSource = 'local';
-            localStorage.setItem('voice_source', 'local');
-          }
-          speak(reply);
-          // After speak() the audio onended handlers will schedule the next listen (after echo delay)
-        } else if (handsFreeEnabled) {
-          isAwaitingResponse = false;
-          // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
-          // Give a bit more time before listening to avoid picking up any residual audio/echo.
-          scheduleHandsFreeRestart(800);
-        } else {
-          isAwaitingResponse = false;
-        }
       } catch (err) {
         removeLoadingMessage();
         isAwaitingResponse = false;
@@ -5879,6 +5886,50 @@
           scheduleHandsFreeRestart(800);
         }
       }
+    }
+
+    // Pause commands must be the whole utterance ("John pause"), not a substring.
+    // The old /sec/ regex matched "second", "section", "persecute" and then waited 60s
+    // without committing — transcript visible, /api/chat never called.
+    function isExplicitPauseCommand(text) {
+      const t = (text || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      return /^(please )?(pause|hold|hold on|wait|wait a (sec|second)|one sec|one second|thinking|breath|breathe)( please)?$/.test(t);
+    }
+
+    function handsFreeCommitDelayMs(isFinalResult) {
+      if (longPauseUntil > Date.now()) return 60000;
+      // After the browser marks a segment final, only a short beat is needed for a last word.
+      return isFinalResult ? 450 : 850;
+    }
+
+    function showLiveListeningPlaceholder() {
+      const liveContainer = document.getElementById('live-transcript-container');
+      if (liveContainer) liveContainer.style.display = 'block';
+      updateLiveTranscriptHint('');
+      const liveEl = document.getElementById('live-transcript');
+      if (liveEl) liveEl.textContent = 'Listening...';
+    }
+
+    // Send recognized speech the same way as typing Send. Used for tap-to-talk and
+    // for flushing a leftover transcript when recognition ends without isFinal.
+    function consumeAndSendVoice(text) {
+      const t = (text || '').trim();
+      if (!t || t.length < 2) return false;
+      if (isAwaitingResponse) return false;
+      if (Date.now() - lastVoiceSendAt < 400) return false;
+      lastVoiceSendAt = Date.now();
+
+      tapToTalkTurn = false;
+      pendingTranscript = null;
+      if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
+
+      stopListeningUI();
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+
+      sendToGrok(normalizeBibleTranscript(t));
+      return true;
     }
 
     // ====================== SPEECH RECOGNITION (preserved & excellent) ======================
@@ -5905,9 +5956,27 @@
 
         currentTranscript = transcript;
 
-        // Live captions: show exactly what the browser heard (no Bible normalization on display).
-        if (handsFreeEnabled) {
-          updateLiveTranscript(transcript);
+        // Live captions: show exactly what the browser heard (tap-to-talk and hands-free).
+        updateLiveTranscript(transcript);
+        if (tapToTalkTurn && userInput && transcript) {
+          userInput.value = transcript;
+        }
+
+        // Explicit mic tap: send this utterance like typing Send. Do not wait for
+        // "John", a second phrase, or the hands-free silence timer. Recognition is
+        // non-continuous on this turn, so the browser ends the utterance; we send
+        // on isFinal here and flush leftover text in onend if isFinal never arrives.
+        if (tapToTalkTurn) {
+          if (transcript && transcript.trim().length > 1) {
+            pendingTranscript = transcript.trim();
+            lastTranscriptConfidence = confidence;
+          }
+          if (isFinal && pendingTranscript && pendingTranscript.length > 1) {
+            const ft = pendingTranscript;
+            pendingTranscript = null;
+            consumeAndSendVoice(ft);
+          }
+          return;
         }
 
         if (handsFreeEnabled) {
@@ -5981,10 +6050,9 @@
               // and reset the silence timer. This prevents "responding too fast" on partials
               // and makes long commands after "John" work reliably.
 
-              // Check if user wants a much longer pause (breathing, thinking, etc.)
-              const lower = (cmd || transcript).toLowerCase();
-              const wantsLongPause = /pause|hold|wait|longer|thinking|breath|one sec|sec/.test(lower);
-              if (wantsLongPause) {
+              // Check if user wants a much longer pause (breathing, thinking, etc.).
+              // Must be the whole command — substring "sec" used to match "second".
+              if (isExplicitPauseCommand(cmd) || isExplicitPauseCommand(stripWakeWordPrefix(transcript))) {
                 longPauseUntil = Date.now() + 180000; // allow up to 3 minutes of silence for this turn
                 // Keep whatever was said before the pause command in pending
                 if (commitTimeout) clearTimeout(commitTimeout);
@@ -6020,7 +6088,7 @@
                   commitTimeout = null;
                   commitHandsFreeTranscript(ft, c);
                 }
-              }, 3000); // longer default silence timer so user can breathe or collect thoughts
+              }, handsFreeCommitDelayMs(isFinal));
               return;
             }
           }
@@ -6047,7 +6115,7 @@
             }
             if (commitTimeout) clearTimeout(commitTimeout);
             const useLong = longPauseUntil > Date.now();
-            const silenceMs = useLong ? 60000 : 3000;
+            const silenceMs = handsFreeCommitDelayMs(isFinal);
             commitTimeout = setTimeout(() => {
               if (pendingTranscript) {
                 const ft = pendingTranscript;
@@ -6066,14 +6134,13 @@
           return;
         }
 
-        // Non-handsfree (hold/click to talk): send on final result.
-        // With interim we still get building text, but only send the finalized full utterance.
-        if (isFinal) {
-          stopListeningUI();
-          if (transcript && transcript.length > 1) {
-            currentTranscript = '';
-            sendToGrok(normalizeBibleTranscript(transcript));
-          }
+        // Non-handsfree fallback (tapToTalkTurn should already have handled this).
+        if (transcript && transcript.trim().length > 1) {
+          pendingTranscript = transcript.trim();
+          if (userInput) userInput.value = transcript;
+        }
+        if (isFinal && transcript && transcript.length > 1) {
+          consumeAndSendVoice(transcript);
         }
       };
 
@@ -6142,7 +6209,18 @@
       };
 
       recognition.onend = () => {
+        // Flush a completed transcript if the browser ended without isFinal (Safari,
+        // Zoom grabbing the mic, or tap-to-stop). Do this before stopListeningUI
+        // clears currentTranscript.
+        const leftover = (pendingTranscript || currentTranscript || '').trim();
+        // Tap-to-talk (explicit mic tap, or hands-free off) must send on end even
+        // when the browser never marks the last result isFinal.
+        const shouldFlushTap = (tapToTalkTurn || !handsFreeEnabled) && leftover.length > 1 && !isAwaitingResponse;
         stopListeningUI();
+        if (shouldFlushTap) {
+          consumeAndSendVoice(leftover);
+          return;
+        }
         if (!micAllowed || document.visibilityState === 'hidden') return;
         const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
@@ -6168,9 +6246,10 @@
 
       currentTranscript = '';
 
-      // Don't cut off AI speech in hands-free — recognition stays open during TTS for barge-in only.
+      // Don't cut off AI speech in hands-free auto-listen — recognition stays open during TTS for barge-in only.
+      // An explicit mic tap (tapToTalkTurn) cancels TTS and records this question.
       if (isSpeechOutputting()) {
-        if (handsFreeEnabled) {
+        if (handsFreeEnabled && !tapToTalkTurn) {
           scheduleHandsFreeRestart(500);
           return;
         }
@@ -6204,12 +6283,18 @@
           return;
         }
         // For auto hands-free restarts, don't start if we're still in the middle of an AI response.
-        if (handsFreeEnabled && isAwaitingResponse) {
+        // An explicit mic tap is allowed so the user can ask the next question immediately.
+        if (handsFreeEnabled && isAwaitingResponse && !tapToTalkTurn) {
           startingRecognition = false;
           return;
         }
 
         try {
+          // Tap-to-talk must NOT be continuous: the browser should end the utterance
+          // after silence so we get onend/isFinal and can send. Hands-free auto-listen
+          // stays continuous for the wake word.
+          recognition.continuous = !!(handsFreeEnabled && !tapToTalkTurn);
+          recognition.interimResults = true;
           recognition.start();
           isListening = true;
           micBtn.classList.add("listening");
@@ -6224,16 +6309,9 @@
           // The user sees the accurate text updating live and can correct by speaking clearly.
           if (handsFreeEnabled && serverHasSTT) {
             startAudioCaptureForCurrentUtterance().catch(() => {});
-            // Show the live (server-improved) transcript container
-            const liveContainer = document.getElementById('live-transcript-container');
-            if (liveContainer) liveContainer.style.display = 'block';
-            const liveEl = document.getElementById('live-transcript');
-            if (liveEl) liveEl.textContent = 'Listening...';
-          } else if (handsFreeEnabled) {
-            const liveContainer = document.getElementById('live-transcript-container');
-            if (liveContainer) liveContainer.style.display = 'block';
-            const liveEl = document.getElementById('live-transcript');
-            if (liveEl) liveEl.textContent = 'Listening...';
+            showLiveListeningPlaceholder();
+          } else if (handsFreeEnabled || tapToTalkTurn) {
+            showLiveListeningPlaceholder();
           }
         } catch (e) {
           startingRecognition = false;
@@ -6443,10 +6521,27 @@
       }, 1100); // debounce ~1.1s after latest chunk
     }
 
+    function waitingForWakeWord(heardText) {
+      return !!(handsFreeEnabled && wakeWordEnabled && !tapToTalkTurn
+        && Date.now() >= wakeWordActiveUntil
+        && !containsWakeWord(heardText));
+    }
+
+    function updateLiveTranscriptHint(heardText) {
+      const hint = document.getElementById('live-transcript-hint');
+      if (!hint) return;
+      if (waitingForWakeWord(heardText)) {
+        hint.textContent = 'Say “' + getWakeWordDisplay() + '”, then your question';
+      } else {
+        hint.textContent = 'Listening — you said:';
+      }
+    }
+
     function updateLiveTranscript(text) {
       const container = document.getElementById('live-transcript-container');
       const el = document.getElementById('live-transcript');
       if (!container || !el) return;
+      updateLiveTranscriptHint(text);
       if (text && text.trim()) {
         el.textContent = text;
         container.style.display = 'block';
@@ -6503,6 +6598,7 @@
       }
       restartTimer = setTimeout(() => {
         restartTimer = null;
+        tapToTalkTurn = false; // auto-restart stays wake-word gated
         if (!micAllowed || document.visibilityState === 'hidden') return;
         if (handsFreeEnabled && !isListening && !isAwaitingResponse && !startingRecognition) {
           if (isSpeechOutputting()) {
@@ -6822,7 +6918,9 @@
         return;
       }
 
-      if (cmd.length < 3 || conf < 0.48) {
+      // WebKit/Safari often reports confidence as 0. Treat 0/undefined as unknown, not "too low".
+      const knownLowConfidence = typeof conf === 'number' && conf > 0 && conf < 0.48;
+      if (cmd.length < 3 || knownLowConfidence) {
         scheduleHandsFreeRestart(800);
         return;
       }
@@ -6853,23 +6951,38 @@
       if (handsFreeEnabled) {
         if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
         if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
-        pendingTranscript = null;
-        currentTranscript = '';
-        wakeWordActiveUntil = 0;
-      longPauseUntil = 0;
         window._srErrorShown = {}; // allow error messages again after user manually intervened
 
         if (isListening) {
-          recognition.stop();
+          // Tapping the mic while a transcript is showing means "send this now"
+          // (same as Send). Do not wait for wake-word strip or a silence timer.
+          const leftover = (pendingTranscript || currentTranscript || '').trim();
+          if (leftover.length > 1) consumeAndSendVoice(leftover);
+          if (recognition) {
+            try { recognition.stop(); } catch (e) {}
+          }
         } else if (isSpeechOutputting() || (hostedAudio && !hostedAudio.paused)) {
           stopSpeaking();
+          tapToTalkTurn = true;
+          startListening();
         } else {
+          // Explicit tap while hands-free: this turn sends without requiring "John".
+          tapToTalkTurn = true;
+          pendingTranscript = null;
+          currentTranscript = '';
+          wakeWordActiveUntil = 0;
+          longPauseUntil = 0;
           startListening();
         }
       } else {
         if (isListening) {
-          recognition.stop();
+          const leftover = (pendingTranscript || currentTranscript || '').trim();
+          if (leftover.length > 1) consumeAndSendVoice(leftover);
+          if (recognition) {
+            try { recognition.stop(); } catch (e) {}
+          }
         } else {
+          tapToTalkTurn = true;
           startListening();
         }
       }
@@ -7297,6 +7410,7 @@
       if (commitTimeout) { clearTimeout(commitTimeout); commitTimeout = null; }
       if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
       pendingTranscript = null;
+      tapToTalkTurn = false;
 
       if (handsFreeEnabled) {
         continuousMode = true;
@@ -7939,7 +8053,7 @@
 
     init();
   </script>
-  <script src="/john-popup.js?v=5" defer></script>
+  <script src="/john-popup.js?v=6" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>
 </html>
