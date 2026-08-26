@@ -26,7 +26,11 @@ const {
   getBlockedContentReason,
   selectStudyOrderRefs,
 } = require('./lib/scripture-refs');
-const { normalizeFetchedSources } = require('./lib/chat-sources');
+const {
+  normalizeFetchedSources,
+  formatGroundingBlocks,
+  hasOriginalGreekBlock,
+} = require('./lib/chat-sources');
 const { fetchBiblePassage } = require('./lib/bible-fetch');
 let ffmpegStaticPath = null;
 try {
@@ -2840,13 +2844,16 @@ app.post('/api/chat', (req, res, next) => {
 
     let bibleContext = '';
     if (fetchedPassages.length > 0) {
-      bibleContext = fetchedPassages.map(p => {
-        const disp = getDisplayTrans(p.translation);
-        const label = (p.translation || '').match(/grc/i) ? 'ORIGINAL GREEK TEXT'
-          : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
-          : 'ACCURATE BIBLE TEXT';
-        return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text fetched from bible.helloao.org for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. Cite only the editions named in these blocks (SBL Greek New Testament, Westminster Leningrad Codex, and Byzantine or Textus Receptus only if those blocks are present). Do not invent an edition. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim. Lead with transliteration; put untransliterated letters in parentheses only when a live original block supplied them. If a verse has no [ORIGINAL … TEXT] block, say you do not have live original-language text — do not present guessed letters as live. Interpret Scripture only with Scripture — no Josephus, Philo, church fathers, Talmud, or other extra-biblical writings as a frame. PRIMARY WITNESS first, then Greek/Hebrew of that verse, then same-chapter context, then cross-references.${narrowVerseFocus ? ' NARROW VERSE FOCUS: Stay on the named verses and immediate same-chapter context unless the user asked to compare.' : ' You may bring other relevant passages after the primary witness is explained.'}${wordStudyFollowUp || narrowVerseFocus ? ' ORIGINAL LANGUAGE: Show transliteration and literal gloss for key words in the primary witness.' : ''}${narrowVerseFocus && /1\s?Corinthians\s+15/i.test(allRefs.join(' ')) ? ' For 1 Corinthians 15:8-9: Greek eschaton (last of all), hōsperei tō ektrōmati (as to untimely birth), elachistos (least) — in context of 15:5-7.' : ''}`;
+      const groundingBlocks = formatGroundingBlocks(fetchedPassages, getDisplayTrans);
+      const liveMatt199 = hasOriginalGreekBlock(groundingBlocks, 'Matthew 19:9');
+      const liveCor715 = hasOriginalGreekBlock(groundingBlocks, '1 Corinthians 7:15');
+      const liveDivorceOriginals = (liveMatt199 || liveCor715)
+        ? ` LIVE ORIGINALS PRESENT: ${[
+            liveMatt199 ? 'Matthew 19:9' : '',
+            liveCor715 ? '1 Corinthians 7:15' : '',
+          ].filter(Boolean).join(' and ')} include [ORIGINAL GREEK TEXT] blocks. Take porneia from the live Matthew 19:9 SBL wording in that block — not from memory. Do not say you lack live original-language text for those verses.`
+        : '';
+      bibleContext = groundingBlocks + `\n\nGROUNDING NOTE: The blocks above are live verbatim text fetched from bible.helloao.org for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. Cite only the editions named in these blocks (SBL Greek New Testament, Westminster Leningrad Codex, and Byzantine or Textus Receptus only if those blocks are present). Do not invent an edition. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim. Lead with transliteration; put untransliterated letters in parentheses only when a live original block supplied them. If a verse has no [ORIGINAL … TEXT] block, say you do not have live original-language text — do not present guessed letters as live. Interpret Scripture only with Scripture — no Josephus, Philo, church fathers, Talmud, or other extra-biblical writings as a frame. PRIMARY WITNESS first, then Greek/Hebrew of that verse, then same-chapter context, then cross-references.${narrowVerseFocus ? ' NARROW VERSE FOCUS: Stay on the named verses and immediate same-chapter context unless the user asked to compare.' : ' You may bring other relevant passages after the primary witness is explained.'}${wordStudyFollowUp || narrowVerseFocus ? ' ORIGINAL LANGUAGE: Show transliteration and literal gloss for key words in the primary witness.' : ''}${narrowVerseFocus && /1\s?Corinthians\s+15/i.test(allRefs.join(' ')) ? ' For 1 Corinthians 15:8-9: Greek eschaton (last of all), hōsperei tō ektrōmati (as to untimely birth), elachistos (least) — in context of 15:5-7.' : ''}${liveDivorceOriginals}`;
     } else if (wordStudyFollowUp) {
       bibleContext = `\n\nWORD STUDY REQUEST: The user is asking about Greek, Hebrew, or Aramaic word meanings without naming a new reference. Use the passage(s) already discussed in this conversation. Show transliteration first, then letters only if they appeared in a prior live original block. Do not present guessed letters as live-fetched. Do not refuse as "beyond the text."`;
     } else if (isTopicalScriptureRequest(lastUserContent)) {
