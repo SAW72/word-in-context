@@ -2237,7 +2237,7 @@
       <h3 style="margin:0 0 8px;">📚 Sources &amp; Data Attribution</h3>
 
       <div class="sources-modal-body">
-        <p><strong>Every citation of The Word in this app is traceable and verifiable — nothing is assumed or memorized by the model.</strong></p>
+        <p><strong>Live verse text is fetched when a resolvable reference is found</strong> (including chapter-only asks such as Psalm 136 or John 1). Topical answers may still use the model; use the Sources line under a reply to verify what was fetched.</p>
         <p class="sources-modal-muted">AI chat requires a free account (7-day trial or 14-day tester access). The Bible reader at /read is always free.</p>
 
         <h4>Bible Scripture Text (English + Original Languages)</h4>
@@ -2245,10 +2245,10 @@
           <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
           <li><strong>English grounding</strong>: Berean Standard Bible (BSB) is the default. User-selectable in Settings: BSB, KJV, NET, Darby, ASV, YLT, or WEB — all fetched live from bible.helloao.org only.</li>
-          <li><strong>Greek New Testament sources</strong> (for NT passages and word studies): SBL Greek New Testament (primary modern critical text), Byzantine Greek NT, Majority Text, Textus Receptus, and others (Tischendorf, Family 35, etc.). The server automatically pulls the Greek alongside English when relevant.</li>
-          <li><strong>Hebrew Old Testament sources</strong> (for OT / Tanakh): Westminster Leningrad Codex (WLC / hbo_wlc) — the standard scholarly Masoretic Text (Hebrew) used as the base for most modern OT translations. Also available in some modern Hebrew editions.</li>
+          <li><strong>Greek New Testament</strong>: SBL Greek New Testament is fetched by default with English when a New Testament reference resolves. Byzantine Greek NT or Textus Receptus are fetched only when you name them (for example “the TR” or “Byzantine”).</li>
+          <li><strong>Hebrew Old Testament</strong>: Westminster Leningrad Codex (WLC / hbo_wlc) is fetched by default for Old Testament references. John cites that edition when a live Hebrew block was loaded.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
-          <li>The model is instructed to quote or reference the original Greek/Hebrew text (with transliteration when helpful) when discussing specific words, grammar, or key terms, and to cite the exact source (e.g. "SBL Greek New Testament" or "Westminster Leningrad Codex").</li>
+          <li>John is instructed to name the edition that was actually fetched (SBL Greek New Testament or Westminster Leningrad Codex by default), to lead with transliteration for speech, and not to present guessed Greek or Hebrew letters as live text.</li>
         </ul>
 
         <h4>What "Context" Means in This App</h4>
@@ -2258,8 +2258,8 @@
           <li><strong>Writing order</strong>: Earlier books and later books stand in a real sequence. Default for the Gospels in this app: Matthew first, then Mark, then Luke, then John (Acts with Luke). Letters and Prophets likewise sit in a progressive timeline of revelation.</li>
           <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
           <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
-          <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, or in the broader literature of the period.</li>
-          <li><strong>Historical &amp; cultural context</strong>: The world of the original audience (ancient Near East for the Old Testament; 1st-century Greco-Roman world for the New Testament).</li>
+          <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, then in the wider canon — not from later extra-biblical writings.</li>
+          <li><strong>Historical context of the biblical text</strong>: language, audience, genre, and setting recovered from the passage and the rest of Scripture — not from Josephus, Philo, church fathers, the Talmud, or other extra-biblical writings.</li>
           <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story — always respecting who wrote each witness and in what order.</li>
         </ul>
 
@@ -2277,12 +2277,11 @@
         <p class="sources-modal-dim">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
 
         <h4>Citations You Hear When It Speaks</h4>
-        <p style="margin:0 0 8px;">The system prompt requires the model to include explicit, natural-sounding citations — including original languages — in every response that discusses scripture:</p>
+        <p style="margin:0 0 8px;">Spoken answers name the English translation and the original edition that was fetched. You hear <strong>transliteration</strong> (for example “ho logos” or “chesed”). Greek or Hebrew letters stay on screen and in Sources unless you ask John to pronounce them.</p>
         <p class="sources-quote-box">
-          “John 1:1 (SBL Greek New Testament) reads: ‘Ἐν ἀρχῇ ἦν ὁ λόγος...’ (En archē ēn ho logos...)”<br>
-          “The Hebrew of Genesis 1:1 (Westminster Leningrad Codex) is: ‘בְּרֵאשִׁית בָּרָא אֱלֹהִים’ (Bereshit bara Elohim...)”
+          “John 1:1 according to the Berean Standard Bible… In the SBL Greek New Testament, en archē ēn ho logos (Ἐν ἀρχῇ ἦν ὁ λόγος).”<br>
+          “Psalm 136:1 in the Westminster Leningrad Codex: ki le-olam chasdo (כִּי לְעוֹלָם חַסְדּוֹ).”
         </p>
-        <p style="margin:0 0 10px;">Because the spoken text contains the citations, you hear the English translation source and the original Greek/Hebrew every time the voice reads the answer.</p>
 
         <h4>AI Model</h4>
         <ul>
@@ -2431,44 +2430,7 @@
     })();
 
     // ====================== CONFIG ======================
-    // Client-side prompt (server-side SYSTEM_PROMPT in server.js is the authoritative one)
-    const SYSTEM_PROMPT = `You are a precise and reverent assistant for studying the Hebrew, Aramaic, and Greek Scriptures (The Word) in their original languages and literary contexts — including who wrote each book and in what order books were written.
-
-STRICT RULES — FOLLOW THESE ALWAYS:
-
-1. Translation Policy (non-negotiable):
-   - ONLY use literal translations from bible.helloao.org: BSB, KJV, NET, Darby, ASV, YLT, or WEB.
-   - NEVER use or recommend the NIV, NLT, The Message, Passion Translation, CEV, GNT, or any dynamic/paraphrase translations.
-   - When discussing meaning, first quote the verse from a literal translation, then explain from the original language.
-
-2. Original Languages Priority:
-   - Always reference the Greek, Hebrew, or Aramaic when it clarifies meaning.
-   - Give the actual word(s), transliteration, and the range of meaning or grammatical significance.
-   - Distinguish what The Word itself says from later theological interpretation.
-
-3. Authorship and composition chronology (required):
-   - Never study a passage as floating words with no author or date.
-   - Name the human author (what The Word claims, or historic church attribution) and original audience.
-   - When comparing books, state relative writing order. Default Gospel order for this app: Matthew first, then Mark, then Luke, then John.
-   - Prefer that author's own usage of a word before wider canon. Do not invent exact years as if Scripture printed them.
-
-4. Voice-Friendly Responses:
-   - Keep answers clear and natural when read aloud.
-   - Use complete sentences. Avoid walls of text.
-
-5. Application to today (any question about present-day practice):
-   - Answer the user's question plainly first — what The Word permits, forbids, or leaves unstated for today.
-   - State the speaker/author's intent and composition setting, or say intent cannot be determined.
-   - Explain primary verses in Greek, Hebrew, or Aramaic (transliteration + literal sense).
-   - When Old Testament is involved: explain what it said then (author/audience), how a later New Testament witness changes or clarifies it, and why the OT form is not binding today as far as NT witnesses indicate.
-   - State how it applies today, or say application cannot be determined from these passages alone.
-
-6. Wording (strict):
-   - When citing Scripture, ALWAYS say "The Word states...", "The Word indicates...", or "The Word says..."
-   - NEVER say "the text states", "the text indicates", "this text states", or "the passage states"
-   - Only use "text" for original-language manuscripts (Hebrew/Greek), not as a substitute for "The Word"
-   - Humble, careful, evidence-based. You may say "a more literal rendering is..." rather than overconfident claims.
-   - Always cite the specific reference clearly (book, chapter, verse).`;
+    // John's instructions live only in server.js (SYSTEM_PROMPT). Do not add a client copy.
 
     // ====================== STATE ======================
     const messagesContainer = document.getElementById('messages');
@@ -6503,6 +6465,8 @@ STRICT RULES — FOLLOW THESE ALWAYS:
         .replace(/^#{1,6}\s*/gm, '')       // headers
         .replace(/^\s*[-*+]\s+/gm, '')     // list bullets
         .replace(/[*\-#`~_]/g, '')         // stray symbols
+        .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '') // raw Greek/Hebrew letters (speak transliteration)
+        .replace(/\(\s*\)/g, '')
         .replace(/\n{2,}/g, '. ')          // paragraph breaks as pauses
         .replace(/\n/g, ' ')
         .replace(/\s+/g, ' ')
@@ -6627,12 +6591,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
       t = t.replace(/\bfirst\s+john\s+one\b/gi, '1 John 1');
       t = t.replace(/\b1\s+john\s+one\b/gi, '1 John 1');
 
-      // Conversational follow-ups ("John too", "John as well", "now John", "the other one") so that
-      // even short follow-ups like "tell me about John too" get normalized before sending.
-      // The server also has extra context-aware logic to infer the next chapter from recent refs.
-      t = t.replace(/\b(john|the book of john|the gospel of john)\s+(too|as well|also|next|the other)\b/gi, 'John 2');
-      t = t.replace(/\b(romans)\s+(too|as well|also|next)\b/gi, 'Romans 6');
-      t = t.replace(/\b(1 john|first john|i john)\s+(too|as well|also)\b/gi, '1 John 2');
+      // Do not rewrite "John too / as well / next" into a chapter — that sent the wrong book.
 
       // Direct rescue for the exact jumbled STT output the user is seeing on voice:
       // "John tell me about John two" comes out as "two John two cell", "second John 2 cell", "john two cell"
@@ -7766,15 +7725,7 @@ STRICT RULES — FOLLOW THESE ALWAYS:
     }
 
     function showWelcomeMessage() {
-      const welcome = `Hi — ask AI, John. I'm an AI study assistant (not the apostle John, not a pastor). I help you study The Word — the Hebrew, Aramaic, and Greek Scriptures — using only literal translations from bible.helloao.org (Berean Standard Bible default, plus KJV, NET, Darby, ASV, YLT, WEB). Test every response against Scripture.
-
-Ask about any passage, word, grammatical detail, or literary context. Every reference to The Word is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in Settings.
-
-Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
-
-Hands-free mode uses a wake word by default ("John", or your custom name if changed in Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in Settings.
-
-Note: AI chat requires a free account. The Bible reader at /read is always free.`;
+      const welcome = `Hi — I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
 
       const welcomeEl = addMessage(welcome, false);
       const speakWelcome = document.createElement("button");
@@ -7913,15 +7864,7 @@ Note: AI chat requires a free account. The Bible reader at /read is always free.
       const currentChat = getCurrentChat();
       const isEmptyNew = !currentChat || (currentChat.messages || []).length === 0;
       if (isEmptyNew) {
-        const welcome = `Hi — ask AI, John. I'm an AI study assistant (not the apostle John, not a pastor). I help you study the Hebrew, Aramaic, and Greek Scriptures using only literal translations from bible.helloao.org (Berean Standard Bible default, plus KJV, NET, Darby, ASV, YLT, WEB). Test every response against Scripture.
-
-Ask about any passage, word, grammatical detail, or literary context. Every scripture reference is explicitly cited with the translation (e.g. “John 3:16 (Berean Standard Bible)”) and the exact text is fetched live from the public API when needed — nothing is hardcoded. You can change the default English translation in Settings.
-
-Click the 📚 Sources button (or the link in the note below) for the full list of data sources and to see how citations work when the voice speaks.
-
-Hands-free mode uses a wake word by default ("John", or your custom name if changed in Settings). Say the wake word followed by your question or verse (e.g. "John let's go through Galatians 6"). It only responds when addressed (unless you turn the wake word requirement off). This helps ignore background noise. While it is speaking you can say the wake word again to interrupt. To take a long pause for thought or breath, say "[wake] pause" (or "hold", "wait", "longer"); say the wake word again when ready. The mic allows ~3 seconds of silence by default. Enable Hands-free in the bottom bar. Wake word name is customizable (or disable it) in Settings.
-
-Note: AI chat requires a free account. The Bible reader at /read is always free.`;
+        const welcome = `Hi — I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
 
         const welcomeEl = addMessage(welcome, false);
         const speakWelcome = document.createElement("button");
@@ -7996,7 +7939,7 @@ Note: AI chat requires a free account. The Bible reader at /read is always free.
 
     init();
   </script>
-  <script src="/john-popup.js?v=2" defer></script>
+  <script src="/john-popup.js?v=3" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>
 </html>

@@ -19,6 +19,13 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const { Webhook: StandardWebhook } = require('standardwebhooks');
+const {
+  extractRefs,
+  parseReference,
+  extraGreekEditionIds,
+  isWordStudyFollowUp,
+  getBlockedContentReason,
+} = require('./lib/scripture-refs');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -527,10 +534,10 @@ function formatXaiError(err) {
   const msg = String(err?.message || '');
   const status = err?.status;
   if (status === 401 || status === 403 || /invalid.*api.*key|incorrect api key/i.test(msg)) {
-    return 'AI service authentication failed on the server. The XAI_API_KEY in Render may be missing, expired, or different from your working local key.';
+    return 'AI service authentication failed on the server. Please try again later.';
   }
   if (/premature close|econnreset|etimedout|socket hang up|fetch failed/i.test(msg)) {
-    return 'AI service connection dropped. Please try again in a few seconds. If this keeps happening, verify XAI_API_KEY in the Render dashboard matches your working local .env key.';
+    return 'AI service connection dropped. Please try again in a few seconds.';
   }
   if (status === 429 || /rate limit/i.test(msg)) {
     return 'AI service rate limit reached. Please wait a moment and try again.';
@@ -548,8 +555,8 @@ async function callXaiChatOnce(model, apiMessages) {
   const body = {
     model,
     messages: apiMessages,
-    temperature: 0.55,
-    max_tokens: 1600,
+    temperature: 0.35,
+    max_tokens: 2048,
   };
   const url = 'https://api.x.ai/v1/chat/completions';
   let lastErr;
@@ -613,20 +620,8 @@ async function callXaiChat(apiMessages) {
   throw lastErr || new Error('xAI request failed');
 }
 
-// Block adult, violent, and off-topic harmful requests before they reach the LLM.
-function getBlockedContentReason(text) {
-  if (!text || typeof text !== 'string') return null;
-  const t = text.toLowerCase().replace(/\s+/g, ' ').trim();
-  const adult = /\b(porn|pornograph|xxx|nudes?|naked|erotic|fetish|onlyfans|hentai|nsfw|sext(?:ing)?|stripper|prostitut|escort\s+service|adult\s+content|sex\s+toy)\b/.test(t);
-  if (adult) {
-    return 'This app is for Scripture study only. Adult or sexual content requests are not permitted.';
-  }
-  const harm = /\b(how\s+to\s+(kill|murder|harm|hurt|poison|stab|shoot)|make\s+a\s+bomb|build\s+a\s+bomb|suicide\s+method|self[- ]harm\s+method)\b/.test(t);
-  if (harm) {
-    return 'This app cannot assist with harming people. For crisis support, contact a pastor, counselor, or local emergency services.';
-  }
-  return null;
-}
+// getBlockedContentReason is imported from lib/scripture-refs.js
+// (study words like naked / prostitute are allowed; porn and harm how-tos are not).
 
 // Bot throttle for anonymous landing teaser requests (not the per-day question cap).
 const demoUsage = new Map(); // ip -> array of timestamps (last hour)
@@ -673,9 +668,14 @@ function consumeLandingTeaser(ip) {
 }
 
 // === Strong System Prompt for "The Word in Context" ===
-const SYSTEM_PROMPT = `You are an expert, reverent guide for studying the Hebrew, Aramaic, and Greek Scriptures in their original languages and literary contexts. You are the AI assistant inside the "Word in Context" Bible app.
+const SYSTEM_PROMPT = `You are John, the in-app AI Bible-study assistant for The Word in Context. You are not the apostle John, not a pastor, priest, or spiritual authority, and not divine guidance. The wake word default is "John" (the user can change it in Settings). Chats stay in the user's browser on this device; this server only proxies Grok and fetches public bible.helloao.org text. Never claim chats are stored on the server. Never mention API keys, Render, model fallbacks, or hosting internals. On the first turn of a new chat you may give one short disclaimer sentence; do not repeat a long disclaimer every reply — the app already shows one.
+
+You study the Hebrew, Aramaic, and Greek Scriptures in their original languages and literary contexts.
 
 CORE COMMITMENTS — never violate these:
+
+Scripture-only interpretation (never violate)
+Stay in the Greek and Hebrew of Scripture. Only Scripture and the historical context of the biblical text itself may shape answers. Historical context means the language, audience, genre, and setting of the passage in the Bible, recovered from the text and its own canonical context — not from later books. Do not use outside historical writings as a source or as a controlling frame: Josephus, Philo, church fathers, the Talmud, later rabbis, extra-biblical histories, apocrypha or pseudepigrapha as authority, or other ancient literature. You may name such a work only if the user asks what it is, and then you must say it is not Scripture and must not let it interpret The Word.
 
 Translation Policy
 Use only the Berean Standard Bible (BSB) by default. Quote exclusively from English translations available on bible.helloao.org: Berean Standard Bible (BSB), King James Version (KJV), NET Bible (NET), Darby Translation (DBY), American Standard Version (ASV), Young's Literal Translation (YLT), or World English Bible (WEB). Never quote NASB, ESV, NKJV, LSB, NIV, NLT, or The Message. When [ACCURATE BIBLE TEXT] grounding is provided below for a specific reference, quote that exact wording verbatim and cite the translation named in that block. For any other passage you discuss, quote from the allowed translations above. When explaining any word or phrase, always begin with the literal English rendering before showing the underlying Hebrew, Aramaic, or Greek.
@@ -684,7 +684,7 @@ Conversation Scope
 Each new user question sets the topic for your reply. You may discuss any Scripture, book, chapter, verse, theme, or topic the user asks about — across the entire Bible, in any allowed English translation and in Greek, Hebrew, or Aramaic where relevant. You are never limited to only the verses in grounding blocks below. If the user previously discussed one passage and now asks a different question (for example, moving from Revelation 21:8 to "healing verses in the Bible"), answer the new question fully and bring in every relevant passage. Grounding blocks are supplementary anchors for specific references, not a cage around the conversation.
 
 Topical Scripture Requests
-When the user asks for scriptures, verses, or passages about a subject or theme (healing, faith, fear, marriage, adultery, fornication, sexual immorality, salvation, etc.), actively identify and present every relevant biblical passage across the Old and New Testaments. Quote or cite each reference, state what The Word explicitly says about the subject, and use allowed translations. Never refuse a topical request because no grounding block was fetched for those verses, and never limit yourself to an earlier verse from the same conversation. The user is asking you to find scriptures — bring them.
+When the user asks for scriptures, verses, or passages about a subject or theme (healing, faith, fear, marriage, adultery, fornication, sexual immorality, salvation, etc.), give a focused set of about 4–8 primary witnesses across the Old and New Testaments when both speak. Quote or cite each reference, state what The Word explicitly says about the subject, and use allowed translations. Do not claim the list is exhaustive. Never refuse a topical request because no grounding block was fetched for those verses, and never limit yourself to an earlier verse from the same conversation. Only name refs you actually quote.
 
 Strict Context Rule
 Every doctrinal claim must still be grounded in what The Word explicitly says. Interpret Scripture with Scripture first. "According to Scripture" means all teaching claims must be supported by biblical passages — it does NOT mean you may only discuss verses already shown in grounding blocks below.
@@ -779,10 +779,12 @@ Named-speaker rule (general)
 When the user names a biblical speaker ("what Paul said," "what Peter said," "what Jesus said"), locate and quote that speaker's own words on the topic first. Secondary passages about the same theme (criteria, foundations, signs) come after the primary speech — briefly, only if the user asked for comparison.
 
 Original Languages — stay in Greek and Hebrew context
-This app exists to study The Word in original languages. For every verse you explain (not only when the user says "word study"), anchor the analysis in the Greek manuscript (NT) or Hebrew manuscript (OT) of that verse. Begin with literal English, then show the underlying Greek or Hebrew for the words that carry the claim (transliteration + literal gloss as used in that verse). When [ORIGINAL GREEK TEXT] or [ORIGINAL HEBREW TEXT] grounding is provided below, use that wording for your analysis — do not ignore it in favor of English-only summary. When the user asks for word study, transliteration, lexical range, or "the Greek/Hebrew of" a term, answer fully with forms, glosses, and how The Word employs the term in that passage (and other Scripture uses when helpful). If they follow up on a passage already in this conversation without repeating the reference, stay anchored to that passage's Greek or Hebrew. Original-language study is never "outside Scripture" and must not be refused. Do not range across unrelated English citations while leaving the Greek or Hebrew of the primary witness unexamined. Never speak or pronounce Hebrew or Greek words aloud unless requested.
+This app exists to study The Word in original languages. For every verse you explain (not only when the user says "word study"), anchor the analysis in the Greek (NT) or Hebrew (OT) of that verse. Begin with literal English, then the underlying word as transliteration first (e.g. "ho logos"), then letters in parentheses if a live grounding block supplied them (e.g. "ho logos (ὁ λόγος)"). When [ORIGINAL GREEK TEXT] or [ORIGINAL HEBREW TEXT] grounding is provided below, use that wording — do not ignore it in favor of English-only summary. Cite the edition named in that block (SBL Greek New Testament by default; Westminster Leningrad Codex for Hebrew; Byzantine or Textus Receptus only if that block is present). If no [ORIGINAL … TEXT] block is present for a verse, say you do not have live original-language text for that reference and do not present guessed Greek or Hebrew letters as live text. You may still discuss the English wording and, if helpful, a cautious transliteration marked as not live-fetched. When the user asks for word study, transliteration, lexical range, or "the Greek/Hebrew of" a term, answer fully with forms, glosses, and how The Word employs the term in that passage (and other Scripture uses when helpful). If they follow up on a passage already in this conversation without repeating the reference, stay anchored to that passage's Greek or Hebrew. Original-language study is never "outside Scripture" and must not be refused.
+
+Write for the ear first. Do not read untransliterated Greek or Hebrew letters aloud unless the user asked you to pronounce them.
 
 Citations
-Whenever you reference a verse, immediately follow it with the translation name, for example: "according to the Berean Standard Bible." Mention the original language source only once per response, such as "in the Hebrew manuscript" or "in the Greek manuscript."
+Whenever you quote a verse, name the English translation immediately (e.g. "according to the Berean Standard Bible"). When you use original-language wording, name the edition you were given in grounding — SBL Greek New Testament by default, Westminster Leningrad Codex for Hebrew, or Byzantine / Textus Receptus only if that block is present or the user asked for it and it was fetched. Do not invent an edition. Do not cite Josephus, Philo, church fathers, the Talmud, or other extra-biblical writings as if they were Scripture.
 
 Wording Rule (strict — apply in every response)
 When attributing meaning to Scripture, ALWAYS use "The Word states...", "The Word indicates...", or "The Word says...". NEVER use "the text states", "the text indicates", "this text states", "the biblical text states", or "the passage states" when you mean Scripture. The only acceptable use of "text" is for original-language manuscripts (e.g. "the Hebrew manuscript", "the Greek wording") — never as a substitute for "The Word" when citing what Scripture teaches.
@@ -794,7 +796,7 @@ Content Safety (strict)
 - Refuse pornography, erotica, graphic sexual description, requests for sexual roleplay, or adult entertainment — even if disguised as study.
 - DO answer Scripture study on marriage, adultery, fornication, sexual immorality (porneia), chastity, divorce, and what The Word says about sex within or outside marriage. Questions such as "sex outside of marriage," "what does the Bible say about adultery," or "fornication" are in-scope moral/theological study — quote primary witnesses (e.g. Exodus 20:14, Matthew 5:27–32, 1 Corinthians 6:18–20, 7:2, Hebrews 13:4, 1 Thessalonians 4:3) with the same literal approach as any other topic. Do not refuse them as "sexual content."
 - Refuse requests for instructions to harm, kill, abuse, or endanger people. Do not provide weapons, violence, or self-harm how-to content.
-- Refuse requests clearly unrelated to studying the Hebrew, Aramaic, and Greek Scriptures and their literal English renderings.
+- App how-to questions (voices, wake word, Sources, chats, Settings, Library, PWA) are always in scope — answer them. Refuse only pornography, harm how-tos, and requests clearly unrelated to Scripture study or using this app.
 - When refusing, stay brief, gracious, and redirect the user back to Scripture study.
 
 APP IDENTITY & DISCLAIMER
@@ -813,15 +815,15 @@ Your use of this app is at your own discretion. We strive for accuracy and rever
 APP INSTRUCTOR ROLE
 You are also the official, friendly instructor inside the "Word in Context" Bible app. When the user asks anything about how the app works, answer naturally and clearly while staying reverent. You know:
 
-How to change the default English translation
-How to pick and test voices
-How the wake-word / hands-free mode works
-What the Sources panel shows
-How to save chats, start new ones, clear history, etc.
+The wake word default is "John" (changeable in Settings). Hands-free only listens when addressed unless the user turns the wake word off.
+Chats stay on this device in the browser; the server only proxies Grok and fetches public bible.helloao.org text.
+Default live originals: SBL Greek New Testament (NT) and Westminster Leningrad Codex (OT). Byzantine or Textus Receptus are fetched when the user names them. English default is BSB unless the user picked KJV, NET, Darby, ASV, YLT, or WEB in Settings.
+Live verse text is fetched when a resolvable reference is found (including chapter-only, e.g. Psalm 136 or John 1). Topical answers may use the model plus a Sources scan after the reply.
+How to change the default English translation, pick and test device voices, save/clear chats, and use the Sources panel under each reply.
 
 Answer these questions helpfully and precisely.
 
-Speak all responses aloud naturally as if reading to the user. Do not use commands or formatting in your spoken replies.`;
+Speak all responses aloud naturally as if reading to the user. Use transliteration, not raw Greek or Hebrew letters, in what will be spoken. Do not use commands or formatting in your spoken replies.`;
 
 // Keep Grok's phrasing consistent with the app's "The Word" voice (models often slip into "the text states").
 function normalizeWordPhrasing(text) {
@@ -842,97 +844,15 @@ function normalizeWordPhrasing(text) {
 // Pass the exact id from /api/available_translations.json (e.g. 'BSB', 'grc_sbl', 'hbo_wlc')
 async function fetchBiblePassage(reference, translation = 'BSB') {
   try {
-    const cleaned = reference.trim();
-    const match = cleaned.match(/^(\d?\s*[A-Za-z]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/i);
-    if (!match) return null;
+    const parsed = parseReference(reference);
+    if (!parsed) return null;
 
-    let book = match[1].trim();
-    const chapter = match[2];
-    const verseStart = parseInt(match[3] || '1', 10);
-    const verseEnd = parseInt(match[4] || match[3] || '1', 10);
-
-    const bookMap = {
-      'genesis': 'GEN', 'gen': 'GEN',
-      'exodus': 'EXO', 'exo': 'EXO', 'ex': 'EXO',
-      'leviticus': 'LEV', 'lev': 'LEV',
-      'numbers': 'NUM', 'num': 'NUM',
-      'deuteronomy': 'DEU', 'deut': 'DEU',
-      'joshua': 'JOS', 'josh': 'JOS',
-      'judges': 'JDG', 'judg': 'JDG',
-      'ruth': 'RUT',
-      '1 samuel': '1SA', '1sam': '1SA',
-      '2 samuel': '2SA', '2sam': '2SA',
-      '1 kings': '1KI', '1kings': '1KI',
-      '2 kings': '2KI', '2kings': '2KI',
-      '1 chronicles': '1CH', '1chr': '1CH',
-      '2 chronicles': '2CH', '2chr': '2CH',
-      'ezra': 'EZR',
-      'nehemiah': 'NEH', 'neh': 'NEH',
-      'esther': 'EST',
-      'job': 'JOB',
-      'psalm': 'PSA', 'psalms': 'PSA', 'ps': 'PSA',
-      'proverbs': 'PRO', 'prov': 'PRO',
-      'ecclesiastes': 'ECC', 'eccl': 'ECC',
-      'song of solomon': 'SNG', 'song': 'SNG',
-      'isaiah': 'ISA', 'isa': 'ISA',
-      'jeremiah': 'JER', 'jer': 'JER',
-      'lamentations': 'LAM', 'lam': 'LAM',
-      'ezekiel': 'EZE', 'ezek': 'EZE',
-      'daniel': 'DAN', 'dan': 'DAN',
-      'hosea': 'HOS',
-      'joel': 'JOL',
-      'amos': 'AMO',
-      'obadiah': 'OBA', 'obad': 'OBA',
-      'jonah': 'JON',
-      'micah': 'MIC',
-      'nahum': 'NAM',
-      'habakkuk': 'HAB', 'hab': 'HAB',
-      'zephaniah': 'ZEP', 'zeph': 'ZEP',
-      'haggai': 'HAG',
-      'zechariah': 'ZEC', 'zech': 'ZEC',
-      'malachi': 'MAL', 'mal': 'MAL',
-      'matthew': 'MAT', 'matt': 'MAT', 'mt': 'MAT',
-      'mark': 'MRK', 'mk': 'MRK',
-      'luke': 'LUK', 'lk': 'LUK',
-      'john': 'JHN', 'jn': 'JHN',
-      'acts': 'ACT',
-      'romans': 'ROM', 'rom': 'ROM',
-      '1 corinthians': '1CO', '1cor': '1CO',
-      '2 corinthians': '2CO', '2cor': '2CO',
-      'galatians': 'GAL', 'gal': 'GAL',
-      'ephesians': 'EPH', 'eph': 'EPH',
-      'philippians': 'PHP', 'phil': 'PHP',
-      'colossians': 'COL', 'col': 'COL',
-      '1 thessalonians': '1TH', '1thess': '1TH',
-      '2 thessalonians': '2TH', '2thess': '2TH',
-      '1 timothy': '1TI', '1tim': '1TI',
-      '2 timothy': '2TI', '2tim': '2TI',
-      'titus': 'TIT',
-      'philemon': 'PHM', 'phlm': 'PHM',
-      'hebrews': 'HEB', 'heb': 'HEB',
-      'james': 'JAS', 'jas': 'JAS',
-      '1 peter': '1PE', '1pet': '1PE',
-      '2 peter': '2PE', '2pet': '2PE',
-      '1 john': '1JN', '1jn': '1JN',
-      '2 john': '2JN', '2jn': '2JN',
-      '3 john': '3JN', '3jn': '3JN',
-      'jude': 'JUD',
-      'revelation': 'REV', 'rev': 'REV'
-    };
-
-    const bookKey = book.toLowerCase();
-    const bookCode = bookMap[bookKey] || book.toUpperCase().slice(0, 3);
-    // Use the translation id exactly as provided (e.g. 'BSB' for English, 'grc_sbl' for SBL Greek NT, 'hbo_wlc' for Westminster Leningrad Codex Hebrew).
-    // The API uses specific casing/underscores for original language resources.
+    const { bookCode, bookDisplay, chapter, verseStart, verseEnd, wholeChapter } = parsed;
     const trans = translation;
-
-    // Correct endpoint: https://bible.helloao.org/api/BSB/JHN/3.json
     const url = `https://bible.helloao.org/api/${trans}/${bookCode}/${chapter}.json`;
     console.log(`[Bible API] Trying: ${url}`);
 
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-
-    // Guard against HTML error pages / wrong URLs (the source of the "<!doctype" errors)
     const contentType = res.headers.get('content-type') || '';
     if (!res.ok || !contentType.includes('json')) {
       console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
@@ -940,17 +860,13 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
     }
 
     const data = await res.json();
-
-    // The real structure: data.chapter.content is an array of objects
     const content = data?.chapter?.content;
     if (!Array.isArray(content)) return null;
 
-    // Extract verses in the requested range
     const verses = [];
     for (const item of content) {
       if (item.type === 'verse' && typeof item.number === 'number') {
         if (item.number >= verseStart && item.number <= verseEnd) {
-          // Join the text pieces inside the verse content
           const verseText = (item.content || [])
             .map(part => (typeof part === 'string' ? part : part?.text || ''))
             .join(' ')
@@ -964,15 +880,20 @@ async function fetchBiblePassage(reference, translation = 'BSB') {
 
     if (verses.length === 0) return null;
 
+    const first = verses[0].split('.')[0];
+    const last = verses[verses.length - 1].split('.')[0];
+    const refLabel = wholeChapter || first !== last
+      ? `${bookDisplay} ${chapter}:${first}-${last}`
+      : `${bookDisplay} ${chapter}:${first}`;
+
     return {
-      reference: `${book} ${chapter}:${verseStart}${verseEnd !== verseStart ? '-' + verseEnd : ''}`,
+      reference: refLabel,
       translation: trans,
-      text: verses.join(' ')
+      text: verses.join(' '),
+      wholeChapter: !!wholeChapter,
     };
   } catch (e) {
-    // Keep errors quiet in production so they don't pollute the chat
     console.error('Bible API fetch error (non-fatal):', e.message);
-    // Extra debug: if we ever hit this with the JSON error again, log more context
     if (e.message && e.message.includes('Unexpected token')) {
       console.error('  ^ This usually means we hit an HTML page instead of JSON. Check the [Bible API] Trying line above.');
     }
@@ -2857,15 +2778,8 @@ app.post('/api/chat', (req, res, next) => {
     const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'BSB';
 
     // === Scripture grounding: fetch live text for refs in the CURRENT question ===
-    // We pull from bible.helloao.org so quoted text is verbatim when available.
-    // Do NOT carry old refs from earlier turns into unrelated new questions.
-    function extractRefs(text) {
-      if (!text) return [];
-      // Matches common Bible refs: "John 3:16", "Galatians 6:1-10", "1 John 1:1", "Ps 23:1" etc.
-      const regex = /\b(1\s?[A-Za-z]+|2\s?[A-Za-z]+|3\s?[A-Za-z]+|[A-Za-z]+)\s+\d+:\d+(?:-\d+)?\b/g;
-      const matches = text.match(regex) || [];
-      return [...new Set(matches.map(m => m.trim()))];
-    }
+    // extractRefs / isWordStudyFollowUp come from lib/scripture-refs.js
+    // (chapter-only + aliases). Do NOT carry old refs into unrelated new questions.
 
     function isFollowUpToPriorPassage(text) {
       if (!text || typeof text !== 'string') return false;
@@ -2925,14 +2839,7 @@ app.post('/api/chat', (req, res, next) => {
         || (namedRefs.length <= 3 && t.length < 200);
     }
 
-    function isWordStudyFollowUp(text) {
-      if (!text || typeof text !== 'string') return false;
-      if (extractRefs(text).length > 0) return false;
-      const t = text.toLowerCase().trim();
-      return /\b(greek|hebrew|aramaic|original language|transliterat|word study|lexical|underlying word|root word)\b/.test(t)
-        || /\b(what does|meaning of|meanings of|define|definition of)\b/.test(t)
-        || /\b(soul|spirit|dividing|divide|divided|merism|psyche|pneuma)\b/.test(t);
-    }
+    // isWordStudyFollowUp imported from lib/scripture-refs.js
 
     function isTopicalScriptureRequest(text) {
       if (!text || typeof text !== 'string') return false;
@@ -3031,6 +2938,11 @@ app.post('/api/chat', (req, res, next) => {
 
       const heb = await fetchBiblePassage(ref, 'hbo_wlc');
       if (heb) fetchedPassages.push(heb);
+
+      for (const extraId of extraGreekEditionIds(lastUserContent)) {
+        const extra = await fetchBiblePassage(ref, extraId);
+        if (extra) fetchedPassages.push(extra);
+      }
     }
 
     let bibleContext = '';
@@ -3041,11 +2953,11 @@ app.post('/api/chat', (req, res, next) => {
           : (p.translation || '').match(/hbo|heb.*wlc/i) ? 'ORIGINAL HEBREW TEXT'
           : 'ACCURATE BIBLE TEXT';
         return `\n\n[${label} — ${p.reference} (${disp})]\n${p.text}`;
-      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim — do not substitute NASB, ESV, NKJV, or other disallowed translations. PRIMARY WITNESS: Quote and explain the grounded verse(s) first; use [ORIGINAL GREEK TEXT] / [ORIGINAL HEBREW TEXT] blocks for key terms in those same verses — do not cherry-pick other passages while ignoring the verse that states the claim. Study order: primary witness → Greek/Hebrew of that verse → same-chapter context → cross-references last.${narrowVerseFocus ? ' NARROW VERSE FOCUS: The user named specific verse(s). Stay on those verses and their immediate same-chapter context. Do not pad with other books unless the user asked to compare. "Does not say" applies only to what is unstated in the verses the user asked about.' : ' You may bring other relevant passages after the primary witness is explained.'} For passages without a grounding block, quote from allowed helloao.org translations ("${englishTransDisplay}" unless the user asked for BSB, ASV, YLT, or WEB). Interpret Scripture only with Scripture.${wordStudyFollowUp || narrowVerseFocus ? ' ORIGINAL LANGUAGE: Show Greek/Hebrew forms, transliteration, and literal gloss for key words in the primary witness verse(s) — do not answer in English only.' : ' Mention the original language and key Greek/Hebrew terms for the main verse(s) you explain.'}${narrowVerseFocus && /1\s?Corinthians\s+15/i.test(allRefs.join(' ')) ? ' For 1 Corinthians 15:8-9: Greek ἔσχατον (last of all), ὡσπερεὶ τῷ ἐκτρώματι (as to untimely birth), ἐλάχιστος (least) — in context of 15:5-7.' : ''}`;
+      }).join('') + `\n\nGROUNDING NOTE: The blocks above are live verbatim text fetched from bible.helloao.org for references in the user's current question${allRefs.length && (passageFollowUp || wordStudyFollowUp) ? ' (follow-up to the prior passage)' : ''}. Cite only the editions named in these blocks (SBL Greek New Testament, Westminster Leningrad Codex, and Byzantine or Textus Receptus only if those blocks are present). Do not invent an edition. When quoting those exact references in English, use the [ACCURATE BIBLE TEXT] wording verbatim. Lead with transliteration; put untransliterated letters in parentheses only when a live original block supplied them. If a verse has no [ORIGINAL … TEXT] block, say you do not have live original-language text — do not present guessed letters as live. Interpret Scripture only with Scripture — no Josephus, Philo, church fathers, Talmud, or other extra-biblical writings as a frame. PRIMARY WITNESS first, then Greek/Hebrew of that verse, then same-chapter context, then cross-references.${narrowVerseFocus ? ' NARROW VERSE FOCUS: Stay on the named verses and immediate same-chapter context unless the user asked to compare.' : ' You may bring other relevant passages after the primary witness is explained.'}${wordStudyFollowUp || narrowVerseFocus ? ' ORIGINAL LANGUAGE: Show transliteration and literal gloss for key words in the primary witness.' : ''}${narrowVerseFocus && /1\s?Corinthians\s+15/i.test(allRefs.join(' ')) ? ' For 1 Corinthians 15:8-9: Greek eschaton (last of all), hōsperei tō ektrōmati (as to untimely birth), elachistos (least) — in context of 15:5-7.' : ''}`;
     } else if (wordStudyFollowUp) {
-      bibleContext = `\n\nWORD STUDY REQUEST: The user is asking about Greek, Hebrew, or Aramaic word meanings without naming a new reference. Use the passage(s) already discussed in this conversation. Show original-language forms, transliteration, literal glosses, and how The Word uses each term in context. Do not refuse as "beyond the text" — original-language study is the core purpose of this app.`;
+      bibleContext = `\n\nWORD STUDY REQUEST: The user is asking about Greek, Hebrew, or Aramaic word meanings without naming a new reference. Use the passage(s) already discussed in this conversation. Show transliteration first, then letters only if they appeared in a prior live original block. Do not present guessed letters as live-fetched. Do not refuse as "beyond the text."`;
     } else if (isTopicalScriptureRequest(lastUserContent)) {
-      bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Search across the whole Bible (Old and New Testaments) and present every relevant passage using allowed translations ("${englishTransDisplay}" by default). Quote or cite each reference and explain what The Word explicitly says about the subject. Use "The Word states..." — never "the text states." Empty grounding blocks are expected — you are not limited to any earlier verse in this conversation.`;
+      bibleContext = `\n\nTOPICAL REQUEST: The user is asking for scriptures about a subject without naming specific references. Give about 4–8 primary witnesses across Old and New Testaments when both speak, using allowed translations ("${englishTransDisplay}" by default). Do not claim the list is exhaustive. Quote or cite each reference and explain what The Word explicitly says. Use "The Word states..." — never "the text states." Empty grounding blocks are expected. Stay in Scripture only — no extra-biblical writings as a frame.`;
     }
 
     // Build the messages for xAI
@@ -3068,6 +2980,10 @@ app.post('/api/chat', (req, res, next) => {
         if (grc) fetchedPassages.push(grc);
         const heb = await fetchBiblePassage(ref, 'hbo_wlc');
         if (heb) fetchedPassages.push(heb);
+        for (const extraId of extraGreekEditionIds(lastUserContent)) {
+          const extra = await fetchBiblePassage(ref, extraId);
+          if (extra) fetchedPassages.push(extra);
+        }
       }
     }
 
@@ -3103,7 +3019,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasKey: !!getXaiApiKey(),
     xaiKeyLooksValid: xaiKeyLooksConfigured(),
-    xaiKeyLength: getXaiApiKey().length,
+    hasXaiKey: xaiKeyLooksConfigured(),
     hasSTT: false,
     model: XAI_MODEL,
     deploy: process.env.RENDER_GIT_COMMIT || 'local',

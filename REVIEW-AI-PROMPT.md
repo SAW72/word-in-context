@@ -1,6 +1,8 @@
 # Review: John’s AI prompt and wiring
 
-Investigation only. **No production prompt or chat behavior was changed.**
+Investigation notes that guided the implementation on this branch. The must-fix and should-fix items below were implemented in subsequent commits (live fetch, prompt, filter, welcome/TTS, landing/Sources copy).
+
+**Original review (investigation only). The list below is the analysis, not leftover work.**
 
 Product facts treated as truth:
 
