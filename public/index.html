@@ -3260,7 +3260,10 @@
 
     function bibleContentPartText(part) {
       if (typeof part === 'string') return part;
+      if (!part || typeof part !== 'object') return '';
+      if (part.noteId != null && !part.text && !Array.isArray(part.content) && !Array.isArray(part.words)) return '';
       if (part && typeof part.text === 'string') return part.text;
+      if (Array.isArray(part.content)) return part.content.map(bibleContentPartText).join(' ');
       return '';
     }
 

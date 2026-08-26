@@ -21,12 +21,12 @@ const execFileAsync = promisify(execFile);
 const { Webhook: StandardWebhook } = require('standardwebhooks');
 const {
   extractRefs,
-  parseReference,
   extraGreekEditionIds,
   isWordStudyFollowUp,
   getBlockedContentReason,
 } = require('./lib/scripture-refs');
 const { normalizeFetchedSources } = require('./lib/chat-sources');
+const { fetchBiblePassage } = require('./lib/bible-fetch');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -837,70 +837,8 @@ function normalizeWordPhrasing(text) {
     .replace(/\bscripture (states|indicates)\b/gi, 'The Word $1');
 }
 
-// === Bible verse fetcher using the Free Use Bible API ===
-// Supports English literals (BSB etc.) + original languages:
-//   Greek NT: grc_sbl (SBL Greek New Testament), grc_byz, grc_mtk, grc_gtr (TR), etc.
-//   Hebrew OT: hbo_wlc / heb_wlc (Westminster Leningrad Codex - standard Masoretic Text)
-// Correct endpoints: https://bible.helloao.org/api/{TRANSLATION}/{BOOK}/{CHAPTER}.json
-// Pass the exact id from /api/available_translations.json (e.g. 'BSB', 'grc_sbl', 'hbo_wlc')
-async function fetchBiblePassage(reference, translation = 'BSB') {
-  try {
-    const parsed = parseReference(reference);
-    if (!parsed) return null;
-
-    const { bookCode, bookDisplay, chapter, verseStart, verseEnd, wholeChapter } = parsed;
-    const trans = translation;
-    const url = `https://bible.helloao.org/api/${trans}/${bookCode}/${chapter}.json`;
-    console.log(`[Bible API] Trying: ${url}`);
-
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    const contentType = res.headers.get('content-type') || '';
-    if (!res.ok || !contentType.includes('json')) {
-      console.error(`Bible API non-JSON response for: ${url} (status: ${res.status})`);
-      return null;
-    }
-
-    const data = await res.json();
-    const content = data?.chapter?.content;
-    if (!Array.isArray(content)) return null;
-
-    const verses = [];
-    for (const item of content) {
-      if (item.type === 'verse' && typeof item.number === 'number') {
-        if (item.number >= verseStart && item.number <= verseEnd) {
-          const verseText = (item.content || [])
-            .map(part => (typeof part === 'string' ? part : part?.text || ''))
-            .join(' ')
-            .trim();
-          if (verseText) {
-            verses.push(`${item.number}. ${verseText}`);
-          }
-        }
-      }
-    }
-
-    if (verses.length === 0) return null;
-
-    const first = verses[0].split('.')[0];
-    const last = verses[verses.length - 1].split('.')[0];
-    const refLabel = wholeChapter || first !== last
-      ? `${bookDisplay} ${chapter}:${first}-${last}`
-      : `${bookDisplay} ${chapter}:${first}`;
-
-    return {
-      reference: refLabel,
-      translation: trans,
-      text: verses.join(' '),
-      wholeChapter: !!wholeChapter,
-    };
-  } catch (e) {
-    console.error('Bible API fetch error (non-fatal):', e.message);
-    if (e.message && e.message.includes('Unexpected token')) {
-      console.error('  ^ This usually means we hit an HTML page instead of JSON. Check the [Bible API] Trying line above.');
-    }
-    return null;
-  }
-}
+// Bible verse fetch: lib/bible-fetch.js (helloao.org). Flattens mixed
+// string + {noteId} verse content so apparatus-heavy SBL verses stay non-empty.
 
 /**
  * Transcode share video → Facebook-safe H.264 MP4.
