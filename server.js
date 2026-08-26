@@ -24,6 +24,7 @@ const {
   extraGreekEditionIds,
   isWordStudyFollowUp,
   getBlockedContentReason,
+  selectStudyOrderRefs,
 } = require('./lib/scripture-refs');
 const { normalizeFetchedSources } = require('./lib/chat-sources');
 const { fetchBiblePassage } = require('./lib/bible-fetch');
@@ -2726,7 +2727,7 @@ app.post('/api/chat', (req, res, next) => {
     const englishTrans = ALLOWED_ENGLISH_TRANS.has(defaultTranslation) ? defaultTranslation : 'BSB';
 
     // === Scripture grounding: fetch live text for refs in the CURRENT question ===
-    // extractRefs / isWordStudyFollowUp come from lib/scripture-refs.js
+    // extractRefs / selectStudyOrderRefs / isWordStudyFollowUp come from lib/scripture-refs.js
     // (chapter-only + aliases). Do NOT carry old refs into unrelated new questions.
 
     function isFollowUpToPriorPassage(text) {
@@ -2738,56 +2739,9 @@ app.post('/api/chat', (req, res, next) => {
         || /\b(but you just said|you just said|what about what)\b/.test(t);
     }
 
-    function extractThematicRefs(text) {
-      if (!text || typeof text !== 'string') return [];
-      const t = text.toLowerCase();
-      const refs = [];
-      const paulLastTopic = /\b(paul|apostle paul)\b/.test(t)
-        && /\b(last apostle|last of all|least of the apostles|untimely birth|abnormally born|what paul said|what did paul)\b/.test(t);
-      const lastApostleTopic = /\blast apostle\b/.test(t);
-      if (paulLastTopic || lastApostleTopic) {
-        refs.push('1 Corinthians 15:8', '1 Corinthians 15:9', '1 Corinthians 15:7', '1 Corinthians 15:5');
-      }
-      if (/\bwhat (did |about )?paul\b/.test(t) && /\b(apostle|last)\b/.test(t)) {
-        refs.push('1 Corinthians 15:8', '1 Corinthians 15:9');
-      }
-      if (/1\s?cor(?:inthians)?\s+15:8/i.test(t)) {
-        refs.push('1 Corinthians 15:5-10');
-      }
-      const marriageSexTopic = /\b(sex outside (of )?marriage|sexual immorality|fornication|adultery|premarital sex|extramarital|porneia|unchastity|marriage bed|immorality)\b/.test(t)
-        || (/\bsex\b/.test(t) && /\b(marriage|married|wife|husband|adultery|fornicat|immoral)\b/.test(t));
-      if (marriageSexTopic) {
-        refs.push('1 Corinthians 6:18', '1 Corinthians 7:2', 'Hebrews 13:4', 'Matthew 5:27', 'Matthew 5:32', 'Exodus 20:14', '1 Thessalonians 4:3');
-      }
-      const divorceRemarriageTopic = /\b(divorce|divorced|remarr(?:y|iage|ied)|free to (?:re)?marry|not under bondage)\b/.test(t)
-        && /\b(spouse|wife|husband|marri|adulter|sexual immorality|porneia)\b/.test(t);
-      if (divorceRemarriageTopic || /\b(free to remarr|may (?:the |they |he |she )?remarr|allowed to remarr|forbid.*remarr)\b/.test(t)) {
-        refs.push('Matthew 5:32', 'Matthew 19:9', 'Mark 10:11', 'Luke 16:18', '1 Corinthians 7:10', '1 Corinthians 7:15', 'Romans 7:2');
-      }
-      return refs;
-    }
-
-    function expandNearbyContextRefs(refs, text) {
-      const t = String(text || '').toLowerCase();
-      const out = [];
-      const cor15Eight = refs.some((r) => /1\s?cor(?:inthians)?\s+15:(8|9|8-9|5-10)/i.test(r))
-        || /1\s?cor(?:inthians)?\s+15:8/i.test(t);
-      if (cor15Eight) {
-        out.push('1 Corinthians 15:5-10');
-        return out;
-      }
-      return [...refs];
-    }
-
-    function isNarrowVerseQuestion(text, namedRefs) {
-      if (!namedRefs?.length || !text) return false;
-      const t = text.toLowerCase().trim();
-      return /\bwhat about\b/.test(t)
-        || namedRefs.length <= 2
-        || (namedRefs.length <= 3 && t.length < 200);
-    }
-
-    // isWordStudyFollowUp imported from lib/scripture-refs.js
+    // selectStudyOrderRefs imported from lib/scripture-refs.js
+    // Divorce/remarriage study order pins Matthew 19:9 and 1 Corinthians 7:15
+    // so the fetch cap cannot drop their live BSB + SBL blocks.
 
     function isTopicalScriptureRequest(text) {
       if (!text || typeof text !== 'string') return false;
@@ -2807,35 +2761,27 @@ app.post('/api/chat', (req, res, next) => {
       return res.status(400).json({ error: blockedReason });
     }
 
-    const userNamedRefs = extractRefs(lastUserContent);
-    let allRefs = [...new Set([...userNamedRefs, ...extractThematicRefs(lastUserContent)])];
-    const narrowVerseFocus = isNarrowVerseQuestion(lastUserContent, userNamedRefs);
-
-    if (narrowVerseFocus) {
-      allRefs = expandNearbyContextRefs(allRefs, lastUserContent);
-    }
+    const study = selectStudyOrderRefs(lastUserContent);
+    let allRefs = study.allRefs;
+    let fetchRefs = study.fetchRefs;
+    const narrowVerseFocus = study.narrowVerseFocus;
 
     const wordStudyFollowUp = isWordStudyFollowUp(lastUserContent);
     const passageFollowUp = isFollowUpToPriorPassage(lastUserContent);
 
     // Pull refs from earlier turns when the user is following up on the same passage or doing word study.
     if (allRefs.length === 0 && (passageFollowUp || wordStudyFollowUp)) {
+      const priorRefs = [];
       const recent = messages.slice(-8);
       for (const m of recent) {
         if (m.content && (m.role === 'user' || m.role === 'assistant')) {
-          allRefs.push(...extractRefs(m.content));
+          priorRefs.push(...extractRefs(m.content));
         }
       }
-      allRefs = [...new Set(allRefs)];
+      const follow = selectStudyOrderRefs(lastUserContent, { priorRefs });
+      allRefs = follow.allRefs;
+      fetchRefs = follow.fetchRefs;
     }
-
-    // Keep thematic Paul/1 Cor 15 refs at the front when present.
-    const thematicFirst = extractThematicRefs(lastUserContent);
-    if (thematicFirst.length) {
-      const rest = allRefs.filter((r) => !thematicFirst.includes(r));
-      allRefs = [...new Set([...thematicFirst, ...rest])];
-    }
-    allRefs = allRefs.slice(0, narrowVerseFocus ? 3 : 6);
 
     // Translation display names for citations and UI
     const transDisplayNames = {
@@ -2874,8 +2820,7 @@ app.post('/api/chat', (req, res, next) => {
     }
 
     const fetchedPassages = [];
-    const fetchRefLimit = narrowVerseFocus ? 2 : 4;
-    for (const ref of allRefs.slice(0, fetchRefLimit)) { // cap refs, will fetch originals too
+    for (const ref of fetchRefs) { // study-order list; originals fetched with each ref
       const english = await fetchEnglishPassage(ref);
       if (english) fetchedPassages.push(english);
 
