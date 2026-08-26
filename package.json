@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node --max-old-space-size=384 --expose-gc server.js",
     "dev": "node --watch server.js",
+    "test:refs": "node lib/scripture-refs.test.js && node lib/bible-fetch.test.js",
     "audio:generate": "node scripts/generate-bible-audio.mjs",
     "audio:dry-run": "node scripts/generate-bible-audio.mjs --dry-run"
   },

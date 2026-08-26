@@ -5,7 +5,7 @@
   'use strict';
 
   const WELCOME = {
-    demo: `Hi — ask AI, John one question. Try any passage, Greek or Hebrew word, or biblical theme. Responses are AI-generated — test them against Scripture. Type your question or tap the microphone. After your free preview, start a trial for unlimited hands-free study.`,
+    demo: `Hi — I'm John, an AI study tool. Test every answer against Scripture. Try John 1:14 or Psalm 136:1 so I can load live Greek or Hebrew. After your free preview, start a trial for unlimited study.`,
     help: `Hi — ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
     sources: `Hi — ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
   };
@@ -64,7 +64,7 @@
   function getDefaultTrans() {
     try {
       const t = localStorage.getItem('default_english_trans') || 'BSB';
-      return ['BSB', 'eng_asv', 'eng_ylt', 'ENGWEBP'].includes(t) ? t : 'BSB';
+      return ['BSB', 'eng_kjv', 'eng_net', 'eng_dby', 'eng_asv', 'eng_ylt', 'ENGWEBP'].includes(t) ? t : 'BSB';
     } catch (e) {
       return 'BSB';
     }
@@ -259,6 +259,22 @@
         flex-shrink: 0;
       }
       .john-popup-send:disabled { opacity: 0.5; cursor: not-allowed; }
+      .john-popup-sources {
+        margin: 0 12px 8px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #5c4630;
+        background: #f8f1e3;
+        border: 1px solid #e8d9c2;
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      html[data-theme="dark"] .john-popup-sources {
+        color: #e8e4dc;
+        background: #243040;
+        border-color: #3d5266;
+      }
+      .john-popup-sources strong { display: block; margin-bottom: 4px; }
       .john-popup-signup-cta {
         padding: 10px 14px 12px;
         border-top: 1px solid var(--john-popup-border, #e8d9c2);
@@ -314,7 +330,7 @@
         </div>
         <div class="john-popup-input-row">
           <button type="button" class="john-popup-mic" id="john-popup-mic" aria-label="Speak your question">🎤</button>
-          <input type="text" class="john-popup-input" id="john-popup-input" placeholder="Ask AI, John…" autocomplete="off" name="john-popup-question">
+          <input type="text" class="john-popup-input" id="john-popup-input" placeholder="Try John 1:14 or Psalm 136:1" autocomplete="off" name="john-popup-question">
           <button type="button" class="john-popup-send" id="john-popup-send">Send</button>
         </div>
       </div>
@@ -434,10 +450,33 @@
     if (loading) loading.remove();
   }
 
+  function attachPopupSources(msgEl, sources) {
+    if (!sources || !sources.length || !msgEl || !msgEl.parentNode) return;
+    const box = document.createElement('div');
+    box.className = 'john-popup-sources';
+    const title = document.createElement('strong');
+    title.textContent = 'Live verses (bible.helloao.org)';
+    box.appendChild(title);
+    sources.slice(0, 8).forEach((s) => {
+      const line = document.createElement('div');
+      const ref = (s.reference || '').trim();
+      const trans = (s.translation || '').trim();
+      line.textContent = trans ? `${ref} — ${trans}` : ref;
+      box.appendChild(line);
+    });
+    const row = msgEl.closest('.john-popup-msg-row') || msgEl;
+    row.parentNode.insertBefore(box, row.nextSibling);
+  }
+
   function speakText(text) {
     if (!synth || !text) return;
     try { synth.cancel(); } catch (e) {}
-    const u = new SpeechSynthesisUtterance(text.replace(/\s+/g, ' ').trim());
+    const spoken = text
+      .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const u = new SpeechSynthesisUtterance(spoken);
     u.rate = 0.95;
     const voices = synth.getVoices();
     const en = voices.find((v) => (v.lang || '').startsWith('en'));
@@ -485,7 +524,7 @@
 
   function buildApiUserMessage(displayText) {
     if (currentMode === 'sources') {
-      return `The user is asking about Sources & Data Attribution in The Word in Context app: ${displayText}\n\nAnswer using your knowledge of bible.helloao.org (live API, not baked-in text), BSB/ASV/YLT/WEB English translations, SBL Greek NT, Westminster Leningrad Codex Hebrew, how refs are detected and fetched, post-reply source scanning, Grok 4.3 via secure server proxy, browser-only TTS, and local chat storage. Be precise and cite source names.`;
+      return `The user is asking about Sources & Data Attribution in The Word in Context app: ${displayText}\n\nAnswer using the real fetch path: live text from bible.helloao.org when a reference resolves (including chapter-only, e.g. Psalm 136 or John 1). Default originals are SBL Greek NT and Westminster Leningrad Codex Hebrew. Byzantine or Textus Receptus only when the user names them. English: BSB default, plus KJV, NET, Darby, ASV, YLT, WEB. Grok via server proxy; chats stay on the device; browser-only TTS uses transliteration, not raw Greek/Hebrew letters. Be precise and cite source names.`;
     }
     if (currentMode === 'help') {
       return `The user is on the Help page and asks: ${displayText}\n\nAnswer about how to use The Word in Context: voices, hands-free wake word, Library, Settings, Sources, PWA install, chat sidebar, and mobile tips.`;
@@ -595,7 +634,8 @@
 
       const reply = data.reply || 'No response.';
       conversation.push({ role: 'assistant', content: reply });
-      appendMessage(reply, 'assistant');
+      const msgEl = appendMessage(reply, 'assistant');
+      attachPopupSources(msgEl, data.sources);
       if (landingTeaser && typeof data.demoRemaining === 'number') {
         teaserRemaining = data.demoRemaining;
       }
