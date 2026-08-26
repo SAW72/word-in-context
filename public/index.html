@@ -2033,7 +2033,7 @@
              and correct if needed (e.g. by speaking clearly or rephrasing). -->
         <div class="chat-bottom">
           <div id="live-transcript-container" style="display:none; margin: 0; padding: 8px 14px; background: #f5f0e6; border-top: 1px solid #e8d9c2; border-bottom: 1px solid #c9a227; font-size: 14px;">
-            <div style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
+            <div id="live-transcript-hint" style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
             <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
           </div>
           <div class="input-area">
@@ -2564,6 +2564,7 @@
     // like the Send button — no wake word, no 3s dead pause, flush on speech end.
     let tapToTalkTurn = false;
     let lastVoiceSendAt = 0;
+    let justReleasedLiveMic = false;
 
     // === Multi-conversation persistence (Grok-like history) ===
     let chats = [];
@@ -4653,6 +4654,11 @@
     // concurrent mic + TTS; mobile WebKit does not. Barge-in while AI is speaking is via the
     // mic / Stop button after this release (wake-word barge-in resumes after speech ends).
     function releaseMicForSpeechOutput() {
+      const hadLiveMic = !!(isListening || startingRecognition
+        || (mediaRecorder && mediaRecorder.state !== 'inactive')
+        || mediaStream);
+      if (hadLiveMic) justReleasedLiveMic = true;
+
       if (restartTimer) {
         clearTimeout(restartTimer);
         restartTimer = null;
@@ -5008,18 +5014,23 @@
       }
       startSpeechKeepAlive();
 
-      try {
-        if (synth.speaking || synth.pending) synth.cancel();
-      } catch (e) {}
+      // speak() already canceled any prior utterance. A second cancel() here forced
+      // Chrome/WebKit to settle, and the old 40ms/280ms timer made the answer sit
+      // on screen before John started talking. Mic was released when the question
+      // was sent, so after a chat reply there is nothing to wait for.
+      const needsIosMicFlip = justReleasedLiveMic && isIOSDevice();
+      justReleasedLiveMic = false;
 
-      // iOS needs a short gap after releasing getUserMedia/SpeechRecognition so the
-      // audio session can switch from record → playback. Desktop can start immediately.
-      const startDelay = isIOSDevice() ? 280 : 40;
-      setTimeout(() => {
+      const startNow = () => {
         try { synth.getVoices(); } catch (e) {}
         try { if (synth.paused) synth.resume(); } catch (e) {}
         speakNextInQueue(langHint, true);
-      }, startDelay);
+      };
+      if (needsIosMicFlip) {
+        setTimeout(startNow, 60);
+      } else {
+        startNow();
+      }
     }
 
     function stopSpeaking() {
@@ -5832,6 +5843,23 @@
         const sources = Array.isArray(data.sources) ? data.sources : [];
 
         const msgEl = addMessage(reply, false);
+
+        // TTS must start the same moment the bubble is on screen — do not wait for
+        // Sources UI, localStorage save, or sidebar render. Auto-speak is the toggle;
+        // hands-free is only required for the wake-word listen loop, not for speaking.
+        if (autoSpeakEnabled) {
+          if (voiceSettings.voiceSource !== 'local') {
+            voiceSettings.voiceSource = 'local';
+            localStorage.setItem('voice_source', 'local');
+          }
+          speak(reply);
+        } else if (handsFreeEnabled) {
+          isAwaitingResponse = false;
+          scheduleHandsFreeRestart(800);
+        } else {
+          isAwaitingResponse = false;
+        }
+
         attachAssistantMessageActions(msgEl, reply, userText);
 
         if (sources.length > 0) {
@@ -5845,31 +5873,6 @@
       renderSidebarChats(currentSearchTerm || '');
 
         enforceAuthRequired();
-
-        if (handsFreeEnabled && autoSpeakEnabled) {
-          // Hands-free auto-speak (and all speaking) uses only browser built-in system voices (window.speechSynthesis).
-          // No xAI or server voices for output. Clean any old notes.
-          // Keep isAwaitingResponse true until speak()/finishSpeechOutput so the mic does not
-          // restart and steal the iOS audio session before TTS starts.
-          const lastMsgForClean = document.querySelector('.messages .message:last-child');
-          if (lastMsgForClean) {
-            lastMsgForClean.querySelectorAll('.voice-generating-note').forEach(n => n.remove());
-          }
-          // Ensure local.
-          if (voiceSettings.voiceSource !== 'local') {
-            voiceSettings.voiceSource = 'local';
-            localStorage.setItem('voice_source', 'local');
-          }
-          speak(reply);
-          // After speak() the audio onended handlers will schedule the next listen (after echo delay)
-        } else if (handsFreeEnabled) {
-          isAwaitingResponse = false;
-          // Hands-free but auto-speak disabled: keep the conversation loop going after showing the text reply.
-          // Give a bit more time before listening to avoid picking up any residual audio/echo.
-          scheduleHandsFreeRestart(800);
-        } else {
-          isAwaitingResponse = false;
-        }
       } catch (err) {
         removeLoadingMessage();
         isAwaitingResponse = false;
@@ -5902,6 +5905,7 @@
     function showLiveListeningPlaceholder() {
       const liveContainer = document.getElementById('live-transcript-container');
       if (liveContainer) liveContainer.style.display = 'block';
+      updateLiveTranscriptHint('');
       const liveEl = document.getElementById('live-transcript');
       if (liveEl) liveEl.textContent = 'Listening...';
     }
@@ -6517,10 +6521,27 @@
       }, 1100); // debounce ~1.1s after latest chunk
     }
 
+    function waitingForWakeWord(heardText) {
+      return !!(handsFreeEnabled && wakeWordEnabled && !tapToTalkTurn
+        && Date.now() >= wakeWordActiveUntil
+        && !containsWakeWord(heardText));
+    }
+
+    function updateLiveTranscriptHint(heardText) {
+      const hint = document.getElementById('live-transcript-hint');
+      if (!hint) return;
+      if (waitingForWakeWord(heardText)) {
+        hint.textContent = 'Say “' + getWakeWordDisplay() + '”, then your question';
+      } else {
+        hint.textContent = 'Listening — you said:';
+      }
+    }
+
     function updateLiveTranscript(text) {
       const container = document.getElementById('live-transcript-container');
       const el = document.getElementById('live-transcript');
       if (!container || !el) return;
+      updateLiveTranscriptHint(text);
       if (text && text.trim()) {
         el.textContent = text;
         container.style.display = 'block';
