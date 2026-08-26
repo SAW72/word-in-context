@@ -404,27 +404,44 @@
     rec.lang = 'en-US';
     rec.onresult = (event) => {
       let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      // Full utterance, not only event.resultIndex (Safari can finalize earlier segments).
+      for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
+      transcript = transcript.trim();
+      rec._pendingTranscript = transcript;
       const input = document.getElementById('john-popup-input');
-      if (input) input.value = transcript.trim();
+      if (input) input.value = transcript;
       const isFinal = event.results[event.results.length - 1].isFinal;
-      if (isFinal && transcript.trim()) {
+      if (isFinal && transcript) {
+        rec._pendingTranscript = '';
         stopMic();
-        submit(transcript.trim());
+        submit(transcript);
       }
     };
-    rec.onerror = () => stopMic();
+    rec.onerror = () => {
+      const leftover = (rec._pendingTranscript || '').trim();
+      rec._pendingTranscript = '';
+      stopMic();
+      if (leftover) submit(leftover);
+    };
     rec.onend = () => {
-      if (isListening) stopMic();
+      const leftover = (rec._pendingTranscript || '').trim();
+      rec._pendingTranscript = '';
+      const wasListening = isListening;
+      stopMic();
+      // Safari / Zoom / tap-to-stop often end without isFinal. Don't leave recognized text unused.
+      if (wasListening && leftover) submit(leftover);
     };
     return rec;
   }
 
   function toggleMic() {
     if (isListening) {
+      const leftover = (recognition && recognition._pendingTranscript || '').trim();
+      if (recognition) recognition._pendingTranscript = '';
       stopMic();
+      if (leftover) submit(leftover);
       return;
     }
     if (!recognition) {
@@ -432,6 +449,7 @@
       return;
     }
     try {
+      recognition._pendingTranscript = '';
       recognition.start();
       isListening = true;
       const btn = document.getElementById('john-popup-mic');
