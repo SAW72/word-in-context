@@ -6209,7 +6209,9 @@
         // Zoom grabbing the mic, or tap-to-stop). Do this before stopListeningUI
         // clears currentTranscript.
         const leftover = (pendingTranscript || currentTranscript || '').trim();
-        const shouldFlushTap = tapToTalkTurn && leftover.length > 1 && !isAwaitingResponse;
+        // Tap-to-talk (explicit mic tap, or hands-free off) must send on end even
+        // when the browser never marks the last result isFinal.
+        const shouldFlushTap = (tapToTalkTurn || !handsFreeEnabled) && leftover.length > 1 && !isAwaitingResponse;
         stopListeningUI();
         if (shouldFlushTap) {
           consumeAndSendVoice(leftover);
