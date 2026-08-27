@@ -2604,22 +2604,11 @@
         }
         u.volume = 0.01;
         u.rate = 2;
-        // Tag so we only cancel this unlock utterance, not a real reply that started after.
         u.__isUnlock = true;
-        const unlockToken = Date.now();
-        u.__unlockToken = unlockToken;
         synth.speak(u);
-        setTimeout(() => {
-          try {
-            // Only cancel if still on the unlock utterance (not a real reply).
-            if (synth.speaking && currentUtterance && currentUtterance.__isUnlock && currentUtterance.__unlockToken === unlockToken) {
-              synth.cancel();
-            } else if (synth.speaking && !currentUtterance) {
-              // Unlock path before speak() sets currentUtterance — cancel only if queue empty
-              if (!speechQueue || speechQueue.length === 0) synth.cancel();
-            }
-          } catch (e) {}
-        }, 80);
+        // Let the silent unlock utterance finish on its own. cancel() after 80ms
+        // left Chrome/WebKit with speaking/pending stuck true, so the next real
+        // speak() canceled again and the answer sat on screen before John talked.
       } catch (e) {}
     }
 
@@ -4656,11 +4645,18 @@
     // SpeechRecognition and/or getUserMedia tracks are still live. Desktop Chrome tolerates
     // concurrent mic + TTS; mobile WebKit does not. Barge-in while AI is speaking is via the
     // mic / Stop button after this release (wake-word barge-in resumes after speech ends).
-    function releaseMicForSpeechOutput() {
-      const hadLiveMic = !!(isListening || startingRecognition
+    function isMicHardwareLive() {
+      return !!(isListening || startingRecognition
         || (mediaRecorder && mediaRecorder.state !== 'inactive')
         || mediaStream);
-      if (hadLiveMic) justReleasedLiveMic = true;
+    }
+
+    function releaseMicForSpeechOutput() {
+      const hadLiveMic = isMicHardwareLive();
+      // Typed questions (and replies after Thinking) must not abort an idle
+      // recognizer — abort() still flips the audio session and delays TTS.
+      if (!hadLiveMic) return false;
+      justReleasedLiveMic = true;
 
       if (restartTimer) {
         clearTimeout(restartTimer);
@@ -4704,14 +4700,22 @@
           try { recognition.stop(); } catch (e2) {}
         }
       }
+      return true;
     }
 
     function speak(text, voiceNoteEl = null, langHint = null) {
       text = cleanTextForSpeech(text);
-      // Cancel prior utterance without clearing the "awaiting" gate yet — we re-assert it below
-      // so hands-free does not restart the mic in the gap before TTS starts (critical on iOS).
+      // Cancel only OUR in-flight speech. Chrome/WebKit delay or drop the next
+      // utterance after cancel(), which looks like the old post-answer pause.
+      // synth.speaking / synth.pending also stick true after wakeSpeechEngine
+      // or a prior cancel — do not treat those flags as "we must cancel".
+      const interrupting = !!(currentUtterance && !currentUtterance.__isUnlock)
+        || (speechQueue.length > 0 && speechQueueIndex > 0 && speechQueueIndex < speechQueue.length)
+        || (hostedAudio && !hostedAudio.paused);
       resetSpeechQueue();
-      try { if (synth.speaking || synth.pending) synth.cancel(); } catch (e) {}
+      if (interrupting) {
+        try { synth.cancel(); } catch (e) {}
+      }
       currentUtterance = null;
       if (hostedAudio) {
         try { hostedAudio.pause(); hostedAudio.currentTime = 0; } catch (e) {}
@@ -4725,13 +4729,16 @@
       // Block hands-free mic restart until speech finishes (finishSpeechOutput) or user stops.
       if (handsFreeEnabled) isAwaitingResponse = true;
 
-      // Pre-queue text BEFORE releasing recognition so recognition.onend sees isSpeechOutputting().
+      // First speakable chunk only — split the rest AFTER synth.speak() so a long
+      // reply (e.g. Matthew 19:9) cannot block the main thread before audio starts.
       lastSpokenText = text;
-      speechQueue = splitTextForSpeechChunks(text);
+      const firstChunk = takeFirstSpeechChunk(text);
+      speechQueue = firstChunk ? [firstChunk] : [];
       speechQueueIndex = 0;
 
-      // Must fully release mic hardware — leaving SR/getUserMedia open silences TTS on iPhone.
-      releaseMicForSpeechOutput();
+      // Only flip the audio session if capture is still live. sendToGrok already
+      // released the mic during Thinking, so typed replies should hit this as false.
+      const releasedLiveMic = releaseMicForSpeechOutput();
 
       // Prime the speech synthesis engine immediately (Mac requires recent getVoices() + gesture context for non-default voices to work reliably)
       try { synth.getVoices(); } catch (e) {}
@@ -4803,7 +4810,11 @@
         }
       }
 
-      fallbackToBrowserSpeech(text, langHint);  // local voices always get the full original text
+      fallbackToBrowserSpeech(text, langHint, {
+        alreadyQueued: true,
+        releasedLiveMic,
+        interrupting
+      });
     }
 
     // All speech is 100% local browser system voices via window.speechSynthesis.
@@ -4844,6 +4855,18 @@
       speechQueue = [];
       speechQueueIndex = 0;
       clearSpeechKeepAlive();
+    }
+
+    // Isolate the first speakable slice without scanning/splitting the rest of a long reply.
+    function takeFirstSpeechChunk(text, maxLen = 220) {
+      if (!text) return '';
+      if (text.length <= maxLen) return text;
+      const head = text.slice(0, maxLen);
+      // After cleanTextForSpeech, sentence marks are spaces (so voices never say
+      // "dot"). Break on the last word in the window — not on leftover punctuation.
+      const space = head.lastIndexOf(' ');
+      if (space >= 40) return text.slice(0, space).trim();
+      return head;
     }
 
     // Chrome/Safari cut off long utterances (~15s). Chunk + queue + keepalive fixes mid-reply stops.
@@ -5006,31 +5029,40 @@
       }
     }
 
-    function fallbackToBrowserSpeech(text, langHint = null) {
-      text = cleanTextForSpeech(text);
-      lastSpokenText = text;
-      // speak() may have already pre-filled the queue for the hands-free race guard;
-      // only rebuild if empty or text changed after clean.
-      if (!speechQueue.length || speechQueue.join(' ') !== text) {
-        speechQueue = splitTextForSpeechChunks(text);
+    function fallbackToBrowserSpeech(text, langHint = null, opts) {
+      opts = opts || {};
+      if (!opts.alreadyQueued) {
+        text = cleanTextForSpeech(text);
+        lastSpokenText = text;
+        const firstChunk = takeFirstSpeechChunk(text);
+        speechQueue = firstChunk ? [firstChunk] : [];
         speechQueueIndex = 0;
       }
+      const first = speechQueue[0] || '';
+      const rest = text && first && text.startsWith(first)
+        ? text.slice(first.length).replace(/^\s+/, '')
+        : '';
       startSpeechKeepAlive();
 
-      // speak() already canceled any prior utterance. A second cancel() here forced
-      // Chrome/WebKit to settle, and the old 40ms/280ms timer made the answer sit
-      // on screen before John started talking. Mic was released when the question
-      // was sent, so after a chat reply there is nothing to wait for.
-      const needsIosMicFlip = justReleasedLiveMic && isIOSDevice();
+      // speak() already canceled only if we interrupted our own speech. Do not
+      // cancel() here — Chrome/WebKit delay or drop the next utterance after it.
+      // The 60ms iOS gap runs only if a live mic was released in THIS speak().
+      const needsIosMicFlip = !!(opts.releasedLiveMic || justReleasedLiveMic) && isIOSDevice();
       justReleasedLiveMic = false;
 
       const startNow = () => {
         try { synth.getVoices(); } catch (e) {}
         try { if (synth.paused) synth.resume(); } catch (e) {}
         speakNextInQueue(langHint, true);
+        if (rest) {
+          const more = splitTextForSpeechChunks(rest);
+          for (let i = 0; i < more.length; i++) speechQueue.push(more[i]);
+        }
       };
       if (needsIosMicFlip) {
         setTimeout(startNow, 60);
+      } else if (opts.interrupting && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(startNow);
       } else {
         startNow();
       }
@@ -5729,11 +5761,10 @@
         userText = normalizeBibleTranscript(userText);
       }
 
-      // If user typed/sent while voice was listening (hands-free), stop the recognizer cleanly.
-      if (handsFreeEnabled && isListening && recognition) {
-        try { recognition.stop(); } catch (e) {}
-        stopListeningUI();
-      }
+      // Free capture now, during Thinking, so the audio session is already in
+      // playback mode when the answer bubble paints. recognition.stop() alone
+      // leaves getUserMedia tracks live and forced speak() to flip the session.
+      releaseMicrophoneHardware();
 
       addMessage(userText, true);
       conversation.push({ role: "user", content: userText });
@@ -6164,7 +6195,7 @@
         stopListeningUI();
 
         if (errType === "no-speech" || errType === "aborted") {
-          if (micAllowed && handsFreeEnabled && !startingRecognition && document.visibilityState !== 'hidden') {
+          if (micAllowed && handsFreeEnabled && !startingRecognition && !isAwaitingResponse && document.visibilityState !== 'hidden') {
             const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
             if (!isOutputting) {
               // Use centralized scheduler (prevents timer pile-up). Slightly patient delay.
@@ -6553,22 +6584,47 @@
       }
     }
 
-    // Remove markdown and symbols before TTS so the voice reads naturally
+    // Strip markdown and punctuation so local/neural voices do not say
+    // "dot", "comma", "colon", "quote", or "dash". Decimals like 1.14 stay intact.
+    // Verse colons become spaces: "Matthew 19:9" → "Matthew 19 9".
     function cleanTextForSpeech(text) {
       if (!text) return '';
-      return text
-        .replace(/\*\*(.+?)\*\*/g, '$1')   // bold **text**
-        .replace(/\*(.+?)\*/g, '$1')       // italic *text*
-        .replace(/`(.+?)`/g, '$1')         // inline code
-        .replace(/^#{1,6}\s*/gm, '')       // headers
-        .replace(/^\s*[-*+]\s+/gm, '')     // list bullets
-        .replace(/[*\-#`~_]/g, '')         // stray symbols
-        .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '') // raw Greek/Hebrew letters (speak transliteration)
+
+      const decimals = [];
+      let out = String(text).replace(/\b\d+\.\d+\b/g, (m) => {
+        decimals.push(m);
+        return `\u0000D${decimals.length - 1}\u0000`;
+      });
+
+      out = out
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/`(.+?)`/g, '$1')
+        .replace(/^#{1,6}\s*/gm, '')
+        .replace(/^\s*[-*+]\s+/gm, '');
+
+      // Convert refs before hyphen/colon stripping so 19:3–9 does not collapse.
+      out = out.replace(/\b(\d+)\s*:\s*(\d+)(?:\s*[–—-]\s*(\d+))?\b/g, (_, ch, v1, v2) => (
+        v2 ? `${ch} ${v1} to ${v2}` : `${ch} ${v1}`
+      ));
+
+      out = out
+        .replace(/[*\-#`~_]/g, '')
+        .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '')
         .replace(/\(\s*\)/g, '')
-        .replace(/\n{2,}/g, '. ')          // paragraph breaks as pauses
-        .replace(/\n/g, ' ')
+        .replace(/\n+/g, ' ')
+        .replace(/[“”«»„"]/g, ' ')
+        .replace(/(^|\s)['‘’]/g, '$1')
+        .replace(/['‘’](?![A-Za-z])/g, ' ')
+        .replace(/[()[\]{}]/g, ' ')
+        .replace(/[–—]/g, ' ')
+        .replace(/[;:,!?…•]+/g, ' ')
+        .replace(/\.{2,}/g, ' ')
+        .replace(/\./g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+
+      return out.replace(/\u0000D(\d+)\u0000/g, (_, i) => decimals[Number(i)] || '');
     }
 
     // Small helper so the async onstop has time to populate the blob before we try to send it.
