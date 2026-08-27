@@ -19,6 +19,7 @@ function empty() {
     posts: [],
     imageCursor: 0,
     pillarCursor: 0,
+    seedCursor: 0,
   };
 }
 
@@ -34,6 +35,7 @@ function loadQueue() {
       posts: data.posts,
       imageCursor: data.imageCursor || 0,
       pillarCursor: data.pillarCursor || 0,
+      seedCursor: data.seedCursor || 0,
     };
   } catch (err) {
     console.warn('[content] load queue failed', err.message);
@@ -166,6 +168,17 @@ function nextImage(brand) {
   return key;
 }
 
+function nextSeed(seeds) {
+  const list = Array.isArray(seeds) ? seeds : [];
+  if (!list.length) return null;
+  const q = loadQueue();
+  const idx = q.seedCursor || 0;
+  const seed = list[idx % list.length];
+  q.seedCursor = (idx + 1) % list.length;
+  saveQueue(q);
+  return seed;
+}
+
 module.exports = {
   loadQueue,
   listPosts,
@@ -176,6 +189,7 @@ module.exports = {
   requeuePostsForNetworks,
   nextPillar,
   nextImage,
+  nextSeed,
   newId,
   resolveDataDir,
 };

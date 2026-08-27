@@ -7,11 +7,9 @@ const fs = require('fs');
 const {
   CONTENT_BRAND,
   PUBLIC_URL,
-  ensureWebsiteInCaption,
-  CANONICAL_SITE_URL,
 } = require('./brand');
 const { listPosts, loadQueue, getPost, requeuePostsForNetworks } = require('./queue');
-const { generatePosts, buildCopyPack, countByStatus } = require('./generator');
+const { generatePosts, buildCopyPack, countByStatus, buildHelperPost } = require('./generator');
 const {
   isConfigured,
   bufferHealth,
@@ -156,7 +154,7 @@ function mountContentRoutes(app, { requireAdmin }) {
             name: CONTENT_BRAND.name,
             networks: CONTENT_BRAND.networks,
             website: CONTENT_BRAND.website,
-            format: 'Bible Q&A',
+            format: 'Fetched Scripture Q&A',
           },
           buffer: health,
           bufferConfigured: isConfigured(),
@@ -170,8 +168,8 @@ function mountContentRoutes(app, { requireAdmin }) {
           tips: [
             'Separate Buffer FB/IG for The Word in Context (not IA or Trail Tracker).',
             'BUFFER_API_KEY + XAI_API_KEY on Render. SHARE_SITE_URL for image/video URLs.',
-            'Flow: Generate week → Generate videos (auto-pushes reels to Buffer).',
-            'Posts are Q: question / A: short study answer + trial CTA.',
+            'Flow: Generate week → Generate videos (does not auto-publish). Review, then Publish queued if you choose.',
+            'Posts are Q: study question / A: short answer from a live fetched verse (quote original when that is the point). No trial pitches.',
           ],
         });
       } catch (e) {
@@ -211,6 +209,13 @@ function mountContentRoutes(app, { requireAdmin }) {
         }
         const health = await bufferHealth();
         const imageUrl = `${PUBLIC_URL}/content-media/share-bg-vertical.jpg`;
+        const helper = await buildHelperPost('porneia_matt_19_9');
+        if (!helper) {
+          return res.status(400).json({
+            ok: false,
+            error: 'Smoke skipped — live original-language fetch for Matthew 19:9 failed.',
+          });
+        }
         const smoke = {
           id: 'smoke',
           networks: [
@@ -219,14 +224,12 @@ function mountContentRoutes(app, { requireAdmin }) {
             ...(health.x ? ['x'] : []),
             ...(health.tiktok ? ['tiktok'] : []),
           ],
-          caption: ensureWebsiteInCaption(
-            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments. Reading the surrounding passage protects us from slogan-theology.\n\n(Study aid — open the text yourself.)\n\nTry The Word in Context: voice-first Scripture study.',
-            CANONICAL_SITE_URL || PUBLIC_URL
-          ),
-          captionIg: ensureWebsiteInCaption(
-            'Q: Why does context matter when reading a single verse?\n\nA: Verses sit inside letters, stories, and arguments.\n\nTry The Word in Context.',
-            CANONICAL_SITE_URL || PUBLIC_URL
-          ),
+          caption: helper.caption,
+          captionIg: helper.captionIg || helper.caption,
+          question: helper.question,
+          originalWord: helper.originalWord,
+          originalText: helper.originalText,
+          translit: helper.translit,
           hashtags: ['#TheWordInContext', '#BibleStudy', '#Scripture'],
           imageKey: 'share-bg-vertical.jpg',
           imageUrl,
@@ -280,9 +283,9 @@ function mountContentRoutes(app, { requireAdmin }) {
           })),
           tip:
             result.posts.length === 0 && pending > 0
-              ? `You have ${pending} posts — tap Publish queued.`
+              ? `You have ${pending} posts — review captions, then Publish only if you choose.`
               : result.posts.length
-                ? 'Next: Publish queued'
+                ? 'Next: Generate videos (does not auto-publish). Review, then Publish queued if you choose.'
                 : undefined,
         });
       } catch (e) {
@@ -340,14 +343,14 @@ function mountContentRoutes(app, { requireAdmin }) {
 
   /**
    * Generate talking-card reels (still + TTS voice → 9:16 MP4).
-   * Auto-pushes successful reels to Buffer unless body.publish === false.
+   * Does not publish to Buffer unless body.publish === true.
    */
   app.post('/api/content/generate-videos', (req, res) => {
     if (!requireAdmin(req, res)) return;
     void (async () => {
       try {
         const limit = Math.min(Number(req.body?.limit) || 1, 3);
-        const shouldPublish = req.body?.publish !== false;
+        const shouldPublish = req.body?.publish === true;
         const out = await generateVideosForQueued({ limit });
         const ok = out.results.filter((r) => r.ok).length;
         const failed = out.results.filter((r) => !r.ok).length;
