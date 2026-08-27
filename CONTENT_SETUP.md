@@ -1,6 +1,6 @@
 # The Word in Context — AI Content → Buffer
 
-Bible **Q&A** social posts (question + short study answer + trial CTA), scheduled via Buffer free API.
+Bible **Q&A** social posts (question + short answer from a live fetched verse), scheduled via Buffer free API only when you publish. No trial pitches.
 
 **Separate** Buffer pages from Invoicing Agent and Trail Tracker.
 
@@ -68,13 +68,11 @@ If Instagram was disconnected and Buffer wiped the IG queue: reconnect IG → **
 ## Post format
 
 ```
-Q: <honest study question>
+Q: <honest study question people actually ask about the text>
 
-A: <short answer with context / references when possible>
+A: <short answer from the live fetched verse — quote Greek/Hebrew when that is the point>
 
-(Study aid — read the passage yourself.)
-
-Soft CTA
+Read <reference> in context.
 
 https://www.thewordincontext.org
 
@@ -91,7 +89,7 @@ Each reel is built as:
 1. **Voice** — xAI TTS (`leo` / built-in voices; long clone IDs are tried last)
 2. **Text on image** — Jimp bakes Q/A + **The Word in Context** + **thewordincontext.org** onto the still (works without ffmpeg drawtext)
 3. **Mux** — ffmpeg still + audio → 9:16 H.264 with explicit audio map
-4. **Buffer** — Generate videos **auto-pushes** the MP4 as a FB/IG **reel** (not a still) unless `publish: false`
+4. **Buffer** — Generate videos does **not** auto-publish. Pass `publish: true` or tap Publish queued after review.
 
 ```bash
 # Optional

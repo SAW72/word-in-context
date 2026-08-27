@@ -10,6 +10,11 @@ const path = require('path');
 const Jimp = require('jimp');
 const { updatePost, listPosts } = require('./queue');
 const { PUBLIC_URL } = require('./brand');
+const {
+  voiceScriptFromPost,
+  overlayTextFromPost,
+  overlayHasOriginalScript,
+} = require('./video-copy');
 
 const execFileAsync = promisify(execFile);
 
@@ -300,94 +305,6 @@ function resolveImagePath(imageKey) {
   return null;
 }
 
-function voiceScriptFromPost(post) {
-  let t = (post.captionIg || post.caption || '').trim();
-  t = t
-    .replace(/https?:\/\/\S+/gi, '')
-    .replace(/#[\w]+/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]+/g, ' ')
-    .trim();
-  if (t.length > 420) {
-    const cut = t.slice(0, 400);
-    const breakAt = Math.max(
-      cut.lastIndexOf('. '),
-      cut.lastIndexOf('! '),
-      cut.lastIndexOf('? '),
-      cut.lastIndexOf('\n')
-    );
-    t = (breakAt > 80 ? cut.slice(0, breakAt + 1) : cut).trim() + '…';
-  }
-  if (!t) {
-    t =
-      'The Word in Context. Hear the text. Study the words. Grow in understanding. Visit thewordincontext.org.';
-  }
-  return t;
-}
-
-/** Word-wrap a single line for drawtext (approx by chars). */
-function wrapLine(line, maxChars = 28) {
-  const words = String(line || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
-  if (!words.length) return [];
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (next.length <= maxChars) cur = next;
-    else {
-      if (cur) lines.push(cur);
-      cur = w.length > maxChars ? `${w.slice(0, maxChars - 1)}…` : w;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-/**
- * Multi-line card text burned onto reels.
- * Without this, Starter-plan reels are only the background still (looks "blank").
- */
-function overlayTextFromPost(post) {
-  const raw = (post.caption || post.captionIg || '').trim();
-  const linesIn = raw
-    .split('\n')
-    .map((s) => s.trim())
-    .filter((s) => s && !s.startsWith('#') && !/^https?:/i.test(s));
-
-  let q =
-    linesIn.find((s) => /^Q:\s*/i.test(s)) ||
-    (post.question ? `Q: ${post.question}` : '') ||
-    linesIn[0] ||
-    '';
-  q = q.replace(/^Q:\s*/i, 'Q: ').replace(/#[\w]+/g, '').trim();
-
-  let a = linesIn.find((s) => /^A:\s*/i.test(s)) || '';
-  a = a.replace(/^A:\s*/i, 'A: ').replace(/#[\w]+/g, '').trim();
-
-  const bodyLines = [];
-  for (const piece of wrapLine(q, 30).slice(0, 3)) bodyLines.push(piece);
-  if (a) {
-    bodyLines.push('');
-    for (const piece of wrapLine(a, 30).slice(0, 4)) bodyLines.push(piece);
-  }
-  if (!bodyLines.length) {
-    bodyLines.push('Study Scripture', 'in context');
-  }
-
-  // Footer always on the card
-  bodyLines.push('');
-  bodyLines.push('The Word in Context');
-  bodyLines.push('thewordincontext.org');
-
-  // Cap total lines so drawtext stays light on RAM
-  const capped = bodyLines.slice(0, 12);
-  return capped.join('\n') || 'The Word in Context\nthewordincontext.org';
-}
-
 /** Whether to burn caption text onto the reel (default: ON). */
 function allowTextOverlay(canDraw, font) {
   if (!canDraw || !font) return false;
@@ -532,15 +449,27 @@ async function generateVideoForPost(post) {
       throw new Error('TTS wrote no usable audio file');
     }
 
-    // 2) Bake Q/A + brand + URL onto still — REQUIRED (do not ship voice-only blank stills)
+    // 2) Bake Q + live original + brand onto still — REQUIRED
     fs.writeFileSync(textPath, overlay, 'utf8');
     let usedOverlay = false;
     if (process.env.CONTENT_VIDEO_OVERLAY === '0') {
       console.warn('[content-video] CONTENT_VIDEO_OVERLAY=0 — text disabled by env');
     } else {
+      const preferDrawtext = overlayHasOriginalScript(overlay);
       try {
-        await bakeTextOntoStill(imagePath, overlay, stillPath);
-        usedOverlay = true;
+        if (preferDrawtext) {
+          const font = resolveFont();
+          const canDraw = (await ffmpegHasDrawtext(ffmpeg)) && Boolean(font);
+          if (canDraw) {
+            usedOverlay = 'drawtext';
+          } else {
+            await bakeTextOntoStill(imagePath, overlay, stillPath);
+            usedOverlay = true;
+          }
+        } else {
+          await bakeTextOntoStill(imagePath, overlay, stillPath);
+          usedOverlay = true;
+        }
       } catch (bakeErr) {
         console.warn(
           '[content-video] Jimp bake failed, trying drawtext',
@@ -617,7 +546,7 @@ async function generateVideoForPost(post) {
     }
 
     const videoUrl = publicVideoUrl(fileName);
-    // Re-queue so Publish / auto-push can send the reel (image-only Buffer
+    // Re-queue so a later Publish can send the reel (image-only Buffer
     // posts leave status=scheduled + externalIds, which used to skip video).
     const wasPublished = ['scheduled', 'posted'].includes(post.status);
     updatePost(post.id, {
@@ -804,7 +733,7 @@ function contentVideoStatus() {
     batchDefault: Number(process.env.CONTENT_VIDEO_BATCH || 1),
     busy: videoBusy,
     note:
-      'Reels: Jimp burns Q/A + site onto the still, then xAI TTS voice is muxed with ffmpeg. 1 video/request on Starter — click Generate videos again for the next.',
+      'Reels: card shows the study Q plus live original wording when fetch succeeded; TTS reads the study answer (not a sales line). Videos are not auto-published to Buffer.',
   };
 }
 
@@ -851,4 +780,7 @@ module.exports = {
   listVideoFiles,
   videoDir,
   resolveFfmpeg,
+  overlayTextFromPost,
+  voiceScriptFromPost,
+  overlayHasOriginalScript,
 };

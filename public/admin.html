@@ -94,8 +94,8 @@
 
     <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">AI content → Buffer (Bible Q&amp;A)</h3>
-      <p class="small">Generate FB/IG/TikTok posts: study <strong>questions</strong> + short <strong>answers</strong> + free trial CTA. Separate Buffer brand from IA / Trail Tracker.
-        Flow: <strong>Generate week</strong> → <strong>Generate videos</strong> → <strong>Publish queued</strong>. Free Buffer: ~10 posts/channel.</p>
+      <p class="small">Generate FB/IG/TikTok posts: study <strong>questions</strong> + short <strong>answers</strong> from a live fetched verse (quote original wording when that is the point). No trial pitches. Separate Buffer brand from IA / Trail Tracker.
+        Flow: <strong>Generate week</strong> → <strong>Generate videos</strong> (does not auto-publish) → review → <strong>Publish queued</strong> if you choose. Free Buffer: ~10 posts/channel.</p>
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <button type="button" class="btn" id="btn-content-status">Status / test</button>
         <button type="button" class="btn" id="btn-content-smoke">Smoke (1 post)</button>
@@ -595,7 +595,7 @@
         setContentStatus('Generating videos… TTS + ffmpeg. Keep this open.');
         const r = await contentApi('/api/content/generate-videos', {
           method: 'POST',
-          body: JSON.stringify({ limit: 1 }),
+          body: JSON.stringify({ limit: 1, publish: false }),
         });
         const ok = r.summary?.ok ?? 0;
         const fail = r.summary?.failed ?? 0;

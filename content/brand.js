@@ -1,6 +1,7 @@
 /**
- * The Word in Context — product brand pack (downloads / trials).
- * Content format: real Bible study questions + short AI answers + CTA.
+ * The Word in Context — scripture Q&A brand pack.
+ * Content format: live fetched verse + original-language wording + read-the-passage invite.
+ * No trial pitches, no app-feature ads.
  */
 
 function envList(name, fallback) {
@@ -221,29 +222,25 @@ const CONTENT_BRAND = {
     'icon-512.png',
   ],
   voice:
-    'Reverent, clear, non-denominational study tone. Prefer literal/formal-equivalence wording and literary context. Short sentences. Never invent verse text. Cite real references when possible. Not a replacement for pastors or congregations. Soft CTA to try the app.',
+    'Reverent, clear, non-denominational study tone. Prefer literal/formal-equivalence wording and literary context. Short sentences. Never invent verse text. Quote live fetched Greek/Hebrew when that is the point. Cite real references. Not a replacement for pastors or congregations.',
   hashtags: [
     '#TheWordInContext',
     '#BibleStudy',
     '#Scripture',
-    '#BibleApp',
     '#WordStudy',
-    '#ChristianLiving',
     '#BibleContext',
   ],
   ctaLines: [
-    `Ask deeper questions in The Word in Context — free trial.\n${CANONICAL_SITE_URL}`,
-    `Voice-first Scripture study:\n${CANONICAL_SITE_URL}`,
-    `Study the text in context — free trial.\n${CANONICAL_SITE_URL}/app`,
-    `Try The Word in Context:\n${CANONICAL_SITE_URL}`,
+    'Read the passage yourself in context.',
+    'Open the verse in its surrounding chapter.',
   ],
-  /** Pillars are Q&A themes */
+  /** Pillars are Q&A study themes — no app ads */
   pillars: [
     {
       id: 'word_study',
       label: 'Word study',
       angle:
-        'One Greek/Hebrew/Aramaic word or phrase people misread in English; show context briefly.',
+        'One Greek/Hebrew/Aramaic word or phrase people misread in English; quote the live original.',
     },
     {
       id: 'literary_context',
@@ -263,11 +260,6 @@ const CONTENT_BRAND = {
       angle: 'Teach one better way to ask Scripture questions (who, when, genre, audience).',
     },
     {
-      id: 'feature_cta',
-      label: 'App feature + CTA',
-      angle: 'Show voice-first study or context tools + clear free trial CTA.',
-    },
-    {
       id: 'myth_bust',
       label: 'Myth bust',
       angle: 'Bust a common misquote or “the Bible says…” without the context.',
@@ -276,11 +268,6 @@ const CONTENT_BRAND = {
       id: 'gospel_passage',
       label: 'Gospel / epistle snapshot',
       angle: 'One short teaching from Gospels or letters with plain context.',
-    },
-    {
-      id: 'founder_note',
-      label: 'Why this app',
-      angle: 'Honest note: get closer to the wording and context, not hot takes.',
     },
   ],
   preferredHour: Number(process.env.CONTENT_PREFERRED_HOUR || 9),
