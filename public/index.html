@@ -4704,7 +4704,9 @@
     }
 
     function speak(text, voiceNoteEl = null, langHint = null) {
-      text = cleanTextForSpeech(text);
+      const voiceHint = selectedVoice
+        || (voiceSettings.voiceId ? findLocalVoiceById(voiceSettings.voiceId) : null);
+      text = cleanTextForSpeech(text, voiceHint);
       // Cancel only OUR in-flight speech. Chrome/WebKit delay or drop the next
       // utterance after cancel(), which looks like the old post-answer pause.
       // synth.speaking / synth.pending also stick true after wakeSpeechEngine
@@ -4729,8 +4731,8 @@
       // Block hands-free mic restart until speech finishes (finishSpeechOutput) or user stops.
       if (handsFreeEnabled) isAwaitingResponse = true;
 
-      // First speakable chunk only — split the rest AFTER synth.speak() so a long
-      // reply (e.g. Matthew 19:9) cannot block the main thread before audio starts.
+      // First sentence only — remaining sentences are queued AFTER synth.speak()
+      // so a long reply cannot block the main thread before audio starts.
       lastSpokenText = text;
       const firstChunk = takeFirstSpeechChunk(text);
       speechQueue = firstChunk ? [firstChunk] : [];
@@ -4857,61 +4859,64 @@
       clearSpeechKeepAlive();
     }
 
-    // Isolate the first speakable slice without scanning/splitting the rest of a long reply.
-    function takeFirstSpeechChunk(text, maxLen = 220) {
-      if (!text) return '';
-      if (text.length <= maxLen) return text;
-      const head = text.slice(0, maxLen);
-      // After cleanTextForSpeech, sentence marks are spaces (so voices never say
-      // "dot"). Break on the last word in the window — not on leftover punctuation.
-      const space = head.lastIndexOf(' ');
-      if (space >= 40) return text.slice(0, space).trim();
-      return head;
+    // Split on real sentence ends. Do not treat the dot in 1.14 / 19.9 as a boundary.
+    function splitSentencesForSpeech(text) {
+      if (!text) return [];
+      const parts = [];
+      let buf = '';
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        buf += ch;
+        if (ch !== '.' && ch !== '!' && ch !== '?') continue;
+        const prev = i > 0 ? text[i - 1] : '';
+        const next = i + 1 < text.length ? text[i + 1] : '';
+        if (prev >= '0' && prev <= '9' && next >= '0' && next <= '9') continue;
+        while (i + 1 < text.length && /["'”’)]/.test(text[i + 1])) {
+          i += 1;
+          buf += text[i];
+        }
+        const trimmed = buf.trim();
+        if (trimmed) parts.push(trimmed);
+        buf = '';
+      }
+      if (buf.trim()) parts.push(buf.trim());
+      return parts.length ? parts : [text];
     }
 
-    // Chrome/Safari cut off long utterances (~15s). Chunk + queue + keepalive fixes mid-reply stops.
-    function splitTextForSpeechChunks(text, maxLen = 220) {
-      if (!text) return [];
-      const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+    function wrapOversizedSpeechSentence(sentence, safetyLen) {
+      safetyLen = safetyLen || 900;
+      if (!sentence || sentence.length <= safetyLen) return sentence ? [sentence] : [];
       const chunks = [];
-      let current = '';
-
-      function flushCurrent() {
-        if (current.trim()) chunks.push(current.trim());
-        current = '';
+      let remain = sentence;
+      while (remain.length > safetyLen) {
+        const head = remain.slice(0, safetyLen);
+        let cut = Math.max(head.lastIndexOf(', '), head.lastIndexOf(' '));
+        if (cut < 40) cut = safetyLen;
+        chunks.push(remain.slice(0, cut).trim());
+        remain = remain.slice(cut).trim();
       }
+      if (remain) chunks.push(remain);
+      return chunks;
+    }
 
-      function pushWordChunks(part) {
-        const words = part.split(/\s+/).filter(Boolean);
-        let buf = '';
-        for (const word of words) {
-          const next = buf ? `${buf} ${word}` : word;
-          if (next.length <= maxLen) {
-            buf = next;
-          } else {
-            if (buf) chunks.push(buf);
-            buf = word.length <= maxLen ? word : word.slice(0, maxLen);
-          }
-        }
-        if (buf) current = buf;
-      }
+    // First sentence only so synth.speak() can start before the rest is queued.
+    function takeFirstSpeechChunk(text) {
+      if (!text) return '';
+      const chunks = splitTextForSpeechChunks(text);
+      return chunks[0] || text;
+    }
 
-      for (const rawSentence of sentences) {
-        const sentence = rawSentence.trim();
-        if (!sentence) continue;
-        const candidate = current ? `${current} ${sentence}` : sentence;
-        if (candidate.length <= maxLen) {
-          current = candidate;
-        } else {
-          flushCurrent();
-          if (sentence.length <= maxLen) {
-            current = sentence;
-          } else {
-            pushWordChunks(sentence);
-          }
-        }
+    // One utterance per sentence. Chrome/Safari cut off ~15s, so only a very
+    // long sentence is word-wrapped (safety 900), never a mid-thought 220 cut.
+    function splitTextForSpeechChunks(text, safetyLen) {
+      if (!text) return [];
+      safetyLen = safetyLen || 900;
+      const chunks = [];
+      const sentences = splitSentencesForSpeech(text);
+      for (let s = 0; s < sentences.length; s++) {
+        const wrapped = wrapOversizedSpeechSentence(sentences[s], safetyLen);
+        for (let w = 0; w < wrapped.length; w++) chunks.push(wrapped[w]);
       }
-      flushCurrent();
       return chunks.length ? chunks : [text];
     }
 
@@ -5032,7 +5037,7 @@
     function fallbackToBrowserSpeech(text, langHint = null, opts) {
       opts = opts || {};
       if (!opts.alreadyQueued) {
-        text = cleanTextForSpeech(text);
+        text = cleanTextForSpeech(text, selectedVoice);
         lastSpokenText = text;
         const firstChunk = takeFirstSpeechChunk(text);
         speechQueue = firstChunk ? [firstChunk] : [];
@@ -6584,10 +6589,20 @@
       }
     }
 
-    // Strip markdown and punctuation so local/neural voices do not say
-    // "dot", "comma", "colon", "quote", or "dash". Decimals like 1.14 stay intact.
-    // Verse colons become spaces: "Matthew 19:9" → "Matthew 19 9".
-    function cleanTextForSpeech(text) {
+    // Piper / eSpeak-style local voices often read "." as "dot". Apple and
+    // Chrome default voices treat period/comma/question as a pause — keep those.
+    function voiceSpeaksPunctuationNames(voice) {
+      if (!voice) return false;
+      const name = `${voice.name || ''} ${voice.voiceURI || ''}`.toLowerCase();
+      if (/google|samantha|daniel|karen|moira|alex|siri|microsoft|premium|enhanced|apple/.test(name)) {
+        return false;
+      }
+      return /piper|espeak|festival|mbrola|coqui|mimic|rhasspy|sherpa|opencat|internal voice/.test(name);
+    }
+
+    // Markdown/Greek off. Verse colons become spaces. Default voices KEEP
+    // sentence periods, question marks, and commas for natural tone.
+    function cleanTextForSpeech(text, voice) {
       if (!text) return '';
 
       const decimals = [];
@@ -6603,7 +6618,6 @@
         .replace(/^#{1,6}\s*/gm, '')
         .replace(/^\s*[-*+]\s+/gm, '');
 
-      // Convert refs before hyphen/colon stripping so 19:3–9 does not collapse.
       out = out.replace(/\b(\d+)\s*:\s*(\d+)(?:\s*[–—-]\s*(\d+))?\b/g, (_, ch, v1, v2) => (
         v2 ? `${ch} ${v1} to ${v2}` : `${ch} ${v1}`
       ));
@@ -6612,18 +6626,25 @@
         .replace(/[*\-#`~_]/g, '')
         .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '')
         .replace(/\(\s*\)/g, '')
-        .replace(/\n+/g, ' ')
-        .replace(/[“”«»„"]/g, ' ')
+        .replace(/[“”«»„"]/g, '')
         .replace(/(^|\s)['‘’]/g, '$1')
-        .replace(/['‘’](?![A-Za-z])/g, ' ')
+        .replace(/['‘’](?![A-Za-z])/g, '')
         .replace(/[()[\]{}]/g, ' ')
-        .replace(/[–—]/g, ' ')
-        .replace(/[;:,!?…•]+/g, ' ')
-        .replace(/\.{2,}/g, ' ')
-        .replace(/\./g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/[–—]/g, ', ')
+        .replace(/:/g, ', ')
+        .replace(/…+/g, '. ')
+        .replace(/\.{3,}/g, '. ')
+        .replace(/\n{2,}/g, '. ')
+        .replace(/\n/g, ' ');
 
+      if (voiceSpeaksPunctuationNames(voice)) {
+        out = out
+          .replace(/[;!?•]+/g, ' ')
+          .replace(/,/g, ' ')
+          .replace(/\./g, ' ');
+      }
+
+      out = out.replace(/\s+/g, ' ').trim();
       return out.replace(/\u0000D(\d+)\u0000/g, (_, i) => decimals[Number(i)] || '');
     }
 
