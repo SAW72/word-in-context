@@ -5935,10 +5935,48 @@
       return /^(please )?(pause|hold|hold on|wait|wait a (sec|second)|one sec|one second|thinking|breath|breathe)( please)?$/.test(t);
     }
 
-    function handsFreeCommitDelayMs(isFinalResult) {
+    // A breath or mid-sentence think is ~1s. 450ms/850ms was sending half-questions.
+    // Explicit "John pause" still uses longPauseUntil (60s), not this window.
+    function voiceCommitDelayMs() {
       if (longPauseUntil > Date.now()) return 60000;
-      // After the browser marks a segment final, only a short beat is needed for a last word.
-      return isFinalResult ? 450 : 850;
+      return 2300;
+    }
+    function handsFreeCommitDelayMs() {
+      return voiceCommitDelayMs();
+    }
+
+    function rememberVoiceTranscript(transcript) {
+      const t = (transcript || '').trim();
+      if (!t || t.length < 2) return;
+      if (!pendingTranscript) {
+        pendingTranscript = t;
+        return;
+      }
+      const prev = pendingTranscript;
+      if (t === prev) return;
+      if (t.length >= prev.length && (t.startsWith(prev) || t.includes(prev))) {
+        pendingTranscript = t;
+        return;
+      }
+      if (prev.includes(t) && t.length < prev.length) return;
+      pendingTranscript = (prev + ' ' + t).replace(/\s+/g, ' ').trim();
+    }
+
+    function scheduleVoiceCommit() {
+      if (commitTimeout) clearTimeout(commitTimeout);
+      const delay = voiceCommitDelayMs();
+      commitTimeout = setTimeout(() => {
+        commitTimeout = null;
+        const ft = (pendingTranscript || '').trim();
+        if (!ft || ft.length < 2 || isAwaitingResponse) return;
+        pendingTranscript = null;
+        longPauseUntil = 0;
+        if (tapToTalkTurn || !handsFreeEnabled) {
+          consumeAndSendVoice(ft);
+        } else {
+          commitHandsFreeTranscript(ft, lastTranscriptConfidence || 0);
+        }
+      }, delay);
     }
 
     function showLiveListeningPlaceholder() {
@@ -6001,20 +6039,14 @@
           userInput.value = transcript;
         }
 
-        // Explicit mic tap: send this utterance like typing Send. Do not wait for
-        // "John", a second phrase, or the hands-free silence timer. Recognition is
-        // non-continuous on this turn, so the browser ends the utterance; we send
-        // on isFinal here and flush leftover text in onend if isFinal never arrives.
+        // Tap-to-talk: accumulate. A natural pause / isFinal must NOT send.
+        // Auto-send only after ~2.3s of real silence. Second mic tap or Send
+        // still commits immediately (see mic click / consumeAndSendVoice).
         if (tapToTalkTurn) {
-          if (transcript && transcript.trim().length > 1) {
-            pendingTranscript = transcript.trim();
-            lastTranscriptConfidence = confidence;
-          }
-          if (isFinal && pendingTranscript && pendingTranscript.length > 1) {
-            const ft = pendingTranscript;
-            pendingTranscript = null;
-            consumeAndSendVoice(ft);
-          }
+          rememberVoiceTranscript(transcript);
+          lastTranscriptConfidence = confidence;
+          if (userInput && pendingTranscript) userInput.value = pendingTranscript;
+          if (pendingTranscript && pendingTranscript.length > 1) scheduleVoiceCommit();
           return;
         }
 
@@ -6046,15 +6078,7 @@
                 pendingTranscript = cmd;
                 lastTranscriptConfidence = confidence;
                 wakeWordActiveUntil = Date.now() + 9000;
-                commitTimeout = setTimeout(() => {
-                  if (pendingTranscript) {
-                    const ft = pendingTranscript;
-                    const c = lastTranscriptConfidence || 0;
-                    pendingTranscript = null;
-                    commitTimeout = null;
-                    commitHandsFreeTranscript(ft, c);
-                  }
-                }, 850);
+                scheduleVoiceCommit();
               } else {
                 wakeWordActiveUntil = Date.now() + 9000;
               }
@@ -6067,16 +6091,7 @@
               if (cmd && cmd.length > 1) {
                 pendingTranscript = cmd;
                 lastTranscriptConfidence = confidence;
-                if (commitTimeout) clearTimeout(commitTimeout);
-                commitTimeout = setTimeout(() => {
-                  if (pendingTranscript) {
-                    const ft = pendingTranscript;
-                    const c = lastTranscriptConfidence || 0;
-                    pendingTranscript = null;
-                    commitTimeout = null;
-                    commitHandsFreeTranscript(ft, c);
-                  }
-                }, 650);
+                scheduleVoiceCommit();
                 return;
               } else {
                 // Just the name — open a window for the user to speak their command.
@@ -6110,24 +6125,13 @@
               }
 
               const thisCmd = cmd || stripWakeWordPrefix(transcript) || transcript;
-              if (thisCmd && (!pendingTranscript || thisCmd.length >= pendingTranscript.length)) {
-                pendingTranscript = thisCmd;
-              }
+              rememberVoiceTranscript(thisCmd);
               lastTranscriptConfidence = confidence;
               wakeWordActiveUntil = Date.now() + 9000; // keep window open for continuation segments without repeating the name
               if (longPauseUntil > Date.now()) {
                 longPauseUntil = Date.now() + 180000;
               }
-              if (commitTimeout) clearTimeout(commitTimeout);
-              commitTimeout = setTimeout(() => {
-                if (pendingTranscript) {
-                  const ft = pendingTranscript;
-                  const c = lastTranscriptConfidence || 0;
-                  pendingTranscript = null;
-                  commitTimeout = null;
-                  commitHandsFreeTranscript(ft, c);
-                }
-              }, handsFreeCommitDelayMs(isFinal));
+              scheduleVoiceCommit();
               return;
             }
           }
@@ -6144,27 +6148,13 @@
             // Continuation after hearing the name earlier — use the latest full transcript,
             // not a fragment append (buildTranscriptFromResults already has the full utterance).
             const continuation = stripWakeWordPrefix(transcript) || transcript.trim();
-            if (continuation && (!pendingTranscript || continuation.length >= pendingTranscript.length)) {
-              pendingTranscript = continuation;
-            }
+            rememberVoiceTranscript(continuation);
             lastTranscriptConfidence = confidence;
             wakeWordActiveUntil = Date.now() + 9000; // extend window while user is speaking
             if (longPauseUntil > Date.now()) {
               longPauseUntil = Date.now() + 180000;
             }
-            if (commitTimeout) clearTimeout(commitTimeout);
-            const useLong = longPauseUntil > Date.now();
-            const silenceMs = handsFreeCommitDelayMs(isFinal);
-            commitTimeout = setTimeout(() => {
-              if (pendingTranscript) {
-                const ft = pendingTranscript;
-                const c = lastTranscriptConfidence || 0;
-                pendingTranscript = null;
-                commitTimeout = null;
-                if (useLong) longPauseUntil = 0;
-                commitHandsFreeTranscript(ft, c);
-              }
-            }, silenceMs);
+            scheduleVoiceCommit();
             return;
           }
 
@@ -6174,13 +6164,9 @@
         }
 
         // Non-handsfree fallback (tapToTalkTurn should already have handled this).
-        if (transcript && transcript.trim().length > 1) {
-          pendingTranscript = transcript.trim();
-          if (userInput) userInput.value = transcript;
-        }
-        if (isFinal && transcript && transcript.length > 1) {
-          consumeAndSendVoice(transcript);
-        }
+        rememberVoiceTranscript(transcript);
+        if (userInput && pendingTranscript) userInput.value = pendingTranscript;
+        if (pendingTranscript && pendingTranscript.length > 1) scheduleVoiceCommit();
       };
 
       recognition.onerror = (event) => {
@@ -6248,23 +6234,25 @@
       };
 
       recognition.onend = () => {
-        // Flush a completed transcript if the browser ended without isFinal (Safari,
-        // Zoom grabbing the mic, or tap-to-stop). Do this before stopListeningUI
-        // clears currentTranscript.
         const leftover = (pendingTranscript || currentTranscript || '').trim();
-        // Tap-to-talk (explicit mic tap, or hands-free off) must send on end even
-        // when the browser never marks the last result isFinal.
-        const shouldFlushTap = (tapToTalkTurn || !handsFreeEnabled) && leftover.length > 1 && !isAwaitingResponse;
+        if (leftover.length > 1) rememberVoiceTranscript(leftover);
+        // Browser silence ends the utterance. That is a breath, not "send".
+        // Keep the pending question, wait ~2.3s, and keep listening so more
+        // words append. Second mic tap / Send still commits immediately.
+        const keepOpenQuestion = leftover.length > 1 && !isAwaitingResponse
+          && (tapToTalkTurn || !handsFreeEnabled);
         stopListeningUI();
-        if (shouldFlushTap) {
-          consumeAndSendVoice(leftover);
+        if (isAwaitingResponse) return;
+        if (keepOpenQuestion) {
+          scheduleVoiceCommit();
+          if (micAllowed && document.visibilityState !== 'hidden' && !startingRecognition) {
+            startListening();
+          }
           return;
         }
         if (!micAllowed || document.visibilityState === 'hidden') return;
         const isOutputting = isSpeechOutputting() || (hostedAudio && !hostedAudio.paused);
         if (handsFreeEnabled && !isOutputting && !isListening && !isAwaitingResponse && !startingRecognition) {
-          // Slightly longer delay on natural end to reduce thrashing when there's silence.
-          // With continuous=true we rely more on the commit silence timer in onresult for deciding end of user turn.
           scheduleHandsFreeRestart(800);
         }
       };
@@ -6300,13 +6288,14 @@
         hostedAudio = null;
       }
 
+      // Mark starting before stop() so a sync onend cannot re-enter startListening.
+      startingRecognition = true;
+
       // Always attempt a clean stop first. The Web Speech API state machine is picky;
       // calling start() too soon after end/error or without stopping often throws InvalidStateError.
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
       }
-
-      startingRecognition = true;
 
       // Small grace delay after stop() dramatically reduces "already started" races.
       // We do NOT schedule another start on InvalidStateError here; we let the 'onend' event
@@ -6329,10 +6318,9 @@
         }
 
         try {
-          // Tap-to-talk must NOT be continuous: the browser should end the utterance
-          // after silence so we get onend/isFinal and can send. Hands-free auto-listen
-          // stays continuous for the wake word.
-          recognition.continuous = !!(handsFreeEnabled && !tapToTalkTurn);
+          // Stay continuous so a breath does not end the utterance and send
+          // a half-question. We commit after ~2.3s of silence or a second mic tap.
+          recognition.continuous = true;
           recognition.interimResults = true;
           recognition.start();
           isListening = true;
