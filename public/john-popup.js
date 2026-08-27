@@ -579,6 +579,7 @@
     const spoken = text
       .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '')
       .replace(/\(\s*\)/g, '')
+      .replace(/([A-Za-z”’'")\]])[.]+(?=\s|$)/g, '$1')
       .replace(/\s+/g, ' ')
       .trim();
     const u = new SpeechSynthesisUtterance(spoken);

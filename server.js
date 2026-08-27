@@ -128,7 +128,7 @@ const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincont
 // Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
 // Bump when static JS/CSS/images change; keep ?v= in HTML/JS in sync (or set ASSET_VERSION env on Render).
-const ASSET_VERSION = process.env.ASSET_VERSION || '6';
+const ASSET_VERSION = process.env.ASSET_VERSION || '7';
 const CACHE_ONE_YEAR = 'public, max-age=31536000, immutable';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 

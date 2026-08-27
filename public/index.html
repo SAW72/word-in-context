@@ -4915,9 +4915,12 @@
       const sentences = splitSentencesForSpeech(text);
       for (let s = 0; s < sentences.length; s++) {
         const wrapped = wrapOversizedSpeechSentence(sentences[s], safetyLen);
-        for (let w = 0; w < wrapped.length; w++) chunks.push(wrapped[w]);
+        for (let w = 0; w < wrapped.length; w++) {
+          const spoken = stripSpokenFullStop(wrapped[w]);
+          if (spoken) chunks.push(spoken);
+        }
       }
-      return chunks.length ? chunks : [text];
+      return chunks.length ? chunks : [stripSpokenFullStop(text) || text];
     }
 
     function startSpeechKeepAlive() {
@@ -4995,7 +4998,7 @@
         return;
       }
 
-      const chunkText = speechQueue[speechQueueIndex++];
+      const chunkText = stripSpokenFullStop(speechQueue[speechQueueIndex++]);
       const utterance = new SpeechSynthesisUtterance(chunkText);
       currentUtterance = utterance;
       utterance.rate = voiceSettings.rate || 0.95;
@@ -6577,8 +6580,9 @@
       }
     }
 
-    // Piper / eSpeak-style local voices often read "." as "dot". Apple and
-    // Chrome default voices treat period/comma/question as a pause — keep those.
+    // Piper / eSpeak-style voices read leftover "." as "dot". Default Apple/Chrome
+    // voices keep commas in the cleaner; trailing periods are stripped per chunk
+    // so British voices (Daniel, UK English) cannot say "full stop".
     function voiceSpeaksPunctuationNames(voice) {
       if (!voice) return false;
       const name = `${voice.name || ''} ${voice.voiceURI || ''}`.toLowerCase();
@@ -6586,6 +6590,16 @@
         return false;
       }
       return /piper|espeak|festival|mbrola|coqui|mimic|rhasspy|sherpa|opencat|internal voice/.test(name);
+    }
+
+    // Voices must not read "." as "dot" / "period" / "full stop".
+    // Keep commas and ? !; the gap between sentence utterances is the pause.
+    function stripSpokenFullStop(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/([A-Za-z”’'")\]])[.]+(?=\s*$)/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
 
     // Markdown/Greek off. Verse colons become spaces. Default voices KEEP
@@ -8121,7 +8135,7 @@
 
     init();
   </script>
-  <script src="/john-popup.js?v=6" defer></script>
+  <script src="/john-popup.js?v=7" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>
 </html>
