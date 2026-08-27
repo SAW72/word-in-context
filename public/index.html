@@ -4862,13 +4862,8 @@
       if (!text) return '';
       if (text.length <= maxLen) return text;
       const head = text.slice(0, maxLen);
-      const punct = Math.max(
-        head.lastIndexOf('. '),
-        head.lastIndexOf('? '),
-        head.lastIndexOf('! '),
-        head.lastIndexOf('; ')
-      );
-      if (punct >= 40) return text.slice(0, punct + 1).trim();
+      // After cleanTextForSpeech, sentence marks are spaces (so voices never say
+      // "dot"). Break on the last word in the window — not on leftover punctuation.
       const space = head.lastIndexOf(' ');
       if (space >= 40) return text.slice(0, space).trim();
       return head;
@@ -6589,22 +6584,47 @@
       }
     }
 
-    // Remove markdown and symbols before TTS so the voice reads naturally
+    // Strip markdown and punctuation so local/neural voices do not say
+    // "dot", "comma", "colon", "quote", or "dash". Decimals like 1.14 stay intact.
+    // Verse colons become spaces: "Matthew 19:9" → "Matthew 19 9".
     function cleanTextForSpeech(text) {
       if (!text) return '';
-      return text
-        .replace(/\*\*(.+?)\*\*/g, '$1')   // bold **text**
-        .replace(/\*(.+?)\*/g, '$1')       // italic *text*
-        .replace(/`(.+?)`/g, '$1')         // inline code
-        .replace(/^#{1,6}\s*/gm, '')       // headers
-        .replace(/^\s*[-*+]\s+/gm, '')     // list bullets
-        .replace(/[*\-#`~_]/g, '')         // stray symbols
-        .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '') // raw Greek/Hebrew letters (speak transliteration)
+
+      const decimals = [];
+      let out = String(text).replace(/\b\d+\.\d+\b/g, (m) => {
+        decimals.push(m);
+        return `\u0000D${decimals.length - 1}\u0000`;
+      });
+
+      out = out
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/`(.+?)`/g, '$1')
+        .replace(/^#{1,6}\s*/gm, '')
+        .replace(/^\s*[-*+]\s+/gm, '');
+
+      // Convert refs before hyphen/colon stripping so 19:3–9 does not collapse.
+      out = out.replace(/\b(\d+)\s*:\s*(\d+)(?:\s*[–—-]\s*(\d+))?\b/g, (_, ch, v1, v2) => (
+        v2 ? `${ch} ${v1} to ${v2}` : `${ch} ${v1}`
+      ));
+
+      out = out
+        .replace(/[*\-#`~_]/g, '')
+        .replace(/[\u0370-\u03FF\u1F00-\u1FFF\u0590-\u05FF]+/g, '')
         .replace(/\(\s*\)/g, '')
-        .replace(/\n{2,}/g, '. ')          // paragraph breaks as pauses
-        .replace(/\n/g, ' ')
+        .replace(/\n+/g, ' ')
+        .replace(/[“”«»„"]/g, ' ')
+        .replace(/(^|\s)['‘’]/g, '$1')
+        .replace(/['‘’](?![A-Za-z])/g, ' ')
+        .replace(/[()[\]{}]/g, ' ')
+        .replace(/[–—]/g, ' ')
+        .replace(/[;:,!?…•]+/g, ' ')
+        .replace(/\.{2,}/g, ' ')
+        .replace(/\./g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+
+      return out.replace(/\u0000D(\d+)\u0000/g, (_, i) => decimals[Number(i)] || '');
     }
 
     // Small helper so the async onstop has time to populate the blob before we try to send it.
