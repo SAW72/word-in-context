@@ -6,7 +6,7 @@ const {
   overlayTextFromPost,
   voiceScriptFromPost,
   overlayHasOriginalScript,
-} = require('./video');
+} = require('./video-copy');
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);

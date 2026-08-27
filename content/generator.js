@@ -71,6 +71,8 @@ function stripVersePrefix(text) {
   return String(text || '')
     .replace(/^\s*\d+\.\s*/, '')
     .replace(/\s+/g, ' ')
+    .replace(/^[“”"']+/, '')
+    .replace(/[“”"']+$/, '')
     .trim();
 }
 
