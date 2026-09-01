@@ -47,8 +47,12 @@ services:
       #   WHOP_WEBHOOK_SECRET
       #   RESEND_API_KEY
       #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
-      #   JWT_SECRET
-      #   ADMIN_PASSWORD
+      #   JWT_SECRET          (required, unique, >= 32 chars — no defaults in production)
+      #   ADMIN_PASSWORD      (required, unique, >= 12 chars — no defaults in production)
+      #   TESTER_INVITE_TOKEN (required for public tester signup; admin can still invite)
+      #
+      # Rotate WHOP_WEBHOOK_SECRET in Whop + Render if it was ever exposed.
+      # Never commit the live secret.
       #   TTS_SERVER_URL   (URL of your hosted TTS service, e.g. https://openai-edge-tts-wtcd.onrender.com — enables the "Use Premium Hosted Voices" toggle with zero setup for users)
       #   (ELEVENLABS_API_KEY if using managed TTS for an alternate path)
       #

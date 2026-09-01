@@ -47,7 +47,7 @@ The full conversation history, all tool results, file edits, TODO state, etc. ar
 (Full details: `~/.grok/docs/user-guide/17-sessions.md`)
 
 ## 2. Project State Right Now (latest refinements)
-- **Tester access (new, card-free)**: Separate "Sign up for 14-day tester access (email only, no card)" form on landing. Calls `/api/tester-signup` → creates user with `status=trialing`, `trial_end=+14d` (TESTER_TRIAL_DAYS env), sends magic login link. Full unlimited access during the period, then auto-expires. No Stripe at all for these users. Normal paid path remains Stripe with TRIAL_DAYS (default 7, card for after trial).
+- **Tester access (invite-only)**: Landing tester form requires `TESTER_INVITE_TOKEN` (or admin JWT). Creates a new user (`status=trialing`, `trial_end` from `TESTER_TRIAL_DAYS`) and emails a magic link. Does not overwrite existing passwords and does not return a session JWT. Normal paid path remains checkout with `TRIAL_DAYS`.
 - **"Try the App" limited demo**: Landing "Try the App" / Free plan buttons go to `/app?demo=1`. Unauthenticated users get **exactly 3 responses** (configurable via `DEMO_LIMIT` env). 
   - Prominent yellow/red demo banner + count, disables input/mic/send after limit, in-chat + modal CTAs to the trial form.
   - Full quality experience during the 3 (voice "John", hands-free, live Greek/Hebrew sources).

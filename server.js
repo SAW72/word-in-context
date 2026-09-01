@@ -32,6 +32,24 @@ const {
   hasOriginalGreekBlock,
 } = require('./lib/chat-sources');
 const { fetchBiblePassage } = require('./lib/bible-fetch');
+const {
+  MAX_CLIENT_TRIAL_DAYS,
+  MAX_ADMIN_TRIAL_DAYS,
+  UPSERT_TRIAL_USER_SQL,
+  UPSERT_TRIAL_USER_STRIPE_SQL,
+  UPDATE_TRIAL_END_SQL,
+  timingSafeEqualString,
+  resolveAuthSecrets,
+  capTrialDays,
+  trialEndIsoFromDays,
+  passwordHashForUpsert,
+  shouldWritePasswordHash,
+  inviteTokenMatches,
+  createAttemptLockout,
+  createFixedWindowLimiter,
+  unspoofableClientIp,
+  shareQuotaKey,
+} = require('./lib/security');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -41,6 +59,69 @@ try {
 
 const app = express();
 const PORT = process.env.PORT || 8787;
+// Render / proxies: req.ip is the connecting hop after trust proxy, not client-supplied XFF[0].
+app.set('trust proxy', 1);
+
+try {
+  const helmet = require('helmet');
+  app.use(helmet({
+    contentSecurityPolicy: false, // custom CSP is set below; default helmet CSP breaks inline scripts
+    crossOriginEmbedderPolicy: false, // wasm ffmpeg / share video
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // OG images + content reel downloads
+  }));
+} catch (e) {
+  console.warn('[security] helmet not installed — continuing without default headers');
+}
+
+try {
+  const rateLimit = require('express-rate-limit');
+  const skipInTests = process.env.NODE_ENV === 'test';
+  const skipInfra = (req) => {
+    const u = String(req.originalUrl || req.url || '');
+    return /\/api\/(health|config|teaser-status|whop-webhook|stripe-webhook)(\?|$)/.test(u);
+  };
+  if (!skipInTests) {
+    app.use('/api/', rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: skipInfra,
+    }));
+    app.use('/api/admin/login', rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
+    app.use('/api/tester-signup', rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 10,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
+    app.use('/api/share-transcode', rateLimit({
+      windowMs: 60 * 60 * 1000,
+      max: 8,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
+    app.use('/api/share-tts', rateLimit({
+      windowMs: 60 * 60 * 1000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
+    app.use('/api/share-bg-image', rateLimit({
+      windowMs: 60 * 60 * 1000,
+      max: 16,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
+  }
+} catch (e) {
+  console.warn('[security] express-rate-limit not installed — using in-process limiters only');
+}
 
 // Raw body for payment webhooks MUST be the very first middleware (before any express.json or body parsers)
 // so that req.body is the raw Buffer/string for signature verification.
@@ -56,7 +137,8 @@ app.use('/api/whop-webhook', express.raw({ type: () => true, limit: '2mb' }));
 // Locally: normal project folder.
 // We now check fs.existsSync('/data') FIRST — this is the most reliable signal that the disk you attached is actually mounted.
 const onRender = fs.existsSync('/data') || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
-let dbPath = onRender ? '/data/users.db' : path.join(__dirname, 'users.db');
+let dbPath = process.env.WIC_DB_PATH
+  || (onRender ? '/data/users.db' : path.join(__dirname, 'users.db'));
 
 console.log(`[DB] onRender=${onRender} (fs sees /data? ${fs.existsSync('/data')}), using path: ${dbPath}`);
 
@@ -114,8 +196,31 @@ try {
 // === Email (Resend) ===
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this';
+const resolvedAuth = resolveAuthSecrets(process.env);
+if (!resolvedAuth.ok) {
+  console.error('[fatal] Refusing to start with missing or weak auth secrets:');
+  for (const problem of resolvedAuth.problems) console.error('  - ' + problem);
+  process.exit(1);
+}
+const JWT_SECRET = resolvedAuth.jwtSecret;
+const ADMIN_PASSWORD = resolvedAuth.adminPassword;
+
+const adminLoginLockout = createAttemptLockout({
+  maxAttempts: process.env.ADMIN_LOCKOUT_MAX_ATTEMPTS,
+  windowMs: process.env.ADMIN_LOCKOUT_WINDOW_MS,
+  lockMs: process.env.ADMIN_LOCKOUT_LOCK_MS,
+});
+const testerSignupLimiter = createFixedWindowLimiter({
+  windowMs: process.env.TESTER_SIGNUP_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.TESTER_SIGNUP_RATE_MAX || 8,
+});
+const shareTranscodeLimiter = createFixedWindowLimiter({
+  windowMs: process.env.SHARE_TRANSCODE_RATE_WINDOW_MS || 60 * 60 * 1000,
+  max: process.env.SHARE_TRANSCODE_RATE_MAX || 6,
+});
+const TESTER_INVITE_TOKEN = String(process.env.TESTER_INVITE_TOKEN || '').trim();
+let transcodeInFlight = 0;
+const MAX_TRANSCODE_IN_FLIGHT = 2;
 
 // Configurable for easy tuning without code changes (set in Render env)
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '7', 10);
@@ -203,6 +308,47 @@ function normalizeEmail(email) {
 async function hashPassword(password) {
   if (!password || String(password).length < 8) return null;
   return bcrypt.hash(String(password), 10);
+}
+
+function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { email, id? }
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    if (!user.access_granted) {
+      return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
+    }
+    const now = new Date();
+    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
+    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
+    if (!isTrialing && !isActive && user.status !== 'trialing') {
+      return res.status(403).json({ error: 'Subscription required or trial expired.' });
+    }
+    req.userRecord = user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+function peekAdminAuth(req) {
+  const adminToken = req.headers.authorization?.split(' ')[1];
+  if (!adminToken) return false;
+  try {
+    const payload = jwt.verify(adminToken, JWT_SECRET);
+    return payload.role === 'admin';
+  } catch {
+    return false;
+  }
 }
 
 const DEFAULT_WHOP_CHECKOUT_URL_MONTHLY = 'https://whop.com/checkout/plan_W9vAA0xyptzgt';
@@ -632,7 +778,7 @@ async function callXaiChat(apiMessages) {
 // Bot throttle for anonymous landing teaser requests (not the per-day question cap).
 const demoUsage = new Map(); // ip -> array of timestamps (last hour)
 function getClientIp(req) {
-  return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+  return unspoofableClientIp(req);
 }
 function checkDemoThrottle(ip) {
   const now = Date.now();
@@ -848,17 +994,29 @@ function normalizeWordPhrasing(text) {
 /**
  * Transcode share video → Facebook-safe H.264 MP4.
  * MUST be registered before express.json so the raw body is not corrupted.
+ * Auth + size/rate/concurrency limits — unauthenticated 40MB ffmpeg was a DoS path.
  */
-app.post('/api/share-transcode', express.raw({ type: () => true, limit: '40mb' }), async (req, res) => {
+app.post('/api/share-transcode', requireAuth, express.raw({ type: () => true, limit: '20mb' }), async (req, res) => {
   if (!ffmpegStaticPath) {
     return res.status(503).json({ error: 'Server video converter not installed.' });
   }
   if (!req.body || !Buffer.isBuffer(req.body) || !req.body.length) {
     return res.status(400).json({ error: 'Empty video body.' });
   }
-  if (req.body.length > 40 * 1024 * 1024) {
-    return res.status(413).json({ error: 'Video too large (max 40MB). Use fewer verses.' });
+  const maxBytes = 20 * 1024 * 1024;
+  if (req.body.length > maxBytes) {
+    return res.status(413).json({ error: 'Video too large (max 20MB). Use fewer verses.' });
   }
+
+  const quotaKey = shareQuotaKey(req, req.userRecord);
+  const limited = shareTranscodeLimiter.check(quotaKey);
+  if (!limited.allowed) {
+    return res.status(429).json({ error: 'Too many video conversions. Try again later.' });
+  }
+  if (transcodeInFlight >= MAX_TRANSCODE_IN_FLIGHT) {
+    return res.status(429).json({ error: 'Video converter is busy. Try again in a moment.' });
+  }
+  transcodeInFlight += 1;
 
   const hint = String(req.headers['x-input-ext'] || req.headers['content-type'] || 'webm').toLowerCase();
   const ext = /mp4/.test(hint) ? 'mp4' : 'webm';
@@ -928,6 +1086,7 @@ app.post('/api/share-transcode', express.raw({ type: () => true, limit: '40mb' }
       detail: String(err && err.message || '').slice(0, 200),
     });
   } finally {
+    transcodeInFlight = Math.max(0, transcodeInFlight - 1);
     try { fs.unlinkSync(inPath); } catch (e) {}
     try { fs.unlinkSync(outPath); } catch (e) {}
   }
@@ -955,50 +1114,6 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
-
-// Trust proxy so req.ip is correct behind Render / CDNs (for the demo throttle)
-app.set('trust proxy', 1);
-
-// Auth middleware
-function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const token = authHeader.split(' ')[1];
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload; // { email, id? }
-
-    // Check DB status
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email);
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-    if (!user.access_granted) {
-      return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
-    }
-    const now = new Date();
-    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
-    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
-      return res.status(403).json({ error: 'Subscription required or trial expired.' });
-    }
-    req.userRecord = user;
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-}
-
-// Production security note for beta/public launch:
-// npm install express-rate-limit helmet
-// Then uncomment:
-// const rateLimit = require('express-rate-limit');
-// const helmet = require('helmet');
-// app.use(helmet());
-// const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-// app.use(limiter);
 
 // Dev-friendly: prevent browser caching of the frontend so code changes (SR fixes, wake word, etc.)
 // are picked up without manual hard-reloads or cache clearing. Safe for localhost dev.
@@ -1367,21 +1482,23 @@ async function sendMagicLink(email, token, options = {}) {
 
 async function upsertTrialCheckoutUser(email, password, effectiveTrialDays) {
   const passwordHash = await hashPassword(password);
-  if (!passwordHash) throw Object.assign(new Error('Password must be at least 8 characters.'), { statusCode: 400 });
-
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user && !passwordHash) {
+    throw Object.assign(new Error('Password must be at least 8 characters.'), { statusCode: 400 });
+  }
+
+  const trialEnd = trialEndIsoFromDays(effectiveTrialDays);
+  const storedHash = passwordHashForUpsert(user, passwordHash);
+
   if (!user) {
-    db.prepare(`
-      INSERT INTO users (email, status, trial_end, access_granted, password_hash)
-      VALUES (?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1, ?)
-    `).run(email, passwordHash);
+    db.prepare(UPSERT_TRIAL_USER_SQL).run(email, trialEnd, storedHash);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else {
-    if (passwordHash) {
+    if (shouldWritePasswordHash(user, passwordHash)) {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
     }
     if (!user.trial_end) {
-      db.prepare(`UPDATE users SET trial_end = datetime('now', '+${effectiveTrialDays} days') WHERE id = ?`).run(user.id);
+      db.prepare(UPDATE_TRIAL_END_SQL).run(trialEnd, user.id);
     }
     if (!user.access_granted) {
       db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
@@ -1403,9 +1520,8 @@ app.post('/api/create-checkout', async (req, res) => {
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
-    const effectiveTrialDays = (typeof requestedTrialDays === 'number' && requestedTrialDays > 0)
-      ? requestedTrialDays
-      : TRIAL_DAYS;
+    const effectiveTrialDays = capTrialDays(requestedTrialDays, TRIAL_DAYS, MAX_CLIENT_TRIAL_DAYS);
+    const trialEnd = trialEndIsoFromDays(effectiveTrialDays);
 
     if (provider === 'whop') {
       const billingCycle = String(billing || 'monthly').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
@@ -1414,27 +1530,28 @@ app.post('/api/create-checkout', async (req, res) => {
         url: buildWhopCheckoutUrl(email, billingCycle),
         provider: 'whop',
         billing: billingCycle,
+        trialDays: effectiveTrialDays,
       });
     }
 
     const passwordHash = await hashPassword(password);
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user && !passwordHash) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
 
     if (!user) {
       const customer = await stripe.customers.create({ email });
-      db.prepare(`
-        INSERT INTO users (email, stripe_customer_id, status, trial_end, access_granted, password_hash)
-        VALUES (?, ?, 'trialing', datetime('now', '+${effectiveTrialDays} days'), 1, ?)
-      `).run(email, customer.id, passwordHash);
+      db.prepare(UPSERT_TRIAL_USER_STRIPE_SQL).run(email, customer.id, trialEnd, passwordHash);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
       const customerId = await ensureStripeCustomer(user, email);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (passwordHash) {
+      if (shouldWritePasswordHash(user, passwordHash)) {
         db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
       }
       if (!user.trial_end) {
-        db.prepare(`UPDATE users SET trial_end = datetime('now', '+${effectiveTrialDays} days') WHERE id = ?`).run(user.id);
+        db.prepare(UPDATE_TRIAL_END_SQL).run(trialEnd, user.id);
       }
       if (!user.access_granted) {
         db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
@@ -1467,33 +1584,45 @@ app.post('/api/create-checkout', async (req, res) => {
   }
 });
 
-// Tester signup: email-only, no card, full access for TESTER_TRIAL_DAYS (default 14), then expires automatically.
-// No Stripe involved. Sends magic login link immediately.
+// Tester signup: invite-token or admin gated. Never overwrites an existing password.
+// Never mints a session JWT for an arbitrary email — login is password or magic link only.
 app.post('/api/tester-signup', async (req, res) => {
   try {
-    const { email: rawEmail, password } = req.body;
+    const ip = getClientIp(req);
+    const limited = testerSignupLimiter.check(`tester:${ip}`);
+    if (!limited.allowed) {
+      return res.status(429).json({ error: 'Too many tester signup attempts. Try again later.' });
+    }
+
+    const adminOk = peekAdminAuth(req);
+    const providedInvite = req.body?.inviteToken || req.headers['x-tester-invite'];
+    if (!adminOk) {
+      if (!TESTER_INVITE_TOKEN) {
+        return res.status(403).json({ error: 'Tester signup is invite-only. Ask an admin for access.' });
+      }
+      if (!inviteTokenMatches(providedInvite, TESTER_INVITE_TOKEN)) {
+        return res.status(403).json({ error: 'Valid invite code required for tester signup.' });
+      }
+    }
+
+    const { email: rawEmail, password } = req.body || {};
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (user) {
+      return res.status(409).json({
+        error: 'An account with that email already exists. Log in with your password or request a magic link.',
+      });
+    }
 
     const passwordHash = await hashPassword(password);
     if (!passwordHash) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
-    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    const trialEndExpr = `datetime('now', '+${TESTER_TRIAL_DAYS} days')`;
-
-    if (!user) {
-      db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted, password_hash)
-        VALUES (?, 'trialing', ${trialEndExpr}, 1, ?)
-      `).run(email, passwordHash);
-      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    } else {
-      db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ${trialEndExpr}, access_granted = 1, password_hash = ?
-        WHERE email = ?
-      `).run(passwordHash, email);
-      user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    }
+    const trialDays = capTrialDays(TESTER_TRIAL_DAYS, 14, MAX_CLIENT_TRIAL_DAYS);
+    const trialEnd = trialEndIsoFromDays(trialDays);
+    db.prepare(UPSERT_TRIAL_USER_SQL).run(email, trialEnd, passwordHash);
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
     const token = require('crypto').randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -1505,12 +1634,10 @@ app.post('/api/tester-signup', async (req, res) => {
       console.error('tester-signup magic email error (non-fatal):', emailErr);
     }
 
-    const jwtToken = issueUserJwt(user);
     res.json({
       success: true,
-      token: jwtToken,
       email: user.email,
-      message: `Your ${TESTER_TRIAL_DAYS}-day tester access is active. You can log in with your password or the magic link we emailed.`
+      message: `Your ${trialDays}-day tester access is ready. Log in with your password or the magic link we emailed.`,
     });
   } catch (err) {
     console.error('tester-signup error:', err);
@@ -1622,6 +1749,7 @@ app.get('/api/config', (req, res) => {
     demoLimit: DEMO_LIMIT,
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
+    testerSignupInviteRequired: true,
     hasSTT: false,
     siteUrl: SHARE_SITE_URL,
     paymentProvider: paymentProvider(),
@@ -1690,9 +1818,9 @@ function envInt(name, defaultVal) {
 
 const SHARE_TTS_ENV_DEFAULTS = {
   enabled: envBool('SHARE_TTS_ENABLED', true),
-  requireAuth: envBool('SHARE_TTS_REQUIRE_AUTH', false),
+  requireAuth: envBool('SHARE_TTS_REQUIRE_AUTH', true),
   // 0 = fully disabled by quota (master switch still preferred via enabled)
-  dailyLimit: Math.max(0, envInt('SHARE_TTS_DAILY_LIMIT', 12)),
+  dailyLimit: Math.max(0, envInt('SHARE_TTS_DAILY_LIMIT', 6)),
   maxChars: Math.max(200, envInt('SHARE_TTS_MAX_CHARS', 4000)),
   // Built-in voice id OR your xAI cloned/custom voice id from console
   voice: (process.env.SHARE_TTS_VOICE || 'leo').trim() || 'leo',
@@ -1791,8 +1919,7 @@ function shareTtsDayKey() {
 }
 
 function getShareTtsClientIp(req) {
-  const xf = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return xf || req.ip || req.socket?.remoteAddress || 'unknown';
+  return unspoofableClientIp(req);
 }
 
 function checkShareTtsQuota(ip) {
@@ -1836,20 +1963,20 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
         error: 'Voice video daily limit is 0 (disabled). Share as text instead.',
       });
     }
-    if (!settings.hasXaiKey) {
-      return res.status(503).json({
-        error: 'Voice video is not configured on the server yet (missing XAI_API_KEY). You can still share as text.',
-      });
-    }
 
+    const authedUser = optionalUserFromAuthHeader(req);
     if (settings.requireAuth) {
-      const user = optionalUserFromAuthHeader(req);
-      if (!user || !userHasAccess(user)) {
+      if (!authedUser || !userHasAccess(authedUser)) {
         return res.status(401).json({
           error: 'Sign in with an active account to create voice videos.',
           requireAuth: true,
         });
       }
+    }
+    if (!settings.hasXaiKey) {
+      return res.status(503).json({
+        error: 'Voice video is not configured on the server yet (missing XAI_API_KEY). You can still share as text.',
+      });
     }
 
     const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim();
@@ -1862,8 +1989,8 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
       });
     }
 
-    const ip = getShareTtsClientIp(req);
-    const quota = checkShareTtsQuota(ip);
+    const quotaKey = shareQuotaKey(req, authedUser);
+    const quota = checkShareTtsQuota(quotaKey);
     if (quota.count >= settings.dailyLimit) {
       return res.status(429).json({
         error: `Daily voice-video limit reached (${settings.dailyLimit}/day). Share as text, or try again tomorrow.`,
@@ -1938,7 +2065,7 @@ app.post('/api/share-tts', express.json({ limit: '24kb' }), async (req, res) => 
     }
 
     quota.count += 1;
-    shareTtsByIp.set(ip, quota);
+    shareTtsByIp.set(quotaKey, quota);
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-store');
@@ -1977,8 +2104,8 @@ app.post('/api/admin/share-tts', express.json({ limit: '8kb' }), (req, res) => {
 // ~$0.02/image with grok-imagine-image. Separate daily quota from voice TTS.
 const SHARE_AI_BG_ENV_DEFAULTS = {
   enabled: envBool('SHARE_AI_BG_ENABLED', true),
-  requireAuth: envBool('SHARE_AI_BG_REQUIRE_AUTH', false),
-  dailyLimit: Math.max(0, envInt('SHARE_AI_BG_DAILY_LIMIT', 8)),
+  requireAuth: envBool('SHARE_AI_BG_REQUIRE_AUTH', true),
+  dailyLimit: Math.max(0, envInt('SHARE_AI_BG_DAILY_LIMIT', 4)),
   model: (process.env.SHARE_AI_BG_MODEL || 'grok-imagine-image').trim() || 'grok-imagine-image',
 };
 
@@ -2066,14 +2193,14 @@ app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res
     if (!settings.enabled || settings.dailyLimit <= 0) {
       return res.status(403).json({ error: 'AI verse backgrounds are turned off by the admin.' });
     }
-    if (!settings.hasXaiKey) {
-      return res.status(503).json({ error: 'AI backgrounds need XAI_API_KEY on the server.' });
-    }
+    const authedUser = optionalUserFromAuthHeader(req);
     if (settings.requireAuth) {
-      const user = optionalUserFromAuthHeader(req);
-      if (!user || !userHasAccess(user)) {
+      if (!authedUser || !userHasAccess(authedUser)) {
         return res.status(401).json({ error: 'Sign in to use AI verse backgrounds.', requireAuth: true });
       }
+    }
+    if (!settings.hasXaiKey) {
+      return res.status(503).json({ error: 'AI backgrounds need XAI_API_KEY on the server.' });
     }
 
     const reference = String(req.body?.reference || '').trim().slice(0, 160);
@@ -2083,8 +2210,8 @@ app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res
       return res.status(400).json({ error: 'Reference or verse text required.' });
     }
 
-    const ip = getShareTtsClientIp(req);
-    const quota = checkShareAiBgQuota(ip);
+    const quotaKey = shareQuotaKey(req, authedUser);
+    const quota = checkShareAiBgQuota(quotaKey);
     if (quota.count >= settings.dailyLimit) {
       return res.status(429).json({
         error: `Daily AI background limit reached (${settings.dailyLimit}/day). Use the classic brand background instead.`,
@@ -2155,7 +2282,7 @@ app.post('/api/share-bg-image', express.json({ limit: '24kb' }), async (req, res
     }
 
     quota.count += 1;
-    shareAiBgByIp.set(ip, quota);
+    shareAiBgByIp.set(quotaKey, quota);
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'no-store');
@@ -2206,7 +2333,33 @@ app.post('/api/tts', (req, res) => {
 
 // Simple admin (password protected via /admin UI or curls, for your full control to cut off/grant)
 app.post('/api/admin/login', (req, res) => {
-  if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Bad password' });
+  const ip = getClientIp(req);
+  const lockKey = `admin:${ip}`;
+  const locked = adminLoginLockout.isLocked(lockKey);
+  if (locked.locked) {
+    const retryAfterSec = Math.ceil(locked.retryAfterMs / 1000);
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({
+      error: 'Too many login attempts. Try again later.',
+      retryAfterSec,
+    });
+  }
+
+  const provided = req.body && req.body.password;
+  if (!timingSafeEqualString(provided, ADMIN_PASSWORD)) {
+    const after = adminLoginLockout.recordFailure(lockKey);
+    if (after.locked) {
+      const retryAfterSec = Math.ceil(after.retryAfterMs / 1000);
+      res.set('Retry-After', String(retryAfterSec));
+      return res.status(429).json({
+        error: 'Too many login attempts. Try again later.',
+        retryAfterSec,
+      });
+    }
+    return res.status(401).json({ error: 'Bad password' });
+  }
+
+  adminLoginLockout.recordSuccess(lockKey);
   const adminToken = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '4h' });
   res.json({ token: adminToken });
 });
@@ -2255,6 +2408,50 @@ app.post('/api/admin/set-access', (req, res) => {
   res.json({ success: true });
 });
 
+// Admin-gated tester invite (no password overwrite, no session JWT).
+app.post('/api/admin/create-special-tester', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    const days = capTrialDays(req.body?.days, TESTER_TRIAL_DAYS, MAX_ADMIN_TRIAL_DAYS);
+    const group = String(req.body?.group_name || '').trim().slice(0, 120) || null;
+    const trialEnd = trialEndIsoFromDays(days);
+
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted, group_name)
+        VALUES (?, 'trialing', ?, 1, ?)
+      `).run(email, trialEnd, group);
+    } else {
+      db.prepare(`
+        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1, group_name = COALESCE(?, group_name)
+        WHERE id = ?
+      `).run(trialEnd, group, user.id);
+    }
+    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    db.prepare('INSERT OR REPLACE INTO magic_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expires);
+    try {
+      await sendMagicLink(email, token, { isTester: true });
+    } catch (emailErr) {
+      console.error('create-special-tester magic email error (non-fatal):', emailErr);
+    }
+
+    res.json({
+      success: true,
+      email: user.email,
+      message: `Tester access (${days} days) ready for ${user.email}. Magic link emailed. Existing password was not changed.`,
+    });
+  } catch (err) {
+    console.error('create-special-tester error:', err);
+    res.status(500).json({ error: 'Could not create special tester.' });
+  }
+});
+
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
   if (!whopMembershipIsAllowed(payload)) {
     console.warn(
@@ -2287,8 +2484,8 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     } else {
       db.prepare(`
         INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
-        VALUES (?, ?, datetime('now', '+${TRIAL_DAYS} days'), ?, ?, ?)
-      `).run(email, mappedStatus, accessGranted, membershipId, memberId);
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(email, mappedStatus, trialEndIsoFromDays(TRIAL_DAYS), accessGranted, membershipId, memberId);
     }
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else {
@@ -2934,17 +3131,29 @@ try {
   console.warn('[content] failed to mount content routes', err && err.message);
 }
 
-app.listen(PORT, () => {
-  console.log(`\n📖 The Word in Context server running`);
-  console.log(`   → http://localhost:${PORT}`);
-  const keyLen = getXaiApiKey().length;
-  console.log(`   xAI key loaded: ${xaiKeyLooksConfigured() ? `yes (${keyLen} chars)` : (keyLen ? 'present but may be placeholder/invalid' : 'NO — add to .env')} (model: ${XAI_MODEL})`);
-  console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
-  console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
-  console.log(`   Bible API: using bible.helloao.org (free, no key)`);
-  console.log(`   Whop checkout: ${whopConfigured() ? 'configured' : 'NOT configured (set WHOP_CHECKOUT_URL_MONTHLY + WHOP_CHECKOUT_URL_YEARLY)'}`);
-  console.log(`   Whop webhook secret: ${process.env.WHOP_WEBHOOK_SECRET ? 'set' : 'missing (add WHOP_WEBHOOK_SECRET for membership activation)'}`);
-  console.log(`   Stripe (legacy): ${stripeConfigured() ? 'still configured' : 'off'}`);
-  console.log(`   Content Buffer: ${process.env.BUFFER_API_KEY ? 'key set' : 'BUFFER_API_KEY missing'}`);
-  console.log(`   App base URL: ${APP_BASE_URL}\n`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n📖 The Word in Context server running`);
+    console.log(`   → http://localhost:${PORT}`);
+    const keyLen = getXaiApiKey().length;
+    console.log(`   xAI key loaded: ${xaiKeyLooksConfigured() ? `yes (${keyLen} chars)` : (keyLen ? 'present but may be placeholder/invalid' : 'NO — add to .env')} (model: ${XAI_MODEL})`);
+    console.log(`   TTS: using only browser built-in system voices (window.speechSynthesis) — no server voices, no xAI voices`);
+    console.log(`   STT: disabled (browser webkitSpeechRecognition only for hands-free wake "John", barge-in, and transcripts)`);
+    console.log(`   Bible API: using bible.helloao.org (free, no key)`);
+    console.log(`   Whop checkout: ${whopConfigured() ? 'configured' : 'NOT configured (set WHOP_CHECKOUT_URL_MONTHLY + WHOP_CHECKOUT_URL_YEARLY)'}`);
+    console.log(`   Whop webhook secret: ${process.env.WHOP_WEBHOOK_SECRET ? 'set' : 'missing (add WHOP_WEBHOOK_SECRET for membership activation)'}`);
+    console.log(`   Stripe (legacy): ${stripeConfigured() ? 'still configured' : 'off'}`);
+    console.log(`   Content Buffer: ${process.env.BUFFER_API_KEY ? 'key set' : 'BUFFER_API_KEY missing'}`);
+    console.log(`   App base URL: ${APP_BASE_URL}\n`);
+  });
+}
+
+module.exports = {
+  app,
+  db,
+  adminLoginLockout,
+  testerSignupLimiter,
+  capTrialDays,
+  trialEndIsoFromDays,
+  UPSERT_TRIAL_USER_SQL,
+};
