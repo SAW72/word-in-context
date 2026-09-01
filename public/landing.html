@@ -913,6 +913,7 @@
         <form id="tester-signup-form" class="auth-form" style="max-width: 100%;">
           <input type="email" id="tester-email" class="auth-input" placeholder="Your email" required>
           <input type="password" id="tester-password" class="auth-input" placeholder="Choose password (min 8 chars)" required minlength="8">
+          <input type="text" id="tester-invite" class="auth-input" placeholder="Invite code" autocomplete="off" spellcheck="false">
           <button type="submit" class="btn" style="background:#555; color:white;">Create 14-day Tester Account</button>
         </form>
         <div id="tester-signup-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center; padding:10px; background:#f8f1e3; border-radius:8px;">
@@ -1089,6 +1090,14 @@
     // then immediately auto-logs the user in with a JWT and redirects to /app.
     // This matches the 7-day paid trial experience the user requested.
     const testerSignupForm = document.getElementById('tester-signup-form');
+    try {
+      const inviteFromUrl = new URLSearchParams(window.location.search || '').get('invite');
+      const inviteInput = document.getElementById('tester-invite');
+      if (inviteFromUrl && inviteInput) {
+        inviteInput.value = inviteFromUrl;
+        inviteInput.style.display = 'none';
+      }
+    } catch (e) {}
     if (testerSignupForm) {
       testerSignupForm.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -1100,26 +1109,19 @@
         if (successDiv) successDiv.style.display = 'none';
 
         try {
-          const { res, data } = await apiPost('/api/tester-signup', { email, password });
+          const inviteInput = document.getElementById('tester-invite');
+          let inviteToken = inviteInput ? inviteInput.value.trim() : '';
+          try {
+            const q = new URLSearchParams(window.location.search || '');
+            if (!inviteToken && q.get('invite')) inviteToken = q.get('invite');
+          } catch (e) {}
+          const { res, data } = await apiPost('/api/tester-signup', { email, password, inviteToken });
 
           if (res.ok) {
-            if (data.token) {
-              localStorage.setItem('auth_token', data.token);
-              localStorage.setItem('user_email', data.email || email);
-              if (successDiv) {
-                successDiv.innerHTML = `Account created. Logging you in...`;
-                successDiv.style.display = 'block';
-              }
-              setTimeout(() => {
-                window.location.href = '/app';
-              }, 550);
-            } else {
-              // Fallback (magic link only)
-              if (testerSignupForm) testerSignupForm.style.display = 'none';
-              if (successDiv) {
-                successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Check your email for the magic link or use the Log in button at the top.`;
-                successDiv.style.display = 'block';
-              }
+            if (testerSignupForm) testerSignupForm.style.display = 'none';
+            if (successDiv) {
+              successDiv.innerHTML = `Tester account created for <strong>${email}</strong>.<br>Use the Log in button at the top with your password, or check your email for a magic link.`;
+              successDiv.style.display = 'block';
             }
           } else {
             if (errDiv) {

@@ -180,12 +180,17 @@
   async function convertToMp4Server(inputBlob, onProgress) {
     onProgress && onProgress(0.15, 'Uploading for Facebook MP4 convert…');
     const ext = /mp4/i.test(inputBlob.type || '') ? 'mp4' : 'webm';
+    const headers = {
+      'Content-Type': inputBlob.type || 'application/octet-stream',
+      'X-Input-Ext': ext
+    };
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (token) headers.Authorization = 'Bearer ' + token;
+    } catch (e) {}
     const res = await fetch('/api/share-transcode', {
       method: 'POST',
-      headers: {
-        'Content-Type': inputBlob.type || 'application/octet-stream',
-        'X-Input-Ext': ext
-      },
+      headers,
       body: inputBlob
     });
     if (!res.ok) {

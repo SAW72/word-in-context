@@ -119,7 +119,7 @@ Built for careful, reverent study of the original text of Scripture.
 **Current implemented state (refined demo + admin + config)**:
 - Full Stripe trial (TRIAL_DAYS=7 by default, configurable via env) + separate no-card 14-day tester signup (TESTER_TRIAL_DAYS env) + magic-link login (Resend) + JWT sessions. UI and success pages use the configured values (no hard-coded 3).
 - "Try the App" button on landing goes to limited demo: **3 responses** (via `DEMO_LIMIT` env) with banner, disables, strong CTAs to trial. Server supports demo calls + IP throttle.
-- New **card-free tester path**: "Sign up for 14-day tester access (email only, no card)" form on landing. Calls `/api/tester-signup` → email-only, 14-day full access (TESTER_TRIAL_DAYS env), magic link, no Stripe/checkout. Access auto-expires. Normal signups still go through Stripe (TRIAL_DAYS=7 default, card collected for post-trial billing).
+- New **card-free tester path**: invite-gated "14-day tester access" form on landing. Calls `/api/tester-signup` with `TESTER_INVITE_TOKEN` (or an admin JWT). Creates a new account only — existing `password_hash` is never overwritten — and does not mint a session JWT. Magic link / password login afterward. Access auto-expires (`TESTER_TRIAL_DAYS`). Normal signups still go through checkout (`TRIAL_DAYS`, card collected for post-trial billing).
 - `/admin` page: enter `ADMIN_PASSWORD` → full user list + grant/revoke/manual_free toggles (no more curls).
 - `/api/config` for dynamic limits.
 - All privacy disclaimers, "John" wake word, live SBL Greek + WLC Hebrew, local voices priority, etc. are live.
@@ -227,7 +227,7 @@ app.post('/api/create-checkout', async (req, res) => {
 
 **Production prep notes (many already done in current code):**
 - `process.env.PORT || 8787` and trust proxy already in server.js
-- Lightweight demo IP throttle implemented (no extra deps); full `express-rate-limit` + helmet can be added later for extra safety.
+- `helmet` (CSP left custom so inline scripts still work) plus `express-rate-limit` on `/api/*`, with stricter caps on login, tester-signup, and share transcode/TTS.
 - Full auth + Stripe trial + admin controls live (no simple beta gate needed).
 - SQLite (`users.db` + better-sqlite3) is already the persistent store for accounts/trials (good for Render free disk).
 - .nvmrc + package.json "engines": {"node":"22.x"} to keep better-sqlite3 happy on Render.
