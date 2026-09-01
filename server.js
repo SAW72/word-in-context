@@ -36,15 +36,15 @@ const {
   MAX_CLIENT_TRIAL_DAYS,
   MAX_ADMIN_TRIAL_DAYS,
   UPSERT_TRIAL_USER_SQL,
-  UPSERT_TRIAL_USER_STRIPE_SQL,
-  UPDATE_TRIAL_END_SQL,
+  INSERT_PENDING_CHECKOUT_USER_SQL,
+  INSERT_PENDING_CHECKOUT_USER_STRIPE_SQL,
   timingSafeEqualString,
   resolveAuthSecrets,
   capTrialDays,
+  checkoutTrialDays,
   trialEndIsoFromDays,
-  passwordHashForUpsert,
-  shouldWritePasswordHash,
   inviteTokenMatches,
+  testerInviteFromRequest,
   createAttemptLockout,
   createFixedWindowLimiter,
   unspoofableClientIp,
@@ -1480,32 +1480,20 @@ async function sendMagicLink(email, token, options = {}) {
   }
 }
 
-async function upsertTrialCheckoutUser(email, password, effectiveTrialDays) {
+// Store credentials for a new checkout email only. Access + trial_end come from the
+// Whop/Stripe webhook after payment — never from client trialDays, never before pay.
+async function upsertPendingCheckoutUser(email, password) {
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (user) {
+    // Existing emails: no password_hash write (including filling a blank hash), no access grant.
+    return user;
+  }
   const passwordHash = await hashPassword(password);
-  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user && !passwordHash) {
+  if (!passwordHash) {
     throw Object.assign(new Error('Password must be at least 8 characters.'), { statusCode: 400 });
   }
-
-  const trialEnd = trialEndIsoFromDays(effectiveTrialDays);
-  const storedHash = passwordHashForUpsert(user, passwordHash);
-
-  if (!user) {
-    db.prepare(UPSERT_TRIAL_USER_SQL).run(email, trialEnd, storedHash);
-    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  } else {
-    if (shouldWritePasswordHash(user, passwordHash)) {
-      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
-    }
-    if (!user.trial_end) {
-      db.prepare(UPDATE_TRIAL_END_SQL).run(trialEnd, user.id);
-    }
-    if (!user.access_granted) {
-      db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
-    }
-    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  }
-  return user;
+  db.prepare(INSERT_PENDING_CHECKOUT_USER_SQL).run(email, passwordHash);
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 }
 
 // Create or get user + start configurable trial via Whop (preferred) or Stripe Checkout
@@ -1516,16 +1504,15 @@ app.post('/api/create-checkout', async (req, res) => {
       return res.status(503).json({ error: 'Payments are not configured. Add WHOP_CHECKOUT_URL or Stripe keys to your environment.' });
     }
 
-    const { email: rawEmail, password, trialDays: requestedTrialDays, billing } = req.body;
+    const { email: rawEmail, password, billing } = req.body || {};
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
-    const effectiveTrialDays = capTrialDays(requestedTrialDays, TRIAL_DAYS, MAX_CLIENT_TRIAL_DAYS);
-    const trialEnd = trialEndIsoFromDays(effectiveTrialDays);
+    const effectiveTrialDays = checkoutTrialDays(req.body?.trialDays, TRIAL_DAYS);
 
     if (provider === 'whop') {
       const billingCycle = String(billing || 'monthly').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
-      await upsertTrialCheckoutUser(email, password, effectiveTrialDays);
+      await upsertPendingCheckoutUser(email, password);
       return res.json({
         url: buildWhopCheckoutUrl(email, billingCycle),
         provider: 'whop',
@@ -1534,28 +1521,18 @@ app.post('/api/create-checkout', async (req, res) => {
       });
     }
 
-    const passwordHash = await hashPassword(password);
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user && !passwordHash) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-    }
-
     if (!user) {
+      const passwordHash = await hashPassword(password);
+      if (!passwordHash) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+      }
       const customer = await stripe.customers.create({ email });
-      db.prepare(UPSERT_TRIAL_USER_STRIPE_SQL).run(email, customer.id, trialEnd, passwordHash);
+      db.prepare(INSERT_PENDING_CHECKOUT_USER_STRIPE_SQL).run(email, customer.id, passwordHash);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
       const customerId = await ensureStripeCustomer(user, email);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (shouldWritePasswordHash(user, passwordHash)) {
-        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
-      }
-      if (!user.trial_end) {
-        db.prepare(UPDATE_TRIAL_END_SQL).run(trialEnd, user.id);
-      }
-      if (!user.access_granted) {
-        db.prepare('UPDATE users SET access_granted = 1 WHERE id = ?').run(user.id);
-      }
       user.stripe_customer_id = customerId;
     }
 
@@ -1595,7 +1572,7 @@ app.post('/api/tester-signup', async (req, res) => {
     }
 
     const adminOk = peekAdminAuth(req);
-    const providedInvite = req.body?.inviteToken || req.headers['x-tester-invite'];
+    const providedInvite = testerInviteFromRequest(req.body);
     if (!adminOk) {
       if (!TESTER_INVITE_TOKEN) {
         return res.status(403).json({ error: 'Tester signup is invite-only. Ask an admin for access.' });
@@ -2473,20 +2450,18 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const membershipId = payload?.id || null;
   const memberId = payload?.member?.id || null;
   const renewalEnd = payload?.renewal_period_end || null;
+  const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const nextTrialEnd = accessGranted
+    ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
+    : (renewalEnd || (user && user.trial_end) || null);
+
   if (!user) {
-    if (renewalEnd) {
-      db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(email, mappedStatus, renewalEnd, accessGranted, membershipId, memberId);
-    } else {
-      db.prepare(`
-        INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(email, mappedStatus, trialEndIsoFromDays(TRIAL_DAYS), accessGranted, membershipId, memberId);
-    }
+    db.prepare(`
+      INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else {
     db.prepare(`
@@ -2497,7 +2472,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
           whop_member_id = COALESCE(?, whop_member_id),
           trial_end = COALESCE(?, trial_end)
       WHERE id = ?
-    `).run(mappedStatus, accessGranted, membershipId, memberId, renewalEnd, user.id);
+    `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
@@ -2604,10 +2579,16 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
     UPDATE users
     SET status = 'trialing',
         access_granted = 1,
+        trial_end = COALESCE(trial_end, ?),
         stripe_customer_id = COALESCE(?, stripe_customer_id),
         stripe_subscription_id = COALESCE(?, stripe_subscription_id)
     WHERE id = ?
-  `).run(session.customer || null, subscriptionId || null, user.id);
+  `).run(
+    trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS)),
+    session.customer || null,
+    subscriptionId || null,
+    user.id
+  );
 
   user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
 
@@ -3156,4 +3137,6 @@ module.exports = {
   capTrialDays,
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
+  activateWhopMembership,
+  TRIAL_DAYS,
 };
