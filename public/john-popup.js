@@ -362,7 +362,7 @@
         <div class="john-popup-signup-cta" id="john-popup-signup-cta">
           <span id="john-popup-signup-text">Ready for unlimited study with John?</span>
           <a href="/#signup" id="john-popup-signup-primary">Start 7-day free trial</a>
-          <a href="/#signup" class="secondary" id="john-popup-signup-tester">Or 14-day tester (no card)</a>
+          <a href="/#signup" class="secondary" id="john-popup-signup-tester">Or 14-day tester (invite required)</a>
         </div>
         <div class="john-popup-input-row">
           <button type="button" class="john-popup-mic" id="john-popup-mic" aria-label="Speak your question">🎤</button>
@@ -644,14 +644,14 @@
   }
 
   function showSignupRequired() {
-    appendMessage('The full app requires a free account. Start a 7-day trial or 14-day tester access on the landing page, then log in.', 'assistant');
+    appendMessage('The full app requires a free account. Start a 7-day trial or invite-only 14-day tester access on the landing page, then log in.', 'assistant');
     setInputEnabled(false);
     setSignupCtaVisible(true);
     updateDemoStatus();
   }
 
   function showTeaserExhausted() {
-    appendMessage('That was your free preview for today. Start a 7-day free trial or create a 14-day tester account (no card) for unlimited hands-free study with John.', 'assistant');
+    appendMessage('That was your free preview for today. Start a 7-day free trial or create a 14-day tester account with an invite (no card) for unlimited hands-free study with John.', 'assistant');
     setInputEnabled(false);
     setSignupCtaVisible(true);
     updateDemoStatus();

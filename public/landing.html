@@ -321,6 +321,11 @@
       border: 1px solid #f0e6d2;
     }
 
+    .plan .btn {
+      line-height: 1.35;
+      white-space: normal;
+    }
+
     .plan.popular {
       border: 2px solid #c9a227;
       position: relative;
@@ -845,11 +850,11 @@
         <ul style="text-align:left; font-size:14px; line-height:1.8;">
           <li><strong>Read the entire Bible free</strong> — beautiful reader at /read</li>
           <li><strong>One free preview question</strong> on the landing page (try John before signup)</li>
-          <li><strong>Tester access (email signup)</strong>: 14 days full AI chat, no card, ends automatically</li>
+          <li><strong>Tester access (invite required)</strong>: 14 days full AI chat, no card, ends automatically</li>
           <li>Public Bible sources</li>
         </ul>
-        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Create 14-day tester account</a>
-        <small style="display:block; font-size:11px; opacity:0.7;">Testers: dedicated Sign Up &amp; Login form below (14 days, card-free, works for returning logins too).</small>
+        <a href="#signup" class="btn" style="width:100%; box-sizing:border-box; margin-bottom:6px;">Create tester account (invite required)</a>
+        <small style="display:block; font-size:11px; opacity:0.7;">Testers: invite code required. Dedicated form below (14 days, card-free). Returning testers log in at the top.</small>
       </div>
       <div class="plan popular">
         <h3>Pro</h3>
@@ -866,7 +871,7 @@
         <small style="display:block; margin-top:8px; opacity:0.7;">7-day trial then $4.99/mo. Cancel anytime.</small>
       </div>
     </div>
-    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the <strong>Tester Sign Up &amp; Login</strong> section below (supports both new signups and returning logins, no card, ends automatically after 14 days).</p>
+    <p style="text-align:center; margin-top:30px; font-size:13px; opacity:0.7;">Testers: use the invite-only form below (invite code required, no card, ends after 14 days). Returning testers can log in at the top.</p>
   </section>
 
   <section class="container" style="text-align:center; background:#fff; padding:40px 20px; border-radius:12px; margin:20px auto;">
@@ -877,8 +882,8 @@
   </section>
 
   <section id="signup" class="container">
-    <h2>Start your free trial or tester access</h2>
-    <p class="section-subtitle">Create your account below. You’ll log in afterwards using the button at the top of the page.</p>
+    <h2>Start your free trial or invite-only tester access</h2>
+    <p class="section-subtitle">Create a trial account below, or use an invite code for 14-day tester access. Then log in with the button at the top of the page.</p>
 
     <div class="signup-form">
 
@@ -909,11 +914,12 @@
 
       <!-- 14-day Tester (card-free) -->
       <div style="margin-top:22px; padding-top:18px; border-top:1px solid #e8d9c2;">
-        <p style="font-size:13.5px; margin-bottom:10px; text-align:center; font-weight:600;">14-day Tester access (no card)</p>
+        <p style="font-size:13.5px; margin-bottom:6px; text-align:center; font-weight:600;">14-day Tester access (invite required, no card)</p>
+        <p style="font-size:12px; opacity:0.75; margin:0 0 10px; text-align:center; line-height:1.4;">Invite code required — this is not an open signup.</p>
         <form id="tester-signup-form" class="auth-form" style="max-width: 100%;">
           <input type="email" id="tester-email" class="auth-input" placeholder="Your email" required>
           <input type="password" id="tester-password" class="auth-input" placeholder="Choose password (min 8 chars)" required minlength="8">
-          <input type="text" id="tester-invite" class="auth-input" placeholder="Invite code" autocomplete="off" spellcheck="false">
+          <input type="text" id="tester-invite" class="auth-input" placeholder="Invite code (required)" autocomplete="off" spellcheck="false" required aria-required="true" aria-label="Invite code (required)">
           <button type="submit" class="btn" style="background:#555; color:white;">Create 14-day Tester Account</button>
         </form>
         <div id="tester-signup-success" style="display:none; margin-top:10px; color:#2c3e50; font-size:13px; text-align:center; padding:10px; background:#f8f1e3; border-radius:8px;">
@@ -921,7 +927,7 @@
           Click the <strong>Log in</strong> button at the top of this page with the email + password you chose, or check your email for a magic link.
         </div>
         <div id="tester-signup-error" style="display:none; margin-top:6px; color:#c0392b; font-size:13px; text-align:center; font-weight:500;"></div>
-        <p style="font-size:11px; opacity:0.7; margin-top:8px; text-align:center;">Full access for 14 days. Ends automatically unless extended by us.</p>
+        <p style="font-size:11px; opacity:0.7; margin-top:8px; text-align:center;">Invite code required. Full access for 14 days. Ends automatically unless extended by us.</p>
       </div>
 
     </div>
@@ -1248,6 +1254,18 @@
     const normalDays = cfg.trialDays || 7;
     const trialBtn = document.querySelector('#trial-form button');
     if (trialBtn) trialBtn.textContent = `Start ${normalDays}-Day Free Trial (card required after)`;
+
+    // Invite gate is on in production; default required if config is missing (static file / stale cache).
+    const inviteRequired = cfg.testerSignupInviteRequired !== false;
+    const inviteInput = document.getElementById('tester-invite');
+    if (inviteInput && inviteRequired) {
+      inviteInput.required = true;
+      inviteInput.setAttribute('aria-required', 'true');
+      inviteInput.placeholder = 'Invite code (required)';
+      if (!inviteInput.getAttribute('aria-label')) {
+        inviteInput.setAttribute('aria-label', 'Invite code (required)');
+      }
+    }
 
     addPasswordToggles();
 
