@@ -1036,6 +1036,10 @@
       gap: 6px;
       white-space: nowrap;
     }
+    /* ID display:inline-flex would otherwise keep a [hidden] Record button visible. */
+    #session-record-btn[hidden] { display: none !important; }
+    /* html.ios is set in the head script (same iPhone/iPad/iPadOS UA as the recorder). */
+    html.ios #session-record-btn { display: none !important; }
     #session-record-btn:hover { background: #6e563c; }
     #session-record-btn.recording {
       background: #8b1e1e;

@@ -5,9 +5,9 @@
  * - Desktop Chrome/Edge: getDisplayMedia (this tab + tab audio for John’s voice) + optional
  *   mic. That path must stay unchanged. isSupported means display-capture + MediaRecorder.
  * - iOS/iPadOS (same isIOSDevice pattern as public/index.html): in-browser capture cannot
- *   record a real Q & A (the question plus John’s spoken answer). Restore the pre–PR #13
- *   quiet unsupported state: disable #session-record-btn and set a title — no Control
- *   Center / Screen Recording guide, no instructional “sign” popup, no modal.
+ *   record a real Q & A (the question plus John’s spoken answer). Hide #session-record-btn
+ *   so users never see a dead control — no Control Center / Screen Recording guide, no
+ *   instructional “sign” popup, no modal, no mic-only fallback.
  * - Do not touch the talk-to-John mic / SpeechRecognition path (that is a different control).
  *
  * Best experience (Chrome / Edge desktop):
@@ -61,12 +61,17 @@
 
   /**
    * Record stays enabled only where getDisplayMedia can capture this tab + tab audio.
-   * iPhone/iPad cannot record Q & A in-browser, so the control is disabled there.
+   * iPhone/iPad cannot record Q & A in-browser, so the control is hidden there.
    */
   function shouldEnableRecordButton(nav) {
     nav = nav || defaultNav();
     if (isIOSDevice(nav)) return false;
     return canUseDisplayMedia(nav);
+  }
+
+  /** Hide Record on iPhone / iPad / iPadOS desktop UA — not on desktop Chrome/Edge. */
+  function shouldHideRecordButton(nav) {
+    return isIOSDevice(nav);
   }
 
   function idleRecordButtonTitle() {
@@ -508,8 +513,8 @@
         return;
       }
 
-      // iPhone / iPad: quiet unsupported — disabled title only, no guide / modal.
-      if (ios || !shouldEnableRecordButton()) {
+      // iPhone / iPad: hidden — no guide / modal / mic-only fallback.
+      if (ios || shouldHideRecordButton() || !shouldEnableRecordButton()) {
         return;
       }
 
@@ -539,16 +544,31 @@
     }
 
     if (btn) {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggle();
-      });
-      if (!shouldEnableRecordButton()) {
+      if (shouldHideRecordButton()) {
+        btn.hidden = true;
         btn.disabled = true;
-        btn.title = unsupportedRecordButtonTitle();
+        if (typeof btn.setAttribute === 'function') {
+          btn.setAttribute('hidden', '');
+          btn.setAttribute('aria-hidden', 'true');
+        }
+        if (btn.style) btn.style.display = 'none';
       } else {
-        btn.disabled = false;
-        btn.title = idleRecordButtonTitle();
+        btn.hidden = false;
+        if (typeof btn.removeAttribute === 'function') {
+          btn.removeAttribute('hidden');
+          btn.removeAttribute('aria-hidden');
+        }
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          toggle();
+        });
+        if (!shouldEnableRecordButton()) {
+          btn.disabled = true;
+          btn.title = unsupportedRecordButtonTitle();
+        } else {
+          btn.disabled = false;
+          btn.title = idleRecordButtonTitle();
+        }
       }
     }
     if (stopBtn) {
@@ -565,6 +585,7 @@
     isIOSDevice,
     canUseDisplayMedia,
     shouldEnableRecordButton,
+    shouldHideRecordButton,
     idleRecordButtonTitle,
     unsupportedRecordButtonTitle,
     pickMimeType,
