@@ -233,7 +233,7 @@ const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincont
 // Bump when share-og.png changes so Facebook fetches a fresh thumbnail (it caches by image URL).
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
 // Bump when static JS/CSS/images change; keep ?v= in HTML/JS in sync (or set ASSET_VERSION env on Render).
-const ASSET_VERSION = process.env.ASSET_VERSION || '7';
+const ASSET_VERSION = process.env.ASSET_VERSION || '8';
 const CACHE_ONE_YEAR = 'public, max-age=31536000, immutable';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -1175,6 +1175,7 @@ function landingHtmlWithOgTags() {
   const configScript = `<script>window.__WIC_CONFIG__=${JSON.stringify({
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
+    testerSignupInviteRequired: true,
     demoLimit: DEMO_LIMIT,
     siteUrl: SHARE_SITE_URL,
     assetVersion: ASSET_VERSION,
@@ -2875,7 +2876,7 @@ app.post('/api/chat', (req, res, next) => {
     const remaining = landingTeaserRemaining(ip);
     if (remaining <= 0) {
       return res.status(429).json({
-        error: 'Your free preview question is used for today. Start a 7-day trial or 14-day tester account for unlimited study.',
+        error: 'Your free preview question is used for today. Start a 7-day trial or an invite-only 14-day tester account for unlimited study.',
         signupUrl: '/#signup',
         demoRemaining: 0,
         demoLimit: DEMO_LIMIT,

@@ -2022,7 +2022,7 @@
         <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
           <strong>Sign up to chat with John.</strong>
           Start a <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">7-day free trial</a> or
-          <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">14-day tester account</a> (no card).
+          <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">14-day tester account</a> (invite required, no card).
           Already signed up? Click <strong>Log in</strong> in the header. The <a href="/read" style="color:#664d03;font-weight:600;">Bible reader</a> is always free.
         </div>
 
@@ -2238,7 +2238,7 @@
 
       <div class="sources-modal-body">
         <p><strong>Live verse text is fetched when a resolvable reference is found</strong> (including chapter-only asks such as Psalm 136 or John 1). Topical answers may still use the model; use the Sources line under a reply to verify what was fetched.</p>
-        <p class="sources-modal-muted">AI chat requires a free account (7-day trial or 14-day tester access). The Bible reader at /read is always free.</p>
+        <p class="sources-modal-muted">AI chat requires a free account (7-day trial or invite-only 14-day tester access). The Bible reader at /read is always free.</p>
 
         <h4>Bible Scripture Text (English + Original Languages)</h4>
         <ul>
@@ -2542,7 +2542,7 @@
       const div = document.createElement('div');
       div.className = 'demo-signup-prompt';
       div.style.cssText = 'margin:12px 0; padding:10px 14px; background:#f8f1e3; border:1px solid #c9a227; border-radius:8px; font-size:13px;';
-      div.innerHTML = `Chat with John requires a free account. <a href="/#signup" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day trial</a> or create a 14-day tester account (no card). Already signed up? Click <strong>Log in</strong> above.`;
+      div.innerHTML = `Chat with John requires a free account. <a href="/#signup" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day trial</a> or create a 14-day tester account with an invite code (no card). Already signed up? Click <strong>Log in</strong> above.`;
       messagesContainer.appendChild(div);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
