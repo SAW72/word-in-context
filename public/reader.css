@@ -97,6 +97,28 @@ body.reader-immersive .reader-audio-bar {
   pointer-events: none;
 }
 
+.reader-intro {
+  margin: 0;
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.reader-intro h1 {
+  margin: 0 0 6px;
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.reader-intro p {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
 .reader-icon-btn {
   display: flex;
   align-items: center;

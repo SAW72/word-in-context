@@ -50,6 +50,10 @@ const {
   unspoofableClientIp,
   shareQuotaKey,
 } = require('./lib/security');
+const {
+  CACHE_ONE_YEAR,
+  applyCacheControl,
+} = require('./lib/http-cache');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -234,21 +238,7 @@ const SHARE_SITE_URL = (process.env.SHARE_SITE_URL || 'https://www.thewordincont
 const SHARE_OG_VERSION = process.env.SHARE_OG_VERSION || 'cross5';
 // Bump when static JS/CSS/images change; keep ?v= in HTML/JS in sync (or set ASSET_VERSION env on Render).
 const ASSET_VERSION = process.env.ASSET_VERSION || '8';
-const CACHE_ONE_YEAR = 'public, max-age=31536000, immutable';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
-function isLongCacheStaticPath(p) {
-  if (p === '/sw.js' || /\/sw\.js$/i.test(p)) return false;
-  if (/\.html?$/i.test(p)) return false;
-  if (/\/icons\//.test(p) || /\/audio\/generated\//.test(p) || /\/data\//.test(p)) return true;
-  return /\.(css|js|mjs|woff2?|png|jpe?g|gif|webp|svg|ico|mp3|webmanifest|json)$/i.test(p);
-}
-
-function setNoCacheHeaders(res) {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-}
 
 function shareOgImageUrl() {
   return `${SHARE_SITE_URL}/icons/share-og.png?v=${SHARE_OG_VERSION}`;
@@ -1137,16 +1127,11 @@ app.use((err, req, res, next) => {
 // In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
 // specific hosts, no unsafe-eval, etc.).
 app.use((req, res, next) => {
-  // Service worker must revalidate on each visit so updates apply; shell assets are cached by SW.
+  // Production marketing HTML is short-lived public cache; /app, /admin, and API stay no-store.
+  // Dev stays no-store so local HTML/JS changes show up without a hard reload.
+  applyCacheControl(res, req.path, { isProduction: IS_PRODUCTION });
   if (req.path === '/sw.js') {
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Service-Worker-Allowed', '/');
-  } else if (IS_PRODUCTION && isLongCacheStaticPath(req.path)) {
-    res.set('Cache-Control', CACHE_ONE_YEAR);
-  } else if (!IS_PRODUCTION) {
-    setNoCacheHeaders(res);
-  } else {
-    setNoCacheHeaders(res);
   }
 
   // Permissive for localhost dev only. Prevents our own code + common extension noise from
@@ -1181,7 +1166,6 @@ function landingHtmlWithOgTags() {
     assetVersion: ASSET_VERSION,
   })};window.__WIC_ASSET_V__=${JSON.stringify(ASSET_VERSION)};</script>`;
   const ogTags = `
-  <link rel="canonical" href="${SHARE_SITE_URL}/">
   <meta property="og:title" content="The Word in Context">
   <meta property="og:description" content="Voice-first offline Bible study with AI — understand Scripture in its original context.">
   <meta property="og:url" content="${SHARE_SITE_URL}/">
@@ -1230,6 +1214,7 @@ app.get('/', (req, res) => {
 
 // Serve the full chat app at /app (so landing can promote signups)
 app.get('/app', (req, res) => {
+  res.set('X-Robots-Tag', 'noindex, follow');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -1397,15 +1382,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   immutable: IS_PRODUCTION,
   setHeaders(res, filePath) {
     if (!IS_PRODUCTION) return;
-    if (path.basename(filePath) === 'sw.js') {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return;
-    }
-    if (isLongCacheStaticPath(filePath)) {
-      res.setHeader('Cache-Control', CACHE_ONE_YEAR);
-    } else {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    }
+    applyCacheControl(res, filePath, { isProduction: true });
   },
 }));
 

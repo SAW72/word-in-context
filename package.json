@@ -7,7 +7,7 @@
     "start": "node --max-old-space-size=384 --expose-gc server.js",
     "dev": "node --watch server.js",
     "test": "npm run test:refs && npm run test:security",
-    "test:refs": "node lib/scripture-refs.test.js && node lib/john-prompt.test.js && node lib/bible-fetch.test.js && node lib/chat-sources.test.js && node lib/voice-turn.test.js && node lib/chat-recorder.test.js && node content/brand.test.js && node content/video.test.js && node content/generator.test.js",
+    "test:refs": "node lib/scripture-refs.test.js && node lib/john-prompt.test.js && node lib/bible-fetch.test.js && node lib/chat-sources.test.js && node lib/voice-turn.test.js && node lib/chat-recorder.test.js && node lib/http-cache.test.js && node lib/seo.test.js && node content/brand.test.js && node content/video.test.js && node content/generator.test.js",
     "test:security": "node lib/security.test.js && node lib/auth-hardening.test.js",
     "audio:generate": "node scripts/generate-bible-audio.mjs",
     "audio:dry-run": "node scripts/generate-bible-audio.mjs --dry-run"
