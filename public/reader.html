@@ -6,6 +6,17 @@
   <meta name="description" content="Read the entire Bible free — beautiful typography, audio, bookmarks, and progress. The Word in Context.">
   <meta name="theme-color" content="#c9a227">
   <link rel="canonical" href="https://www.thewordincontext.org/read">
+  <meta property="og:title" content="Read the Bible — The Word in Context">
+  <meta property="og:description" content="Read the entire Bible free — beautiful typography, audio, bookmarks, and progress. The Word in Context.">
+  <meta property="og:url" content="https://www.thewordincontext.org/read">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="The Word in Context">
+  <meta property="og:image" content="https://www.thewordincontext.org/icons/share-og.png?v=cross5">
+  <meta property="og:image:alt" content="The Word in Context — voice-first Bible study">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Read the Bible — The Word in Context">
+  <meta name="twitter:description" content="Read the entire Bible free — beautiful typography, audio, bookmarks, and progress.">
+  <meta name="twitter:image" content="https://www.thewordincontext.org/icons/share-og.png?v=cross5">
   <title>Read the Bible — The Word in Context</title>
   <link rel="manifest" href="/manifest.webmanifest?v=2">
   <link rel="icon" href="/icons/icon.svg?v=2" type="image/svg+xml">
@@ -59,6 +70,25 @@
     }
     .reader-main { flex: 1; min-height: 0; }
     .reader-status { padding: 24px 16px; text-align: center; color: var(--text-soft); }
+    .reader-intro {
+      margin: 0;
+      padding: 12px 16px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-elevated);
+    }
+    .reader-intro h1 {
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+    .reader-intro p {
+      margin: 0;
+      max-width: 42rem;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      color: var(--text-soft);
+    }
   </style>
   <link rel="stylesheet" href="/reader.css?v=5" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="/reader.css?v=5"></noscript>
@@ -67,15 +97,11 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap"></noscript>
 </head>
 <body>
-  <noscript>
-    <h1>Read the Bible — The Word in Context</h1>
-    <p>Free Bible reader with beautiful typography, audio, bookmarks, and original-language study tools.</p>
-  </noscript>
   <div id="reader-app">
     <header class="reader-header" id="reader-header">
       <button type="button" class="reader-icon-btn" id="btn-nav" aria-label="Books and chapters">☰</button>
       <div class="reader-title-block">
-        <h1 class="reader-site-title">Read the Bible</h1>
+        <p class="reader-site-title">The Word in Context</p>
         <button type="button" id="btn-title" aria-label="Open navigation">
           <span class="reader-book-title" id="header-book">John</span>
           <p class="reader-chapter-sub" id="header-chapter">Chapter 1</p>
@@ -88,6 +114,11 @@
         <button type="button" class="reader-icon-btn" id="btn-settings" aria-label="Reading settings">⚙</button>
       </div>
     </header>
+
+    <section class="reader-intro" id="reader-intro">
+      <h1>Read the Bible</h1>
+      <p>Free public Bible reader — open any book and chapter with readable typography, chapter audio, bookmarks, and original-language study tools. No account required.</p>
+    </section>
 
     <div class="reader-continue" id="continue-wrap" hidden>
       <div class="reader-continue-card" id="continue-card" role="button" tabindex="0">
