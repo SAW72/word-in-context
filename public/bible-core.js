@@ -134,6 +134,21 @@
     return allBooks().find((b) => b.code === upper || b.name.toLowerCase() === q.toLowerCase()) || null;
   }
 
+  function nextChapterLocation(book, chapter) {
+    if (!book || !book.code) return null;
+    const ch = Number(chapter);
+    if (!Number.isFinite(ch) || ch < 1) return null;
+    const books = allBooks();
+    const current = books.find((b) => b.code === book.code) || book;
+    const total = Number(current.chapters) || 0;
+    if (ch < total) return { book: current, chapter: ch + 1 };
+    const idx = books.findIndex((b) => b.code === current.code);
+    if (idx >= 0 && idx < books.length - 1) {
+      return { book: books[idx + 1], chapter: 1 };
+    }
+    return null;
+  }
+
   function bibleContentPartText(part) {
     if (!part) return '';
     if (typeof part === 'string') return part;
@@ -396,6 +411,7 @@
     LANG_DEFAULT_TRANS,
     allBooks,
     findBook,
+    nextChapterLocation,
     parseChapterContent,
     getReadingLang,
     setReadingLang,

@@ -104,10 +104,9 @@
   function stopMp3() {
     detachProgress();
     if (!currentAudio) return;
-    currentAudio.pause();
-    currentAudio.removeAttribute('src');
-    currentAudio.load();
+    const audio = currentAudio;
     currentAudio = null;
+    retireAudio(audio);
   }
 
   function pauseMp3() {
@@ -127,10 +126,17 @@
     return !!(currentAudio && !currentAudio.paused && !currentAudio.ended);
   }
 
-  function playMp3(url, handlers) {
+  function retireAudio(audio) {
+    if (!audio) return;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+  }
+
+  function startCurrent(audio, handlers) {
     return new Promise((resolve, reject) => {
-      stopMp3();
-      const audio = new Audio(url);
       currentAudio = audio;
 
       if (handlers && typeof handlers.onTimeUpdate === 'function') {
@@ -165,6 +171,21 @@
     });
   }
 
+  function playMp3(url, handlers) {
+    stopMp3();
+    return startCurrent(new Audio(url), handlers);
+  }
+
+  // Start the next chapter from inside the previous chapter's ended event.
+  // play() has to run on that stack so phones keep the audio session.
+  function handoffMp3(audio, handlers) {
+    const previous = currentAudio;
+    detachProgress();
+    currentAudio = null;
+    if (previous && previous !== audio) retireAudio(previous);
+    return startCurrent(audio, handlers);
+  }
+
   global.AudioEngine = {
     PREGEN_PREFIX,
     HELLOAO_PREFIX,
@@ -187,6 +208,7 @@
     resumeMp3,
     isMp3Paused,
     isMp3Playing,
-    playMp3
+    playMp3,
+    handoffMp3
   };
 })(typeof window !== 'undefined' ? window : globalThis);

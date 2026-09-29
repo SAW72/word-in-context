@@ -137,7 +137,7 @@
     </main>
 
     <footer class="reader-audio-bar" id="audio-bar">
-      <button type="button" class="reader-audio-play" id="btn-audio-play" aria-label="Play chapter">▶</button>
+      <button type="button" class="reader-audio-play" id="btn-audio-play" aria-label="Play, and continue into the next chapter" title="Play, and continue into the next chapter">▶</button>
       <div class="reader-audio-info">
         <div class="reader-audio-title" id="audio-label">Listen to chapter</div>
         <div class="reader-audio-progress"><div class="reader-audio-progress-fill" id="audio-progress"></div></div>
@@ -166,12 +166,12 @@
     </div>
   </aside>
 
-  <script src="/bible-core.js?v=2"></script>
+  <script src="/bible-core.js?v=3"></script>
   <script src="/study-core.js?v=2"></script>
-  <script src="/audio-engine.js?v=2"></script>
+  <script src="/audio-engine.js?v=3"></script>
   <script src="/voice-picker.js?v=2"></script>
   <script src="/share-video.js?v=11"></script>
-  <script src="/reader.js?v=14"></script>
+  <script src="/reader.js?v=15"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});

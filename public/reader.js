@@ -17,6 +17,13 @@
   let audioPlaying = false;
   let audioPaused = false;
   let audioMode = 'browser';
+  let audioSession = false;
+  let audioAdvancing = false;
+  let audioGeneration = 0;
+  let playbackId = 0;
+  let loadToken = 0;
+  let prefetchedAudio = null;
+  let prefetchedUrl = '';
   let audioCatalogLoaded = false;
   let chapterAudioLinks = null;
   let chapterPayload = null;
@@ -1451,11 +1458,95 @@
     playSpeech(text, onEnd);
   }
 
+  function dropPrefetch() {
+    if (prefetchedAudio) {
+      prefetchedAudio.onended = null;
+      prefetchedAudio.onerror = null;
+      prefetchedAudio.removeAttribute('src');
+      prefetchedAudio.load();
+    }
+    prefetchedAudio = null;
+    prefetchedUrl = '';
+  }
+
+  function prefetchNextChapterAudio() {
+    dropPrefetch();
+    if (!audioSession || !useHelloaoAudio() || !AE || !currentBook) return;
+    const target = BC.nextChapterLocation(currentBook, currentChapter);
+    if (!target) return;
+    const url = AE.helloaoChapterUrl(
+      currentTranslationId(),
+      target.book.code,
+      target.chapter,
+      AE.helloaoSlug(getVoiceId()),
+      null
+    );
+    if (!url) return;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = url;
+    prefetchedAudio = audio;
+    prefetchedUrl = url;
+  }
+
+  function helloaoHandlers(sessionId) {
+    return {
+      onTimeUpdate: (current, duration) => {
+        if (sessionId !== playbackId) return;
+        els.audioProgress.style.width = `${(current / duration) * 100}%`;
+      },
+      onEnd: () => {
+        if (sessionId !== playbackId || !audioSession) return;
+        onHelloaoChapterEnded();
+      },
+      onError: () => {
+        if (sessionId !== playbackId) return;
+        els.audioLabel.textContent = 'Audio unavailable — try a system voice';
+        stopAudio();
+      }
+    };
+  }
+
+  function onHelloaoChapterEnded() {
+    if (!audioSession) return;
+    const target = BC.nextChapterLocation(currentBook, currentChapter);
+    if (!target || !AE) {
+      stopAudio();
+      if (els.audioLabel) els.audioLabel.textContent = 'End of the Bible';
+      return;
+    }
+    const url = AE.helloaoChapterUrl(
+      currentTranslationId(),
+      target.book.code,
+      target.chapter,
+      AE.helloaoSlug(getVoiceId()),
+      null
+    );
+    let nextAudio = null;
+    if (url && prefetchedAudio && prefetchedUrl === url) {
+      nextAudio = prefetchedAudio;
+      prefetchedAudio = null;
+      prefetchedUrl = '';
+    } else {
+      dropPrefetch();
+      if (url) nextAudio = new Audio(url);
+    }
+    if (!nextAudio) {
+      continueToNextChapter();
+      return;
+    }
+    const sessionId = playbackId;
+    AE.handoffMp3(nextAudio, helloaoHandlers(sessionId)).catch(() => {});
+    if (els.audioLabel) els.audioLabel.textContent = `${target.book.name} ${target.chapter}`;
+    if (els.btnPlay) els.btnPlay.textContent = '⏸';
+    continueToNextChapter({ keepMp3: true });
+  }
+
   function startHelloaoChapter() {
     const url = helloaoChapterUrl();
     if (!url || !AE) return false;
 
-    stopAudio();
+    haltPlayback();
     audioPlaying = true;
     audioPaused = false;
     audioMode = 'helloao-chapter';
@@ -1463,34 +1554,33 @@
     const narrator = AE.HELLOAO_BSB_NARRATORS.find((n) => n.slug === AE.helloaoSlug(getVoiceId()));
     els.audioLabel.textContent = narrator ? `${narrator.label} · chapter audio` : 'Playing chapter';
 
-    AE.playMp3(url, {
-      onTimeUpdate: (current, duration) => {
-        els.audioProgress.style.width = `${(current / duration) * 100}%`;
-      },
-      onEnd: () => {
-        stopAudio();
-        els.audioLabel.textContent = 'Chapter complete';
-      },
-      onError: () => {
-        els.audioLabel.textContent = 'Audio unavailable — try a system voice';
-        stopAudio();
-      }
-    }).catch(() => {});
-
+    AE.playMp3(url, helloaoHandlers(playbackId)).catch(() => {});
+    prefetchNextChapterAudio();
     return true;
   }
 
-  function stopAudio() {
+  function haltPlayback(opts) {
+    audioGeneration += 1;
     synth.cancel();
-    if (AE) AE.stopMp3();
+    if (!(opts && opts.keepMp3) && AE) AE.stopMp3();
     audioPlaying = false;
     audioPaused = false;
     audioMode = 'browser';
     audioQueue = [];
     audioIndex = 0;
-    els.btnPlay.textContent = '▶';
-    els.audioProgress.style.width = '0%';
+    if (!(opts && opts.keepMp3)) {
+      els.btnPlay.textContent = '▶';
+      els.audioProgress.style.width = '0%';
+    }
     document.querySelectorAll('.reader-verse.active-audio').forEach((el) => el.classList.remove('active-audio'));
+  }
+
+  function stopAudio() {
+    audioSession = false;
+    audioAdvancing = false;
+    playbackId += 1;
+    dropPrefetch();
+    haltPlayback();
   }
 
   function buildAudioQueue() {
@@ -1505,10 +1595,9 @@
   }
 
   function playNextInQueue() {
-    if (!audioPlaying || audioPaused) return;
+    if (!audioPlaying || audioPaused || !audioSession) return;
     if (audioIndex >= audioQueue.length) {
-      stopAudio();
-      els.audioLabel.textContent = 'Chapter complete';
+      continueToNextChapter();
       return;
     }
     const item = audioQueue[audioIndex];
@@ -1523,7 +1612,9 @@
       verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
+    const generation = audioGeneration;
     const onDone = () => {
+      if (generation !== audioGeneration || !audioSession) return;
       audioIndex += 1;
       playNextInQueue();
     };
@@ -1535,7 +1626,63 @@
     playSpeech(item.text, onDone);
   }
 
+  function beginChapterPlayback() {
+    if (!audioSession) return;
+    if (useHelloaoAudio() && startHelloaoChapter()) return;
+    haltPlayback();
+    buildAudioQueue();
+    if (!audioQueue.length) {
+      stopAudio();
+      if (els.audioLabel) els.audioLabel.textContent = 'Nothing to play in this chapter';
+      return;
+    }
+    audioPlaying = true;
+    audioPaused = false;
+    els.btnPlay.textContent = '⏸';
+    playNextInQueue();
+  }
+
+  async function continueToNextChapter(opts) {
+    const keepMp3 = !!(opts && opts.keepMp3);
+    if (!audioSession || audioAdvancing) return;
+    const target = BC.nextChapterLocation(currentBook, currentChapter);
+    if (!target) {
+      stopAudio();
+      if (els.audioLabel) els.audioLabel.textContent = 'End of the Bible';
+      return;
+    }
+    audioAdvancing = true;
+    if (els.btnPlay) els.btnPlay.textContent = '⏸';
+    if (els.audioLabel) els.audioLabel.textContent = `${target.book.name} ${target.chapter}`;
+    let loaded = false;
+    try {
+      loaded = await loadChapter(target.book, target.chapter, null, { keepPlaying: true, keepMp3 });
+    } catch (_) {
+      loaded = false;
+    }
+    audioAdvancing = false;
+    if (!audioSession) return;
+    if (!loaded) {
+      stopAudio();
+      return;
+    }
+    if (els.main) els.main.scrollTop = 0;
+    if (keepMp3) {
+      audioPlaying = true;
+      audioPaused = false;
+      audioMode = 'helloao-chapter';
+      if (els.btnPlay) els.btnPlay.textContent = '⏸';
+      prefetchNextChapterAudio();
+      return;
+    }
+    beginChapterPlayback();
+  }
+
   function toggleAudio() {
+    if (audioAdvancing) {
+      stopAudio();
+      return;
+    }
     if (audioPlaying && !audioPaused) {
       if ((audioMode === 'mp3' || audioMode === 'helloao-chapter') && AE) {
         AE.pauseMp3();
@@ -1557,14 +1704,8 @@
       return;
     }
     if (!chapterBlocks.length) return;
-
-    if (useHelloaoAudio() && startHelloaoChapter()) return;
-
-    stopAudio();
-    buildAudioQueue();
-    audioPlaying = true;
-    els.btnPlay.textContent = '⏸';
-    playNextInQueue();
+    audioSession = true;
+    beginChapterPlayback();
   }
 
   function applyReaderTypography() {
@@ -1576,11 +1717,14 @@
     prose.classList.add(`lh-${s.lineHeight || 'relaxed'}`);
   }
 
-  async function loadChapter(book, chapter, verse) {
+  async function loadChapter(book, chapter, verse, opts) {
+    const keepPlaying = !!(opts && opts.keepPlaying);
+    const token = ++loadToken;
     currentBook = book;
     currentChapter = chapter;
     clearVerseSelection();
-    stopAudio();
+    if (keepPlaying) haltPlayback({ keepMp3: !!(opts && opts.keepMp3) });
+    else stopAudio();
     BC.setRoute(book.code, chapter, verse);
     BC.saveProgress(book.code, chapter, verse || 1);
 
@@ -1590,7 +1734,9 @@
 
     try {
       await BC.loadTranslationsCatalog();
+      if (token !== loadToken) return false;
       const payload = await BC.fetchChapter(book.code, chapter);
+      if (token !== loadToken) return false;
       chapterPayload = payload;
       chapterBlocks = BC.parseChapterContent(payload.chapter.content);
       chapterAudioLinks = payload.chapterAudioLinks || null;
@@ -1740,8 +1886,11 @@
 
       els.continueWrap.hidden = true;
       updateAudioChrome();
+      return true;
     } catch (err) {
+      if (token !== loadToken) return false;
       els.scroll.innerHTML = `<div class="reader-status error">Could not load this chapter.<br><small>${escapeHtml(err.message || String(err))}</small></div>`;
+      return false;
     }
   }
 
