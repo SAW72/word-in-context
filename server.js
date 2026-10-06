@@ -1367,11 +1367,7 @@ app.get('/share/:id', (req, res) => {
     <div class="body">${safeBody}</div>
     <p class="cta"><a href="/app">Open The Word in Context →</a></p>
   </div>
-  ${isCrawler ? '' : `<script>
-    setTimeout(function () {
-      if (!document.hidden) window.location.replace('/app');
-    }, 4000);
-  </script>`}
+  ${isCrawler ? '' : '<script src="/share-redirect.js"></script>'}
 </body>
 </html>`);
 });
@@ -2762,12 +2758,14 @@ app.get('/api/whop-webhook', (req, res) => {
   });
 });
 
-// Simple success page after checkout (Whop redirect or Stripe session_id)
+// Simple success page after checkout (Whop redirect or Stripe session_id).
+// session_id and email are read in public/success-checkout.js from the query string.
 app.get('/success', (req, res) => {
-  const sessionId = String(req.query.session_id || '');
-  const email = normalizeEmail(req.query.email || '');
-  const provider = paymentProvider() || 'stripe';
+  const provider = paymentProvider() === 'whop' ? 'whop' : 'stripe';
   const paymentLabel = provider === 'whop' ? 'Whop' : 'Stripe';
+  const checkoutScript = provider === 'whop'
+    ? '<script src="/success-checkout.js" data-payment-provider="whop"></script>'
+    : '<script src="/success-checkout.js" data-payment-provider="stripe"></script>';
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
@@ -2777,65 +2775,23 @@ app.get('/success', (req, res) => {
     <p><a href="/app">Open the App</a></p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     <p><small>We will never sell your information. Chats stay in your browser only. Payments handled securely by ${paymentLabel}.</small></p>
-    <script>
-      const sessionId = ${JSON.stringify(sessionId)};
-      let email = ${JSON.stringify(email)};
-      const provider = ${JSON.stringify(provider)};
-      try {
-        if (!email) email = sessionStorage.getItem('wic_checkout_email') || '';
-      } catch (e) {}
-      const body = sessionId
-        ? { sessionId }
-        : (provider === 'whop' && email ? { email } : null);
-      if (body) {
-        fetch('/api/complete-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        })
-          .then(r => r.json())
-          .then(data => {
-            const el = document.getElementById('status');
-            if (el) el.textContent = data.message || data.error || 'Account ready. Check your email or log in with your password.';
-          })
-          .catch(() => {
-            const el = document.getElementById('status');
-            if (el) el.textContent = 'Account ready. Use the Log in button at the top with your email + password, or request a magic link.';
-          });
-      } else {
-        const el = document.getElementById('status');
-        if (el) el.textContent = 'Use the Log in button at the top with your email + password, or request a magic link.';
-      }
-    </script>
+    ${checkoutScript}
     </body></html>
   `);
 });
 
 
-// Login page that handles magic token and stores it for the app
+// Login page that handles magic token and stores it for the app.
+// The token is read in public/login-verify.js from the query string.
 app.get('/login', (req, res) => {
-  const token = req.query.token;
-  if (!token) {
+  if (!req.query.token) {
     return res.send('<p>No token provided. <a href="/">Go to The Word in Context</a></p>');
   }
   res.send(`
     <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
     <h2>The Word in Context</h2>
     <p>Verifying your login link...</p>
-    <script>
-      fetch('/api/verify-magic?token=${token}')
-        .then(r => r.json())
-        .then(data => {
-          if (data.token) {
-            localStorage.setItem('auth_token', data.token);
-            localStorage.setItem('user_email', data.email || '');
-            window.location.href = '/app';
-          } else {
-            document.body.innerHTML = '<p>Login failed: ' + (data.error || 'unknown') + '<br><a href="/">Return to site</a></p>';
-          }
-        })
-        .catch(() => document.body.innerHTML = '<p>Login error. Try the link again or <a href="/">return to the site</a>.</p>');
-    </script>
+    <script src="/login-verify.js"></script>
     </body></html>
   `);
 });
