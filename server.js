@@ -2431,10 +2431,6 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     );
     return null;
   }
-  if (!isAcceptableAccountEmail(email)) {
-    console.warn(`[whop:${source}] skipped membership ${payload?.id || '(unknown)'}: email failed the account email check`);
-    return null;
-  }
 
   const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
   const accessGranted = ['trialing', 'active'].includes(mappedStatus) ? 1 : 0;
@@ -2444,6 +2440,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user && !isAcceptableAccountEmail(email)) {
+    console.warn(`[whop:${source}] skipped membership ${payload?.id || '(unknown)'}: email failed the account email check`);
+    return null;
+  }
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2553,10 +2553,6 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
   const email = normalizeEmail(session.metadata?.email || session.customer_email);
   if (!email) {
     console.warn(`[stripe:${source}] checkout session ${session.id} missing email metadata`);
-    return null;
-  }
-  if (!isAcceptableAccountEmail(email)) {
-    console.warn(`[stripe:${source}] skipped checkout session ${session.id}: email failed the account email check`);
     return null;
   }
 
