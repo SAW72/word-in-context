@@ -17,8 +17,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      WIC_DB_PATH: ${{ runner.temp }}/wic-users.db
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -41,8 +39,11 @@ jobs:
 
       - name: Test
         run: npm test
+        env:
+          WIC_DB_PATH: ${{ runner.temp }}/wic-users.db
 
       - name: Smoke routes
         run: node scripts/smoke-routes.js
         env:
           SMOKE_PORT: "8791"
+          WIC_DB_PATH: ${{ runner.temp }}/wic-users.db
