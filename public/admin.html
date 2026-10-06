@@ -226,11 +226,68 @@
     document.getElementById('login-status').textContent = '';
   }
 
+  function fillAdminUserRow(tr, u) {
+    const emailTd = document.createElement('td');
+    emailTd.textContent = u.email || '';
+    tr.appendChild(emailTd);
+
+    const statusTd = document.createElement('td');
+    statusTd.textContent = u.status || '';
+    tr.appendChild(statusTd);
+
+    const trialTd = document.createElement('td');
+    trialTd.className = 'small';
+    trialTd.textContent = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : '-';
+    tr.appendChild(trialTd);
+
+    const groupTd = document.createElement('td');
+    if (u.group_name) {
+      const span = document.createElement('span');
+      span.className = 'small';
+      span.textContent = u.group_name;
+      groupTd.appendChild(span);
+    } else {
+      groupTd.textContent = '—';
+    }
+    tr.appendChild(groupTd);
+
+    const accessTd = document.createElement('td');
+    accessTd.textContent = u.access_granted ? '✅' : '❌';
+    tr.appendChild(accessTd);
+
+    const freeTd = document.createElement('td');
+    freeTd.textContent = u.manual_free ? '✅' : '—';
+    tr.appendChild(freeTd);
+
+    const createdTd = document.createElement('td');
+    createdTd.className = 'small';
+    createdTd.textContent = (u.created_at || '').slice(0, 10);
+    tr.appendChild(createdTd);
+
+    const actionsTd = document.createElement('td');
+    tr.appendChild(actionsTd);
+    return actionsTd;
+  }
+
+  function setTextParts(el, parts) {
+    if (!el) return;
+    el.replaceChildren();
+    parts.forEach((part) => {
+      if (part && typeof part === 'object') {
+        const node = document.createElement(part.tag);
+        node.textContent = part.text == null ? '' : String(part.text);
+        el.appendChild(node);
+      } else {
+        el.appendChild(document.createTextNode(part == null ? '' : String(part)));
+      }
+    });
+  }
+
   async function loadUsers() {
     const tbody = document.getElementById('users-tbody');
     const status = document.getElementById('admin-status');
     status.textContent = 'Loading users...';
-    tbody.innerHTML = '';
+    tbody.replaceChildren();
     try {
       const r = await fetch(base + '/api/admin/users', {
         headers: { 'Authorization': 'Bearer ' + adminToken }
@@ -242,21 +299,7 @@
         const tr = document.createElement('tr');
         tr.className = 'user-row';
         tr.dataset.email = u.email;
-        const trial = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : '-';
-        const acc = u.access_granted ? '✅' : '❌';
-        const free = u.manual_free ? '✅' : '—';
-        const group = u.group_name ? `<span class="small">${u.group_name}</span>` : '—';
-        tr.innerHTML = `
-          <td>${u.email}</td>
-          <td>${u.status || ''}</td>
-          <td class="small">${trial}</td>
-          <td>${group}</td>
-          <td>${acc}</td>
-          <td>${free}</td>
-          <td class="small">${(u.created_at || '').slice(0,10)}</td>
-          <td></td>
-        `;
-        const actionsTd = tr.querySelector('td:last-child');
+        const actionsTd = fillAdminUserRow(tr, u);
 
         const mkBtn = (text, cls, onClick) => {
           const b = document.createElement('button');
@@ -352,7 +395,13 @@
     }
     if (line) {
       const ok = settings.available ? 'READY' : 'OFF / unavailable';
-      line.innerHTML = `Status: <strong>${ok}</strong> · xAI key: ${settings.hasXaiKey ? 'yes' : 'NO'} · voice: <code>${voice.length > 24 ? voice.slice(0, 12) + '…' : voice}</code>`;
+      const shownVoice = voice.length > 24 ? voice.slice(0, 12) + '…' : voice;
+      setTextParts(line, [
+        'Status: ',
+        { tag: 'strong', text: ok },
+        ' · xAI key: ' + (settings.hasXaiKey ? 'yes' : 'NO') + ' · voice: ',
+        { tag: 'code', text: shownVoice },
+      ]);
     }
   }
 
@@ -419,7 +468,14 @@
     if (ra) ra.checked = !!settings.requireAuth;
     if (daily) daily.value = String(settings.dailyLimit ?? 8);
     if (line) {
-      line.innerHTML = `Status: <strong>${settings.available ? 'READY' : 'OFF'}</strong> · ~$${settings.approxCostUsd || 0.02}/image · model <code>${settings.model || 'grok-imagine-image'}</code>`;
+      setTextParts(line, [
+        'Status: ',
+        { tag: 'strong', text: settings.available ? 'READY' : 'OFF' },
+        ' · ~$',
+        { tag: 'span', text: String(settings.approxCostUsd || 0.02) },
+        '/image · model ',
+        { tag: 'code', text: settings.model || 'grok-imagine-image' },
+      ]);
     }
   }
 
