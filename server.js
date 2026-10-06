@@ -51,6 +51,7 @@ const {
   shareQuotaKey,
   isAcceptableAccountEmail,
 } = require('./lib/security');
+const { ENFORCED_CSP, REPORT_ONLY_CSP } = require('./lib/csp');
 const {
   CACHE_ONE_YEAR,
   applyCacheControl,
@@ -1119,14 +1120,9 @@ app.use((err, req, res, next) => {
 
 // Dev-friendly: prevent browser caching of the frontend so code changes (SR fixes, wake word, etc.)
 // are picked up without manual hard-reloads or cache clearing. Safe for localhost dev.
-// Also set a permissive CSP during dev so that:
-// - Our inline <style> and (previously) event handlers work without 'unsafe-inline' complaints
-// - Blob URLs for TTS audio playback are allowed
-// - Fetches to xAI, ElevenLabs, bible.helloao.org etc. are allowed
-// - Any 'eval' usage from browser APIs or (more commonly) injected extension scripts doesn't
-//   produce the "Content Security Policy of your site blocks the use of 'eval'" noise.
-// In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
-// specific hosts, no unsafe-eval, etc.).
+// The enforced CSP is unchanged (still permissive). A tightened candidate is sent as
+// Content-Security-Policy-Report-Only so the browser reports violations without blocking.
+// There is no CSP report collection endpoint in this app.
 app.use((req, res, next) => {
   // Production marketing HTML is short-lived public cache; /app, /admin, and API stay no-store.
   // Dev stays no-store so local HTML/JS changes show up without a hard reload.
@@ -1135,16 +1131,8 @@ app.use((req, res, next) => {
     res.set('Service-Worker-Allowed', '/');
   }
 
-  // Permissive for localhost dev only. Prevents our own code + common extension noise from
-  // triggering CSP violations in the console.
-  res.set('Content-Security-Policy',
-    "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http: ws: wss:; " +
-    "connect-src 'self' https: http: ws: wss:; " +
-    "media-src 'self' blob: data: https:; " +
-    "img-src 'self' data: https:; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
-    "style-src 'self' 'unsafe-inline' https:;"
-  );
+  res.set('Content-Security-Policy', ENFORCED_CSP);
+  res.set('Content-Security-Policy-Report-Only', REPORT_ONLY_CSP);
 
   next();
 });
@@ -1158,14 +1146,17 @@ function landingHtmlWithOgTags() {
   landingHtmlMtime = mtime;
   const raw = fs.readFileSync(landingPath, 'utf8');
   const ogImage = shareOgImageUrl();
-  const configScript = `<script>window.__WIC_CONFIG__=${JSON.stringify({
+  const configJson = JSON.stringify({
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
     testerSignupInviteRequired: true,
     demoLimit: DEMO_LIMIT,
     siteUrl: SHARE_SITE_URL,
     assetVersion: ASSET_VERSION,
-  })};window.__WIC_ASSET_V__=${JSON.stringify(ASSET_VERSION)};</script>`;
+  }).replace(/</g, '\\u003c');
+  // JSON, not JavaScript, so script-src does not need 'unsafe-inline' or a nonce.
+  // landing.js copies this onto window.__WIC_CONFIG__ / window.__WIC_ASSET_V__.
+  const configScript = `<script type="application/json" id="wic-config">${configJson}</script>`;
   const ogTags = `
   <meta property="og:title" content="The Word in Context">
   <meta property="og:description" content="Voice-first offline Bible study with AI — understand Scripture in its original context.">

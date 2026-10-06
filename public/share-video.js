@@ -63,10 +63,23 @@
       const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
       const ffmpeg = new FFmpeg();
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-      });
+      // ffmpeg.load() otherwise constructs a Worker from the CDN URL. Chrome rejects
+      // that cross-origin module worker before any WASM runs. A same-origin blob
+      // worker that imports the CDN module is the supported workaround; it needs
+      // worker-src blob: and https://cdn.jsdelivr.net, and wasm-unsafe-eval (not eval).
+      const classWorkerURL = URL.createObjectURL(new Blob(
+        ["import 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js';"],
+        { type: 'text/javascript' }
+      ));
+      try {
+        await ffmpeg.load({
+          classWorkerURL,
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+        });
+      } finally {
+        URL.revokeObjectURL(classWorkerURL);
+      }
       return ffmpeg;
     })().catch((err) => {
       _ffmpegPromise = null;
