@@ -35,19 +35,31 @@ function get(pathname) {
   });
 }
 
-async function waitForHealth() {
+function serverExitError(serverExit) {
+  if (!serverExit || !serverExit.exited) return null;
+  const why = serverExit.signal ? 'signal ' + serverExit.signal : 'code ' + serverExit.code;
+  return new Error('server exited (' + why + ')');
+}
+
+async function waitForHealth(serverExit) {
   const start = Date.now();
   let lastErr;
   while (Date.now() - start < 20000) {
+    const exited = serverExitError(serverExit);
+    if (exited) throw exited;
     try {
       const res = await get('/api/health');
       if (res.status === 200) return res;
       lastErr = new Error('health status ' + res.status);
     } catch (err) {
+      const died = serverExitError(serverExit);
+      if (died) throw died;
       lastErr = err;
     }
     await new Promise((r) => setTimeout(r, 250));
   }
+  const exited = serverExitError(serverExit);
+  if (exited) throw exited;
   throw lastErr || new Error('server did not become healthy');
 }
 
@@ -73,15 +85,21 @@ async function main() {
   });
 
   let logs = '';
+  const serverExit = { code: null, signal: null, exited: false };
   child.stdout.on('data', (d) => { logs += d.toString(); });
   child.stderr.on('data', (d) => { logs += d.toString(); });
+  child.on('exit', (code, signal) => {
+    serverExit.exited = true;
+    serverExit.code = code;
+    serverExit.signal = signal;
+  });
 
   const stop = () => {
     if (child.exitCode == null && !child.killed) child.kill('SIGTERM');
   };
 
   try {
-    const health = await waitForHealth();
+    const health = await waitForHealth(serverExit);
     const parsed = JSON.parse(health.body);
     if (parsed.ok !== true) throw new Error('health JSON ok is not true');
     assertStatus('/api/health', health, 200);
@@ -97,6 +115,21 @@ async function main() {
     const instructions = await get('/instructions.html');
     assertStatus('/instructions.html', instructions, 200);
     if (!/instructions/i.test(instructions.body)) throw new Error('/instructions.html body missing');
+
+    const appPage = await get('/app');
+    assertStatus('/app', appPage, 200);
+    if (!/<html/i.test(appPage.body)) throw new Error('/app did not return HTML');
+
+    const readPage = await get('/read');
+    assertStatus('/read', readPage, 200);
+    if (!/<html/i.test(readPage.body)) throw new Error('/read did not return HTML');
+
+    const admin = await get('/admin');
+    assertStatus('/admin', admin, 200);
+    if (!/<html/i.test(admin.body)) throw new Error('/admin did not return HTML');
+
+    const died = serverExitError(serverExit);
+    if (died) throw died;
 
     console.log('smoke routes passed');
   } catch (err) {
