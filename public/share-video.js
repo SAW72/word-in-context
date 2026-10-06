@@ -67,7 +67,7 @@
       // on the enforced policy) imports the CDN worker. Core and wasm stay on
       // jsDelivr so we do not need blob: in the enforced script-src.
       await ffmpeg.load({
-        classWorkerURL: new URL('/ffmpeg-worker.js', window.location.origin).href,
+        classWorkerURL: new URL('/ffmpeg-worker.js?v=1', window.location.origin).href,
         coreURL: `${baseURL}/ffmpeg-core.js`,
         wasmURL: `${baseURL}/ffmpeg-core.wasm`
       });
