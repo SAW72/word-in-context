@@ -126,6 +126,10 @@ async function shellResponse(request) {
 }
 
 async function navigationResponse(request) {
+  const path = new URL(request.url).pathname;
+  if (path === '/login' || path === '/success') {
+    return fetch(request);
+  }
   try {
     const network = await fetch(request);
     const cache = await caches.open(SHELL_CACHE);

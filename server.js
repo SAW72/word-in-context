@@ -49,6 +49,7 @@ const {
   createFixedWindowLimiter,
   unspoofableClientIp,
   shareQuotaKey,
+  isAcceptableAccountEmail,
 } = require('./lib/security');
 const {
   CACHE_ONE_YEAR,
@@ -1367,7 +1368,7 @@ app.get('/share/:id', (req, res) => {
     <div class="body">${safeBody}</div>
     <p class="cta"><a href="/app">Open The Word in Context →</a></p>
   </div>
-  ${isCrawler ? '' : '<script src="/share-redirect.js"></script>'}
+  ${isCrawler ? '' : '<script src="/share-redirect.js?v=1"></script>'}
 </body>
 </html>`);
 });
@@ -1392,8 +1393,9 @@ const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   try {
-    const { name, email, church } = req.body || {};
-    if (!email || !email.includes('@')) {
+    const { name, church } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
+    if (!isAcceptableAccountEmail(email)) {
       return res.status(400).json({ error: 'Valid email required' });
     }
 
@@ -1491,7 +1493,7 @@ app.post('/api/create-checkout', async (req, res) => {
 
     const { email: rawEmail, password, billing } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     const effectiveTrialDays = checkoutTrialDays(req.body?.trialDays, TRIAL_DAYS);
 
@@ -1569,7 +1571,7 @@ app.post('/api/tester-signup', async (req, res) => {
 
     const { email: rawEmail, password } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (user) {
@@ -1611,7 +1613,7 @@ app.post('/api/tester-signup', async (req, res) => {
 app.post('/api/request-login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) return res.status(404).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
@@ -2375,7 +2377,7 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
     const days = capTrialDays(req.body?.days, TESTER_TRIAL_DAYS, MAX_ADMIN_TRIAL_DAYS);
     const group = String(req.body?.group_name || '').trim().slice(0, 120) || null;
     const trialEnd = trialEndIsoFromDays(days);
@@ -2602,7 +2604,7 @@ app.post('/api/complete-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const email = normalizeEmail(rawEmail);
-      if (!email) return res.status(400).json({ error: 'email required' });
+      if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
 
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
@@ -2656,7 +2658,7 @@ app.post('/api/stripe-webhook', async (req, res) => {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error('Webhook signature error:', err);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).type('text/plain').send('Webhook Error');
   }
 
   try {
@@ -2696,9 +2698,9 @@ app.post('/api/whop-webhook', async (req, res) => {
   try {
     event = verifyWhopWebhook(req.body, req.headers);
   } catch (err) {
-    console.error('Whop webhook signature error:', err.message);
+    console.error('Whop webhook signature error:', err);
     console.error('[whop:webhook] tip: URL must be https://www.thewordincontext.org/api/whop-webhook (use www — bare domain redirects). Secret must match the Whop dashboard webhook secret exactly (usually starts with whsec_).');
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).type('text/plain').send('Webhook Error');
   }
 
   try {
@@ -2764,8 +2766,8 @@ app.get('/success', (req, res) => {
   const provider = paymentProvider() === 'whop' ? 'whop' : 'stripe';
   const paymentLabel = provider === 'whop' ? 'Whop' : 'Stripe';
   const checkoutScript = provider === 'whop'
-    ? '<script src="/success-checkout.js" data-payment-provider="whop"></script>'
-    : '<script src="/success-checkout.js" data-payment-provider="stripe"></script>';
+    ? '<script src="/success-checkout.js?v=1" data-payment-provider="whop"></script>'
+    : '<script src="/success-checkout.js?v=1" data-payment-provider="stripe"></script>';
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
@@ -2791,7 +2793,7 @@ app.get('/login', (req, res) => {
     <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
     <h2>The Word in Context</h2>
     <p>Verifying your login link...</p>
-    <script src="/login-verify.js"></script>
+    <script src="/login-verify.js?v=1"></script>
     </body></html>
   `);
 });
