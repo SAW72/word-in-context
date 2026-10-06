@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # package.json has no build script today. Run one if it is added later.
+      - name: Build if present
+        run: |
+          if node -e "const s=require('./package.json').scripts||{}; process.exit(s.build ? 0 : 2)"; then
+            npm run build
+          else
+            echo "No build script in package.json"
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Smoke routes
+        run: node scripts/smoke-routes.js
+        env:
+          SMOKE_PORT: "8791"
