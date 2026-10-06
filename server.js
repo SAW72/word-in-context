@@ -1613,7 +1613,7 @@ app.post('/api/tester-signup', async (req, res) => {
 app.post('/api/request-login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Email required' });
+    if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) return res.status(404).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
@@ -2431,6 +2431,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     );
     return null;
   }
+  if (!isAcceptableAccountEmail(email)) {
+    console.warn(`[whop:${source}] skipped membership ${payload?.id || '(unknown)'}: email failed the account email check`);
+    return null;
+  }
 
   const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
   const accessGranted = ['trialing', 'active'].includes(mappedStatus) ? 1 : 0;
@@ -2551,6 +2555,10 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
     console.warn(`[stripe:${source}] checkout session ${session.id} missing email metadata`);
     return null;
   }
+  if (!isAcceptableAccountEmail(email)) {
+    console.warn(`[stripe:${source}] skipped checkout session ${session.id}: email failed the account email check`);
+    return null;
+  }
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!user && session.customer && stripe) {
@@ -2604,7 +2612,7 @@ app.post('/api/complete-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const email = normalizeEmail(rawEmail);
-      if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
+      if (!email) return res.status(400).json({ error: 'email required' });
 
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
@@ -3085,5 +3093,6 @@ module.exports = {
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
   activateWhopMembership,
+  activateStripeCheckoutSession,
   TRIAL_DAYS,
 };
