@@ -1613,7 +1613,7 @@ app.post('/api/tester-signup', async (req, res) => {
 app.post('/api/request-login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Email required' });
+    if (!email) return res.status(400).json({ error: 'Email required' });
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) return res.status(404).json({ error: 'No account with that email. Use the trial form on the landing or the tester signup (no card) below.' });
@@ -2440,6 +2440,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user && !isAcceptableAccountEmail(email)) {
+    console.warn(`[whop:${source}] skipped membership ${payload?.id || '(unknown)'}: email failed the account email check`);
+    return null;
+  }
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2604,7 +2608,7 @@ app.post('/api/complete-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const email = normalizeEmail(rawEmail);
-      if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
+      if (!email) return res.status(400).json({ error: 'email required' });
 
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
@@ -3085,5 +3089,6 @@ module.exports = {
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
   activateWhopMembership,
+  activateStripeCheckoutSession,
   TRIAL_DAYS,
 };
