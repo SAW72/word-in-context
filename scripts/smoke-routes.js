@@ -6,6 +6,7 @@
 'use strict';
 
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -78,6 +79,7 @@ async function main() {
       HOME: process.env.HOME || '',
       NODE_ENV: 'test',
       PORT: String(port),
+      WIC_DB_PATH: process.env.WIC_DB_PATH || path.join(os.tmpdir(), `wic-smoke-${process.pid}.db`),
       JWT_SECRET: 'ci-smoke-jwt-secret-not-a-real-secret-32',
       ADMIN_PASSWORD: 'ci-smoke-admin-password',
     },
@@ -127,6 +129,12 @@ async function main() {
     const admin = await get('/admin');
     assertStatus('/admin', admin, 200);
     if (!/<html/i.test(admin.body)) throw new Error('/admin did not return HTML');
+
+    const adminUsers = await get('/api/admin/users');
+    assertStatus('/api/admin/users', adminUsers, 401);
+    let adminJson = null;
+    try { adminJson = JSON.parse(adminUsers.body); } catch (e) {}
+    if (!adminJson || !adminJson.error) throw new Error('/api/admin/users did not return an error');
 
     const died = serverExitError(serverExit);
     if (died) throw died;
