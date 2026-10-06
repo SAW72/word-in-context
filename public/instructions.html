@@ -25,15 +25,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2">
   <link rel="stylesheet" href="/pwa.css?v=2">
   <title>Help &amp; instructions — The Word in Context</title>
-  <script>
-    (function () {
-      try {
-        if (localStorage.getItem('dark_mode') === 'true') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-      } catch (e) {}
-    })();
-  </script>
+  <script src="/boot-theme.js?v=1" data-boot="theme"></script>
   <style>
     :root {
       --bg-body: #f5e8d3;
@@ -474,7 +466,7 @@
   <!-- Login Modal -->
   <div id="login-modal">
     <div class="modal-content">
-      <button type="button" onclick="closeLoginModal()" style="position:absolute; top:8px; right:12px; background:none; border:none; font-size:24px; cursor:pointer; line-height:1; color:var(--text-muted); padding:4px;">&times;</button>
+      <button type="button" id="login-modal-close" style="position:absolute; top:8px; right:12px; background:none; border:none; font-size:24px; cursor:pointer; line-height:1; color:var(--text-muted); padding:4px;">&times;</button>
       <div style="text-align:center; margin-bottom:14px;">
         <span style="font-size:22px; color:#c9a227;">📖</span>
         <span class="cross" aria-hidden="true" style="margin-left:4px;"></span>
@@ -497,136 +489,7 @@
   </div>
 
   <script src="/auth-api.js?v=2"></script>
-  <script>
-    function isDarkMode() {
-      return localStorage.getItem('dark_mode') === 'true';
-    }
-
-    function applyDarkMode(enabled) {
-      document.documentElement.setAttribute('data-theme', enabled ? 'dark' : 'light');
-      localStorage.setItem('dark_mode', enabled ? 'true' : 'false');
-      const btn = document.getElementById('dark-mode-btn');
-      if (btn) btn.textContent = enabled ? '☀️' : '🌙';
-      const metaTheme = document.querySelector('meta[name="theme-color"]');
-      if (metaTheme) metaTheme.setAttribute('content', enabled ? '#0f1419' : '#2c3e50');
-    }
-
-    function initDarkMode() {
-      applyDarkMode(isDarkMode());
-      const btn = document.getElementById('dark-mode-btn');
-      if (btn) btn.addEventListener('click', () => applyDarkMode(!isDarkMode()));
-    }
-
-    function showLoginModal() {
-      const modal = document.getElementById('login-modal');
-      if (modal) {
-        modal.style.display = 'flex';
-        const emailInput = document.getElementById('modal-login-email');
-        if (emailInput) setTimeout(() => emailInput.focus(), 50);
-        setTimeout(addPasswordToggles, 50);
-      }
-    }
-
-    function closeLoginModal() {
-      const modal = document.getElementById('login-modal');
-      if (modal) modal.style.display = 'none';
-      const err = document.getElementById('modal-login-error');
-      const suc = document.getElementById('modal-login-success');
-      if (err) err.style.display = 'none';
-      if (suc) suc.style.display = 'none';
-    }
-
-    function addPasswordToggles() {
-      document.querySelectorAll('input[type="password"]').forEach(input => {
-        if (input.parentElement && input.parentElement.classList.contains('password-wrapper')) return;
-        const wrapper = document.createElement('span');
-        wrapper.className = 'password-wrapper';
-        input.parentNode.insertBefore(wrapper, input);
-        wrapper.appendChild(input);
-        const toggle = document.createElement('span');
-        toggle.className = 'password-toggle';
-        toggle.textContent = '🙈';
-        toggle.setAttribute('aria-label', 'Show password');
-        wrapper.appendChild(toggle);
-        toggle.addEventListener('click', () => {
-          if (input.type === 'password') {
-            input.type = 'text';
-            toggle.textContent = '👁';
-          } else {
-            input.type = 'password';
-            toggle.textContent = '🙈';
-          }
-        });
-      });
-    }
-
-    document.getElementById('login-btn')?.addEventListener('click', showLoginModal);
-
-    document.getElementById('modal-login-form')?.addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('modal-login-email').value;
-      const password = document.getElementById('modal-login-password').value;
-      const errDiv = document.getElementById('modal-login-error');
-      const successDiv = document.getElementById('modal-login-success');
-      if (errDiv) errDiv.style.display = 'none';
-      if (successDiv) successDiv.style.display = 'none';
-      try {
-        const { res, data } = await apiPost('/api/login', { email, password });
-        if (res.ok && data.token) {
-          localStorage.setItem('auth_token', data.token);
-          localStorage.setItem('user_email', data.email || email);
-          if (successDiv) {
-            successDiv.textContent = 'Logged in! Redirecting to the app...';
-            successDiv.style.display = 'block';
-          }
-          setTimeout(() => { window.location.href = '/app'; }, 550);
-        } else {
-          const errText = (data && data.error) || 'Login failed. Check email/password or use magic link.';
-          if (errDiv) {
-            errDiv.textContent = errText;
-            errDiv.style.display = 'block';
-          }
-        }
-      } catch (err) {
-        if (errDiv) {
-          errDiv.textContent = err.message || 'Network error. Please try again later.';
-          errDiv.style.display = 'block';
-        }
-      }
-    });
-
-    document.getElementById('modal-magic-link')?.addEventListener('click', async function(e) {
-      e.preventDefault();
-      const email = document.getElementById('modal-login-email')?.value.trim();
-      const errDiv = document.getElementById('modal-login-error');
-      const successDiv = document.getElementById('modal-login-success');
-      if (errDiv) errDiv.style.display = 'none';
-      if (successDiv) successDiv.style.display = 'none';
-      if (!email) { alert('Enter your email first.'); return; }
-      try {
-        const { res, data } = await apiPost('/api/request-login', { email });
-        if (res.ok && successDiv) {
-          successDiv.textContent = data.message || 'Check your email for the magic login link.';
-          successDiv.style.display = 'block';
-        } else if (errDiv) {
-          errDiv.textContent = (data && data.error) || 'Could not send link.';
-          errDiv.style.display = 'block';
-        }
-      } catch (err) {
-        if (errDiv) {
-          errDiv.textContent = err.message || 'Network error.';
-          errDiv.style.display = 'block';
-        }
-      }
-    });
-
-    document.getElementById('login-modal')?.addEventListener('click', function(e) {
-      if (e.target === this) closeLoginModal();
-    });
-
-    initDarkMode();
-    addPasswordToggles();
-  </script>
+  <script src="/instructions.js?v=1"></script>
   <script src="/john-popup.js?v=7" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>

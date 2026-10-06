@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-68';
+const CACHE_VERSION = 'wic-pwa-70';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -13,7 +13,14 @@ const SHELL_URLS = [
   '/reader.html',
   `/reader.css?v=5`,
   `/reader.js?v=15`,
-  `/share-video.js?v=11`,
+  `/share-video.js?v=13`,
+  '/ffmpeg-worker.js?v=1',
+  `/boot-theme.js?v=1`,
+  `/app.js?v=1`,
+  `/landing.js?v=1`,
+  `/instructions.js?v=1`,
+  `/admin.js?v=1`,
+  `/reader-boot.js?v=1`,
   `/audio-engine.js?v=3`,
   `/voice-picker.js?v=2`,
   `/study-core.js?v=2`,
@@ -126,6 +133,10 @@ async function shellResponse(request) {
 }
 
 async function navigationResponse(request) {
+  const path = new URL(request.url).pathname;
+  if (path === '/login' || path === '/success') {
+    return fetch(request);
+  }
   try {
     const network = await fetch(request);
     const cache = await caches.open(SHELL_CACHE);

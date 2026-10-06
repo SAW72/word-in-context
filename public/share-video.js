@@ -60,12 +60,16 @@
     _ffmpegPromise = (async () => {
       onProgress && onProgress(0.05, 'Loading MP4 converter (one-time)…');
       const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm');
-      const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
       const ffmpeg = new FFmpeg();
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+      // ffmpeg.load() otherwise starts a Worker at the CDN URL. Chrome refuses that
+      // cross-origin module worker. A same-origin module worker (script-src 'self'
+      // on the enforced policy) imports the CDN worker. Core and wasm stay on
+      // jsDelivr so we do not need blob: in the enforced script-src.
       await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+        classWorkerURL: new URL('/ffmpeg-worker.js?v=1', window.location.origin).href,
+        coreURL: `${baseURL}/ffmpeg-core.js`,
+        wasmURL: `${baseURL}/ffmpeg-core.wasm`
       });
       return ffmpeg;
     })().catch((err) => {

@@ -49,7 +49,9 @@ const {
   createFixedWindowLimiter,
   unspoofableClientIp,
   shareQuotaKey,
+  isAcceptableAccountEmail,
 } = require('./lib/security');
+const { ENFORCED_CSP, REPORT_ONLY_CSP } = require('./lib/csp');
 const {
   CACHE_ONE_YEAR,
   applyCacheControl,
@@ -1118,14 +1120,9 @@ app.use((err, req, res, next) => {
 
 // Dev-friendly: prevent browser caching of the frontend so code changes (SR fixes, wake word, etc.)
 // are picked up without manual hard-reloads or cache clearing. Safe for localhost dev.
-// Also set a permissive CSP during dev so that:
-// - Our inline <style> and (previously) event handlers work without 'unsafe-inline' complaints
-// - Blob URLs for TTS audio playback are allowed
-// - Fetches to xAI, ElevenLabs, bible.helloao.org etc. are allowed
-// - Any 'eval' usage from browser APIs or (more commonly) injected extension scripts doesn't
-//   produce the "Content Security Policy of your site blocks the use of 'eval'" noise.
-// In a real production SaaS deployment you would tighten this significantly (nonces, hashes,
-// specific hosts, no unsafe-eval, etc.).
+// The enforced CSP is unchanged (still permissive). A tightened candidate is sent as
+// Content-Security-Policy-Report-Only so the browser reports violations without blocking.
+// There is no CSP report collection endpoint in this app.
 app.use((req, res, next) => {
   // Production marketing HTML is short-lived public cache; /app, /admin, and API stay no-store.
   // Dev stays no-store so local HTML/JS changes show up without a hard reload.
@@ -1134,16 +1131,8 @@ app.use((req, res, next) => {
     res.set('Service-Worker-Allowed', '/');
   }
 
-  // Permissive for localhost dev only. Prevents our own code + common extension noise from
-  // triggering CSP violations in the console.
-  res.set('Content-Security-Policy',
-    "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http: ws: wss:; " +
-    "connect-src 'self' https: http: ws: wss:; " +
-    "media-src 'self' blob: data: https:; " +
-    "img-src 'self' data: https:; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
-    "style-src 'self' 'unsafe-inline' https:;"
-  );
+  res.set('Content-Security-Policy', ENFORCED_CSP);
+  res.set('Content-Security-Policy-Report-Only', REPORT_ONLY_CSP);
 
   next();
 });
@@ -1157,14 +1146,17 @@ function landingHtmlWithOgTags() {
   landingHtmlMtime = mtime;
   const raw = fs.readFileSync(landingPath, 'utf8');
   const ogImage = shareOgImageUrl();
-  const configScript = `<script>window.__WIC_CONFIG__=${JSON.stringify({
+  const configJson = JSON.stringify({
     trialDays: TRIAL_DAYS,
     testerTrialDays: TESTER_TRIAL_DAYS,
     testerSignupInviteRequired: true,
     demoLimit: DEMO_LIMIT,
     siteUrl: SHARE_SITE_URL,
     assetVersion: ASSET_VERSION,
-  })};window.__WIC_ASSET_V__=${JSON.stringify(ASSET_VERSION)};</script>`;
+  }).replace(/</g, '\\u003c');
+  // JSON, not JavaScript, so script-src does not need 'unsafe-inline' or a nonce.
+  // landing.js copies this onto window.__WIC_CONFIG__ / window.__WIC_ASSET_V__.
+  const configScript = `<script type="application/json" id="wic-config">${configJson}</script>`;
   const ogTags = `
   <meta property="og:title" content="The Word in Context">
   <meta property="og:description" content="Voice-first offline Bible study with AI — understand Scripture in its original context.">
@@ -1367,7 +1359,7 @@ app.get('/share/:id', (req, res) => {
     <div class="body">${safeBody}</div>
     <p class="cta"><a href="/app">Open The Word in Context →</a></p>
   </div>
-  ${isCrawler ? '' : '<script src="/share-redirect.js"></script>'}
+  ${isCrawler ? '' : '<script src="/share-redirect.js?v=1"></script>'}
 </body>
 </html>`);
 });
@@ -1392,8 +1384,9 @@ const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   try {
-    const { name, email, church } = req.body || {};
-    if (!email || !email.includes('@')) {
+    const { name, church } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
+    if (!isAcceptableAccountEmail(email)) {
       return res.status(400).json({ error: 'Valid email required' });
     }
 
@@ -1491,7 +1484,7 @@ app.post('/api/create-checkout', async (req, res) => {
 
     const { email: rawEmail, password, billing } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     const effectiveTrialDays = checkoutTrialDays(req.body?.trialDays, TRIAL_DAYS);
 
@@ -1569,7 +1562,7 @@ app.post('/api/tester-signup', async (req, res) => {
 
     const { email: rawEmail, password } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (user) {
@@ -2375,7 +2368,7 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
     const days = capTrialDays(req.body?.days, TESTER_TRIAL_DAYS, MAX_ADMIN_TRIAL_DAYS);
     const group = String(req.body?.group_name || '').trim().slice(0, 120) || null;
     const trialEnd = trialEndIsoFromDays(days);
@@ -2438,6 +2431,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user && !isAcceptableAccountEmail(email)) {
+    console.warn(`[whop:${source}] skipped membership ${payload?.id || '(unknown)'}: email failed the account email check`);
+    return null;
+  }
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2656,7 +2653,7 @@ app.post('/api/stripe-webhook', async (req, res) => {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error('Webhook signature error:', err);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).type('text/plain').send('Webhook Error');
   }
 
   try {
@@ -2696,9 +2693,9 @@ app.post('/api/whop-webhook', async (req, res) => {
   try {
     event = verifyWhopWebhook(req.body, req.headers);
   } catch (err) {
-    console.error('Whop webhook signature error:', err.message);
+    console.error('Whop webhook signature error:', err);
     console.error('[whop:webhook] tip: URL must be https://www.thewordincontext.org/api/whop-webhook (use www — bare domain redirects). Secret must match the Whop dashboard webhook secret exactly (usually starts with whsec_).');
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).type('text/plain').send('Webhook Error');
   }
 
   try {
@@ -2764,8 +2761,8 @@ app.get('/success', (req, res) => {
   const provider = paymentProvider() === 'whop' ? 'whop' : 'stripe';
   const paymentLabel = provider === 'whop' ? 'Whop' : 'Stripe';
   const checkoutScript = provider === 'whop'
-    ? '<script src="/success-checkout.js" data-payment-provider="whop"></script>'
-    : '<script src="/success-checkout.js" data-payment-provider="stripe"></script>';
+    ? '<script src="/success-checkout.js?v=1" data-payment-provider="whop"></script>'
+    : '<script src="/success-checkout.js?v=1" data-payment-provider="stripe"></script>';
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
@@ -2791,7 +2788,7 @@ app.get('/login', (req, res) => {
     <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
     <h2>The Word in Context</h2>
     <p>Verifying your login link...</p>
-    <script src="/login-verify.js"></script>
+    <script src="/login-verify.js?v=1"></script>
     </body></html>
   `);
 });
@@ -3083,5 +3080,6 @@ module.exports = {
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
   activateWhopMembership,
+  activateStripeCheckoutSession,
   TRIAL_DAYS,
 };
