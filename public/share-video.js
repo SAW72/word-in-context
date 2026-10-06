@@ -60,26 +60,17 @@
     _ffmpegPromise = (async () => {
       onProgress && onProgress(0.05, 'Loading MP4 converter (one-time)…');
       const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm');
-      const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm');
       const ffmpeg = new FFmpeg();
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-      // ffmpeg.load() otherwise constructs a Worker from the CDN URL. Chrome rejects
-      // that cross-origin module worker before any WASM runs. A same-origin blob
-      // worker that imports the CDN module is the supported workaround; it needs
-      // worker-src blob: and https://cdn.jsdelivr.net, and wasm-unsafe-eval (not eval).
-      const classWorkerURL = URL.createObjectURL(new Blob(
-        ["import 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js';"],
-        { type: 'text/javascript' }
-      ));
-      try {
-        await ffmpeg.load({
-          classWorkerURL,
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-        });
-      } finally {
-        URL.revokeObjectURL(classWorkerURL);
-      }
+      // ffmpeg.load() otherwise starts a Worker at the CDN URL. Chrome refuses that
+      // cross-origin module worker. A same-origin module worker (script-src 'self'
+      // on the enforced policy) imports the CDN worker. Core and wasm stay on
+      // jsDelivr so we do not need blob: in the enforced script-src.
+      await ffmpeg.load({
+        classWorkerURL: new URL('/ffmpeg-worker.js', window.location.origin).href,
+        coreURL: `${baseURL}/ffmpeg-core.js`,
+        wasmURL: `${baseURL}/ffmpeg-core.wasm`
+      });
       return ffmpeg;
     })().catch((err) => {
       _ffmpegPromise = null;
