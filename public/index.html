@@ -2771,7 +2771,7 @@
       syncWakeWordPresetButtons();
     }
     let serverHasManagedTTS = false; // legacy flag only (voices are purely client window.speechSynthesis; server TTS path is disabled for voices)
-    let serverHasSTT = false;        // populated from /api/health or /api/config; enables the cheap xAI STT path for hands-free voice input
+    let serverHasSTT = false;        // populated from /api/config; enables the cheap xAI STT path for hands-free voice input
 
     const ALLOWED_ENGLISH_TRANS = new Set(['BSB', 'eng_kjv', 'eng_net', 'eng_dby', 'eng_asv', 'eng_ylt', 'ENGWEBP']);
 
@@ -8008,12 +8008,12 @@
         scheduleHandsFreeRestart(800);
       }
 
-      // Learn server config (STT + optional legacy hosted TTS only).
+      // Legacy hosted-voice UI hide. Public /api/health is {ok:true} only.
       // Voice output is always browser window.speechSynthesis (no server voices, no xAI TTS).
+      // STT comes from /api/config below, not from this probe.
       fetch('/api/health').then(r => r.json()).then(data => {
         serverHasManagedTTS = false; // voices are client-only now
         window.hasHostedTTS = !!data.hasHostedTTS;
-        serverHasSTT = !!data.hasSTT;
         // Defensive: if any old premium toggle UI is still in DOM from prior builds, hide it.
         const premiumToggle = document.getElementById('premium-voices-toggle');
         if (premiumToggle && premiumToggle.parentElement) {
@@ -8023,7 +8023,7 @@
         if (hostedDiv && !window.hasHostedTTS) {
           hostedDiv.style.display = 'none';
         }
-      }).catch(() => { serverHasManagedTTS = false; serverHasSTT = false; });
+      }).catch(() => { serverHasManagedTTS = false; });
 
       synth.onvoiceschanged = scheduleVoiceListRefresh;
       scheduleVoiceListRefresh();
@@ -8091,16 +8091,6 @@
           }
         });
       }
-
-      // Optional: show connection status
-      fetch('/api/health').then(r => r.json()).then(d => {
-        if (!d.hasKey) {
-          addMessage("Server warning: No XAI_API_KEY configured on the server.", false);
-        } else if (d.hasKey && d.xaiKeyLooksValid === false) {
-          addMessage("Server warning: XAI_API_KEY is set but may be a placeholder or invalid. Chat may fail until the production key is updated in Render.", false);
-        }
-        if (typeof d.hasSTT === 'boolean') serverHasSTT = d.hasSTT;
-      }).catch(() => {});
 
       // Load dynamic config (trial days, site URL) from server
       fetch('/api/config').then(r => r.json()).then(cfg => {

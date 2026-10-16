@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<html><head><meta charset="UTF-8"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="description" content="Voice-first offline Bible study with AI">
 <meta name="theme-color" content="#2c3e50">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -68,6 +68,7 @@
       <a href="/app" style="color:#c9a227;">App</a>
     </div>
     <div id="admin-status" class="status"></div>
+    <div id="admin-health" class="status"></div>
     <table id="users-table">
       <thead><tr>
         <th>Email</th>
@@ -210,6 +211,7 @@
         loadUsers();
         if (typeof loadShareTtsSettings === 'function') loadShareTtsSettings();
         if (typeof loadShareAiBgSettings === 'function') loadShareAiBgSettings();
+        loadAdminHealth();
       } else {
         status.textContent = data.error || 'Login failed';
       }
@@ -465,6 +467,33 @@
     }
   }
 
+  async function loadAdminHealth() {
+    const el = document.getElementById('admin-health');
+    if (!el || !adminToken) return;
+    try {
+      const r = await fetch(base + '/api/admin/health', {
+        headers: { 'Authorization': 'Bearer ' + adminToken }
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        el.textContent = 'Server health unavailable (' + (data.error || ('HTTP ' + r.status)) + ')';
+        return;
+      }
+      const key = data.hasKey ? (data.xaiKeyLooksValid === false ? 'set, looks invalid' : 'set') : 'NO';
+      el.textContent = [
+        'Server: ' + (data.ok ? 'ok' : 'not ok'),
+        'model ' + (data.model || '?'),
+        'deploy ' + (data.deploy || '?'),
+        'xAI key ' + key,
+        'STT ' + (data.hasSTT ? 'yes' : 'no'),
+        'content ' + (data.contentEngine ? 'yes' : 'no'),
+        'buffer ' + (data.bufferConfigured ? 'key set' : 'NO KEY'),
+      ].join(' | ');
+    } catch (e) {
+      el.textContent = 'Server health unavailable';
+    }
+  }
+
   // Auto-restore admin session
   window.onload = () => {
     const saved = sessionStorage.getItem('admin_token');
@@ -475,6 +504,7 @@
       loadUsers();
       loadShareTtsSettings();
       loadShareAiBgSettings();
+      loadAdminHealth();
     }
     // Also load a hint of config
     fetch(base + '/api/config').then(r=>r.json()).then(c => {

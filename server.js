@@ -54,6 +54,7 @@ const {
   CACHE_ONE_YEAR,
   applyCacheControl,
 } = require('./lib/http-cache');
+const { seoNoindexHeaders } = require('./lib/seo-headers');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -76,6 +77,11 @@ try {
 } catch (e) {
   console.warn('[security] helmet not installed — continuing without default headers');
 }
+
+// Before rate limits and routes so 429 and 404 responses on these paths keep the tag.
+// Helmet does not set X-Robots-Tag. /app is tagged here too (exactly "noindex, follow")
+// so OPTIONS and HEAD get it, not only the GET route.
+app.use(seoNoindexHeaders);
 
 try {
   const rateLimit = require('express-rate-limit');
@@ -3033,8 +3039,14 @@ app.post('/api/chat', (req, res, next) => {
   }
 });
 
-// Health check
+// Public uptime probe. Render only needs 200. No deploy, model, or key flags.
 app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+// Same detail the public probe used to return. Admin JWT, same as other /api/admin routes.
+app.get('/api/admin/health', (req, res) => {
+  if (!requireAdmin(req, res)) return;
   res.json({
     ok: true,
     hasKey: !!getXaiApiKey(),
