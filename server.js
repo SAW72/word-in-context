@@ -78,8 +78,9 @@ try {
   console.warn('[security] helmet not installed — continuing without default headers');
 }
 
-// Before rate limits and routes so 429/404 responses on these paths keep the tag.
-// Helmet does not set X-Robots-Tag. /app sets its own tag in its route.
+// Before rate limits and routes so 429 and 404 responses on these paths keep the tag.
+// Helmet does not set X-Robots-Tag. /app is tagged here too (exactly "noindex, follow")
+// so OPTIONS and HEAD get it, not only the GET route.
 app.use(seoNoindexHeaders);
 
 try {
