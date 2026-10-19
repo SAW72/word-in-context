@@ -5289,7 +5289,7 @@
       try { synth.getVoices(); } catch(e){}
 
       const utterance = new SpeechSynthesisUtterance(
-        cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
+        cleanTextForSpeech("John 3:16 says: For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.")
       );
       utterance.voice = voice;
       utterance.rate = voiceSettings.rate || 0.95;
@@ -5395,7 +5395,7 @@
           try { synth.getVoices(); } catch(e){}
           const freshVoice = findLocalVoiceById(voice.name) || voice;
           const utterance = new SpeechSynthesisUtterance(
-            cleanTextForSpeech("John 3:16 says: For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life.")
+            cleanTextForSpeech("John 3:16 says: For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.")
           );
           utterance.voice = freshVoice;
           utterance.rate = voiceSettings.rate || 0.95;
