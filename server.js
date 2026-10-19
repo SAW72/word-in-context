@@ -3049,14 +3049,10 @@ app.get('/api/admin/health', (req, res) => {
   if (!requireAdmin(req, res)) return;
   res.json({
     ok: true,
+    // hasKey / xaiKeyLooksValid / hasSTT are read by public/index.html.
     hasKey: !!getXaiApiKey(),
     xaiKeyLooksValid: xaiKeyLooksConfigured(),
-    hasXaiKey: xaiKeyLooksConfigured(),
     hasSTT: false,
-    model: XAI_MODEL,
-    deploy: process.env.RENDER_GIT_COMMIT || 'local',
-    contentEngine: true,
-    bufferConfigured: Boolean((process.env.BUFFER_API_KEY || '').trim()),
   });
 });
 
