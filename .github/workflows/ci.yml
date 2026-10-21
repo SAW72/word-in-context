@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # package.json has no build script today. Run one if it is added later.
+      - name: Build if present
+        run: |
+          if node -e "const s=require('./package.json').scripts||{}; process.exit(s.build ? 0 : 2)"; then
+            npm run build
+          else
+            echo "No build script in package.json"
+          fi
+
+      - name: Test
+        run: npm test
+        env:
+          WIC_DB_PATH: ${{ runner.temp }}/wic-users.db
+
+      - name: Smoke routes
+        run: node scripts/smoke-routes.js
+        env:
+          SMOKE_PORT: "8791"
+          WIC_DB_PATH: ${{ runner.temp }}/wic-users.db
