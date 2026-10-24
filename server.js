@@ -1471,19 +1471,13 @@ async function sendMagicLink(email, token, options = {}) {
   }
 }
 
-// Store credentials for a new checkout email only. Access + trial_end come from the
-// Whop/Stripe webhook after payment — never from client trialDays, never before pay.
-async function upsertPendingCheckoutUser(email, password) {
+// A new checkout email gets a pending row and no password. Access comes from the
+// payment webhook. The buyer sets a password only after a magic link proves the email.
+// Existing rows are returned unchanged, including a blank password_hash.
+async function upsertPendingCheckoutUser(email) {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (user) {
-    // Existing emails: no password_hash write (including filling a blank hash), no access grant.
-    return user;
-  }
-  const passwordHash = await hashPassword(password);
-  if (!passwordHash) {
-    throw Object.assign(new Error('Password must be at least 8 characters.'), { statusCode: 400 });
-  }
-  db.prepare(INSERT_PENDING_CHECKOUT_USER_SQL).run(email, passwordHash);
+  if (user) return user;
+  db.prepare(INSERT_PENDING_CHECKOUT_USER_SQL).run(email, null);
   return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 }
 
@@ -1495,7 +1489,7 @@ app.post('/api/create-checkout', async (req, res) => {
       return res.status(503).json({ error: 'Payments are not configured. Add WHOP_CHECKOUT_URL or Stripe keys to your environment.' });
     }
 
-    const { email: rawEmail, password, billing } = req.body || {};
+    const { email: rawEmail, billing } = req.body || {};
     const email = normalizeEmail(rawEmail);
     if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
 
@@ -1503,7 +1497,7 @@ app.post('/api/create-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const billingCycle = String(billing || 'monthly').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
-      await upsertPendingCheckoutUser(email, password);
+      await upsertPendingCheckoutUser(email);
       return res.json({
         url: buildWhopCheckoutUrl(email, billingCycle),
         provider: 'whop',
@@ -1514,12 +1508,8 @@ app.post('/api/create-checkout', async (req, res) => {
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
-      const passwordHash = await hashPassword(password);
-      if (!passwordHash) {
-        return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-      }
       const customer = await stripe.customers.create({ email });
-      db.prepare(INSERT_PENDING_CHECKOUT_USER_STRIPE_SQL).run(email, customer.id, passwordHash);
+      db.prepare(INSERT_PENDING_CHECKOUT_USER_STRIPE_SQL).run(email, customer.id, null);
       user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     } else {
       const customerId = await ensureStripeCustomer(user, email);
@@ -1666,6 +1656,21 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     console.error('login error:', err);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// The account menu calls this after a magic link (or any real session). Checkout cannot.
+app.post('/api/set-password', requireAuth, async (req, res) => {
+  try {
+    const passwordHash = await hashPassword(req.body?.password);
+    if (!passwordHash) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.userRecord.id);
+    res.json({ success: true, message: 'Password saved.' });
+  } catch (err) {
+    console.error('set-password error:', err);
+    res.status(500).json({ error: 'Could not save password' });
   }
 });
 
@@ -2455,15 +2460,19 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else {
+    // A hash on a row that cannot log in yet was typed at unverified checkout. Drop it
+    // when payment lands. A buyer who already has access keeps the password they set.
+    const nextHash = user.access_granted ? user.password_hash : null;
     db.prepare(`
       UPDATE users
       SET status = ?,
           access_granted = ?,
+          password_hash = ?,
           whop_membership_id = COALESCE(?, whop_membership_id),
           whop_member_id = COALESCE(?, whop_member_id),
           trial_end = COALESCE(?, trial_end)
       WHERE id = ?
-    `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, user.id);
+    `).run(mappedStatus, accessGranted, nextHash, membershipId, memberId, nextTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
@@ -2566,15 +2575,18 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
   }
 
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+  const nextHash = user.access_granted ? user.password_hash : null;
   db.prepare(`
     UPDATE users
     SET status = 'trialing',
         access_granted = 1,
+        password_hash = ?,
         trial_end = COALESCE(trial_end, ?),
         stripe_customer_id = COALESCE(?, stripe_customer_id),
         stripe_subscription_id = COALESCE(?, stripe_subscription_id)
     WHERE id = ?
   `).run(
+    nextHash,
     trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS)),
     session.customer || null,
     subscriptionId || null,
