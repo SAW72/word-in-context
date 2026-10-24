@@ -928,7 +928,6 @@
       <!-- 7-Day Paid Trial (Whop checkout) -->
       <form id="trial-form" class="auth-form">
         <input type="email" id="trial-email" class="auth-input" placeholder="Your email" required>
-        <input type="password" id="trial-password" class="auth-input" placeholder="Choose password (min 8 chars — for future logins)" required minlength="8">
         <fieldset id="trial-billing" style="border:none; margin:0 0 10px; padding:0; text-align:center;">
           <legend style="font-size:12px; opacity:0.75; margin-bottom:8px;">Billing after your 7-day free trial</legend>
           <label style="display:inline-flex; align-items:center; gap:6px; margin:0 12px 6px 0; font-size:14px; cursor:pointer; white-space:nowrap;">
@@ -940,14 +939,14 @@
         </fieldset>
         <button type="submit" class="btn">Start 7-Day Free Trial (card required after)</button>
         <p style="font-size:12px; text-align:center; margin-top:10px; opacity:0.7; line-height:1.4;">
-          Card collected securely by Whop for after the trial (no charge during 7 days). After checkout, use the <strong>Log in</strong> button at the top.
+          Card collected securely by Whop for after the trial (no charge during 7 days). After checkout, open the login link in your email. Then set a password from your account menu.
         </p>
       </form>
 
       <!-- Trial success -->
       <div id="trial-success" style="display:none; text-align:center; color:#2c3e50; margin-top:14px; padding:11px 14px; background:#f8f1e3; border-radius:8px; font-size:13px;">
-        <strong>Account created.</strong><br>
-        Complete payment on Whop. Then click the <strong>Log in</strong> button at the top (or check your email for a magic link).
+        <strong>Checkout ready.</strong><br>
+        Complete payment on Whop. Then open the login link we email you. After you are in, set a password from your account menu.
       </div>
 
       <!-- 14-day Tester (card-free) -->
@@ -1113,11 +1112,10 @@
       trialForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         const email = document.getElementById('trial-email').value;
-        const password = document.getElementById('trial-password').value;
         const billingInput = document.querySelector('input[name="trial-billing"]:checked');
         const billing = billingInput ? billingInput.value : 'monthly';
         try {
-          const { res, data } = await apiPost('/api/create-checkout', { email, password, billing });
+          const { res, data } = await apiPost('/api/create-checkout', { email, billing });
           if (data.url) {
             try { sessionStorage.setItem('wic_checkout_email', email.trim().toLowerCase()); } catch (err) {}
             window.location.href = data.url;
