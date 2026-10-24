@@ -49,6 +49,7 @@ const {
   createFixedWindowLimiter,
   unspoofableClientIp,
   shareQuotaKey,
+  isAcceptableAccountEmail,
 } = require('./lib/security');
 const {
   CACHE_ONE_YEAR,
@@ -1398,8 +1399,9 @@ const betasFile = path.join(__dirname, 'betas.json');
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   try {
-    const { name, email, church } = req.body || {};
-    if (!email || !email.includes('@')) {
+    const { name, church } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
+    if (!isAcceptableAccountEmail(email)) {
       return res.status(400).json({ error: 'Valid email required' });
     }
 
@@ -1497,7 +1499,7 @@ app.post('/api/create-checkout', async (req, res) => {
 
     const { email: rawEmail, password, billing } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     const effectiveTrialDays = checkoutTrialDays(req.body?.trialDays, TRIAL_DAYS);
 
@@ -1575,7 +1577,7 @@ app.post('/api/tester-signup', async (req, res) => {
 
     const { email: rawEmail, password } = req.body || {};
     const email = normalizeEmail(rawEmail);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (user) {
@@ -2381,7 +2383,7 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const email = normalizeEmail(req.body?.email);
-    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+    if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'Valid email required' });
     const days = capTrialDays(req.body?.days, TESTER_TRIAL_DAYS, MAX_ADMIN_TRIAL_DAYS);
     const group = String(req.body?.group_name || '').trim().slice(0, 120) || null;
     const trialEnd = trialEndIsoFromDays(days);
@@ -2608,7 +2610,7 @@ app.post('/api/complete-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const email = normalizeEmail(rawEmail);
-      if (!email) return res.status(400).json({ error: 'email required' });
+      if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
 
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
