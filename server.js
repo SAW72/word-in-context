@@ -1744,6 +1744,10 @@ app.post('/api/set-password', async (req, res) => {
     if (!tokenVersionMatches(payload, user)) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    // Test-only pause so two requests can pass this read before either write.
+    if (process.env.WIC_TEST_SET_PASSWORD_GAP_MS) {
+      await new Promise((resolve) => setTimeout(resolve, Number(process.env.WIC_TEST_SET_PASSWORD_GAP_MS)));
+    }
     const denied = denyUserSession(user);
     if (denied) return res.status(denied.status).json({ error: denied.error });
 
@@ -1763,11 +1767,15 @@ app.post('/api/set-password', async (req, res) => {
     if (!passwordHash) {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
-    db.prepare(`
+    const carriedVersion = payload.tv == null ? 0 : Number(payload.tv);
+    const changed = db.prepare(`
       UPDATE users
       SET password_hash = ?, token_version = COALESCE(token_version, 0) + 1
-      WHERE id = ?
-    `).run(passwordHash, user.id);
+      WHERE id = ? AND token_version = ?
+    `).run(passwordHash, user.id, carriedVersion);
+    if (!changed.changes) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
     const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     res.json({
       success: true,
@@ -3227,5 +3235,6 @@ module.exports = {
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
   activateWhopMembership,
+  activateStripeCheckoutSession,
   TRIAL_DAYS,
 };

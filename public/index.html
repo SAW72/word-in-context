@@ -2511,12 +2511,93 @@
       try { return sessionStorage.getItem('set_password_token') || ''; } catch (e) { return ''; }
     }
 
+    function clearSetPasswordToken() {
+      try { sessionStorage.removeItem('set_password_token'); } catch (e) {}
+    }
+
+    function setPasswordTokenExpiryMs(token) {
+      if (!token || typeof token !== 'string') return null;
+      const part = token.split('.')[1];
+      if (!part) return null;
+      try {
+        const padded = part.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+        const json = JSON.parse(atob(padded + pad));
+        return typeof json.exp === 'number' ? json.exp * 1000 : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function setPasswordTokenUsable(token, nowMs) {
+      const exp = setPasswordTokenExpiryMs(token);
+      if (exp == null) return false;
+      return exp > (typeof nowMs === 'number' ? nowMs : Date.now());
+    }
+
+    function currentPasswordFieldVisible(hasPassword, storedToken, nowMs) {
+      if (!hasPassword) return false;
+      return !setPasswordTokenUsable(storedToken, nowMs);
+    }
+
+    function setPasswordFeedback(data) {
+      if (!data) return 'Failed';
+      return data.error || data.message || (data.success ? 'Password saved.' : 'Failed');
+    }
+
+    async function sendSetPasswordAttempt(fetchImpl, args) {
+      let stored = args.storedToken || '';
+      let dropped = false;
+      if (stored && !setPasswordTokenUsable(stored, args.nowMs)) {
+        stored = '';
+        dropped = true;
+      }
+      const usePurpose = !!stored && setPasswordTokenUsable(stored, args.nowMs);
+      const sessionToken = args.sessionToken || '';
+      const bearer = usePurpose ? stored : sessionToken;
+      if (!bearer) return { ok: false, reason: 'logged-out', dropped: dropped, res: null };
+      const body = { password: args.password };
+      if (!usePurpose) body.currentPassword = args.currentPassword || '';
+      let res = await fetchImpl(bearer, body);
+      if (res && res.status === 401 && usePurpose) {
+        dropped = true;
+        const retryBody = { password: args.password, currentPassword: args.currentPassword || '' };
+        if (!sessionToken) return { ok: false, reason: 'logged-out', dropped: dropped, res: res };
+        res = await fetchImpl(sessionToken, retryBody);
+      }
+      return { ok: true, dropped: dropped, res: res };
+    }
+
+    function fetchSetPassword(bearer, body) {
+      return fetch('/api/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + bearer },
+        body: JSON.stringify(body),
+      }).then(async (res) => {
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = null; }
+        return { status: res.status, data: data };
+      });
+    }
+
+    function setCurrentPasswordShown(show) {
+      const current = document.getElementById('set-password-current');
+      if (!current) return;
+      current.style.display = show ? '' : 'none';
+      const wrapper = current.closest('.password-wrapper');
+      if (wrapper) wrapper.style.display = show ? '' : 'none';
+    }
+
     function syncSetPasswordForm(hasPassword) {
       const section = document.getElementById('set-password-section');
-      const current = document.getElementById('set-password-current');
       const btn = document.getElementById('set-password-btn');
+      let stored = readSetPasswordToken();
+      if (stored && !setPasswordTokenUsable(stored)) {
+        clearSetPasswordToken();
+        stored = '';
+      }
       if (section) section.style.display = '';
-      if (current) current.style.display = hasPassword ? '' : 'none';
+      setCurrentPasswordShown(currentPasswordFieldVisible(!!hasPassword, stored));
       if (btn) btn.textContent = hasPassword ? 'Change Password' : 'Set Password';
     }
 
@@ -7310,39 +7391,38 @@
           if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
           return;
         }
-        const purposeToken = readSetPasswordToken();
-        const token = purposeToken || getEffectiveAuthToken();
-        if (!token) { alert('Not logged in'); return; }
         const currentEl = document.getElementById('set-password-current');
-        const body = { password };
-        if (!purposeToken && currentEl) body.currentPassword = currentEl.value || '';
+        let savedOk = false;
         try {
           setPwBtn.disabled = true;
           setPwBtn.textContent = 'Saving...';
-          const res = await fetch('/api/set-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify(body)
+          const outcome = await sendSetPasswordAttempt(fetchSetPassword, {
+            storedToken: readSetPasswordToken(),
+            sessionToken: getEffectiveAuthToken() || '',
+            password: password,
+            currentPassword: currentEl ? (currentEl.value || '') : '',
           });
-          const data = await res.json();
+          if (outcome.dropped) clearSetPasswordToken();
+          if (!outcome.ok && outcome.reason === 'logged-out') { alert('Not logged in'); return; }
+          const data = outcome.res && outcome.res.data;
           if (msg) {
-            msg.textContent = data.message || (data.success ? 'Password saved!' : 'Failed');
-            msg.style.color = data.success ? 'green' : '#c0392b';
+            msg.textContent = setPasswordFeedback(data);
+            msg.style.color = data && data.success ? 'green' : '#c0392b';
             msg.style.display = 'block';
           }
-          if (data.success && input) input.value = '';
-          if (data.success && currentEl) currentEl.value = '';
-          if (data.success && data.token) localStorage.setItem('auth_token', data.token);
-          if (data.success) {
-            try { sessionStorage.removeItem('set_password_token'); } catch (e) {}
-            const setPwSection = document.getElementById('set-password-section');
-            if (setPwSection) setPwSection.style.display = 'none';
+          if (data && data.success && input) input.value = '';
+          if (data && data.success && currentEl) currentEl.value = '';
+          if (data && data.success && data.token) localStorage.setItem('auth_token', data.token);
+          if (data && data.success) {
+            savedOk = true;
+            clearSetPasswordToken();
+            syncSetPasswordForm(true);
           }
         } catch (e) {
           if (msg) { msg.textContent = 'Error setting password.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
         } finally {
           setPwBtn.disabled = false;
-          setPwBtn.textContent = 'Set / Update Password';
+          if (!savedOk) setPwBtn.textContent = 'Set / Update Password';
         }
       });
     }
@@ -7724,6 +7804,9 @@
         wrapper.className = 'password-wrapper';
         input.parentNode.insertBefore(wrapper, input);
         wrapper.appendChild(input);
+        if (input.id === 'set-password-current' && input.style.display === 'none') {
+          wrapper.style.display = 'none';
+        }
 
         const toggle = document.createElement('span');
         toggle.className = 'password-toggle';
