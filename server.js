@@ -2610,10 +2610,15 @@ app.post('/api/complete-checkout', async (req, res) => {
 
     if (provider === 'whop') {
       const email = normalizeEmail(rawEmail);
-      if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
+      if (!email) return res.status(400).json({ error: 'email required' });
 
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (!user) return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
+      if (!user) {
+        // Validate new input only. An existing row is matched by its normalized email
+        // even when that stored address would fail the current signup rules.
+        if (!isAcceptableAccountEmail(email)) return res.status(400).json({ error: 'email required' });
+        return res.status(404).json({ error: 'No account found for that email. Use the trial form first, then complete Whop checkout with the same email.' });
+      }
 
       if (!user.access_granted || !['trialing', 'active', 'free'].includes(user.status)) {
         return res.status(400).json({
