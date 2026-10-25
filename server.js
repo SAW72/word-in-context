@@ -198,6 +198,12 @@ try {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whop_webhook_deliveries (
+      webhook_id TEXT PRIMARY KEY,
+      received_at TEXT NOT NULL
+    );
+  `);
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
 } catch (err) {
@@ -327,7 +333,13 @@ function requireAuth(req, res, next) {
     const now = new Date();
     const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
     const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
+    // Read on each request. Unset, empty, or any other value keeps the main behavior.
+    const enforceTrialEnd = /^(1|true|yes|on)$/i.test(String(process.env.WIC_ENFORCE_TRIAL_END || '').trim());
+    if (enforceTrialEnd) {
+      if (!isTrialing && !isActive) {
+        return res.status(403).json({ error: 'Subscription required or trial expired.' });
+      }
+    } else if (!isTrialing && !isActive && user.status !== 'trialing') {
       return res.status(403).json({ error: 'Subscription required or trial expired.' });
     }
     req.userRecord = user;
@@ -625,16 +637,18 @@ function whopMembershipIsAllowed(payload) {
   const allowed = whopPlanIds();
   if (!allowed.length) return true;
   const planId = whopPayloadPlanId(payload);
-  // Missing plan id: allow (do not drop legitimate activations over incomplete payloads)
-  if (!planId) return true;
+  // A missing plan id is refused only when an allowlist is configured.
+  if (!planId) return false;
   return allowed.includes(planId);
 }
 
 function mapWhopStatusToUserStatus(whopStatus) {
   const s = String(whopStatus || '').toLowerCase();
   if (['trialing', 'active'].includes(s)) return s;
-  if (['canceled', 'cancelled', 'expired', 'completed', 'past_due', 'unresolved'].includes(s)) return 'canceled';
-  return 'active';
+  if (s === 'past_due') return 'past_due';
+  if (['canceled', 'cancelled', 'expired', 'completed', 'unresolved'].includes(s)) return 'canceled';
+  // Unknown, including drafted and an empty status: caller must not grant or deny.
+  return null;
 }
 
 async function ensureStripeCustomer(user, email) {
@@ -1469,7 +1483,7 @@ async function sendMagicLink(email, token, options = {}) {
       html
     });
   } else {
-    console.log(`[MAGIC LINK for ${email}] ${loginUrl}`);
+    console.log(`[MAGIC LINK for ${email}] email service key missing; login link not sent`);
   }
 }
 
@@ -2422,8 +2436,14 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   }
 });
 
+function whopStoredMembershipConflicts(user, membershipId) {
+  if (!user || !membershipId) return false;
+  const stored = user.whop_membership_id;
+  return !!(stored && stored !== membershipId);
+}
+
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
-  if (!whopMembershipIsAllowed(payload)) {
+  if (!options.skipPlanCheck && !whopMembershipIsAllowed(payload)) {
     console.warn(
       `[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)} — not in WHOP_PLAN_IDS (${whopPlanIds().join(',')})`
     );
@@ -2431,24 +2451,90 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   }
 
   const email = whopPayloadEmail(payload);
+  const membershipId = payload?.id || null;
+  const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
+  if (mappedStatus == null) {
+    const existing = email ? db.prepare('SELECT * FROM users WHERE email = ?').get(email) : null;
+    console.warn(
+      `[whop:${source}] unknown Whop status ${JSON.stringify(payload?.status == null ? '' : String(payload.status))}; leaving the account unchanged`
+    );
+    return existing || null;
+  }
+
+  const memberId = payload?.member?.id || null;
+  const renewalEnd = payload?.renewal_period_end || null;
+  const isGrant = mappedStatus === 'trialing' || mappedStatus === 'active';
+
+  if (!isGrant) {
+    let user = membershipId
+      ? db.prepare('SELECT * FROM users WHERE whop_membership_id = ?').get(membershipId)
+      : null;
+    if (!user && email) {
+      const byEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (whopStoredMembershipConflicts(byEmail, membershipId)) {
+        console.warn(
+          `[whop:${source}] membership ${membershipId} does not match the stored membership; leaving the account unchanged`
+        );
+        return byEmail;
+      }
+      user = byEmail;
+    }
+    if (!user) {
+      if (!email) {
+        console.warn(
+          `[whop:${source}] membership ${membershipId || '(unknown)'} missing email — check Whop webhook permissions include member:email:read`
+        );
+        return null;
+      }
+      if (mappedStatus === 'past_due') {
+        console.warn(`[whop:${source}] past_due for ${email} but no account exists; access unchanged`);
+        return null;
+      }
+      db.prepare(`
+        INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id)
+        VALUES (?, ?, ?, 0, ?, ?)
+      `).run(email, mappedStatus, renewalEnd || null, membershipId, memberId);
+      console.log(`[whop:${source}] deactivated ${email} (${mappedStatus})`);
+      return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    }
+
+    if (mappedStatus === 'past_due') {
+      db.prepare(`
+        UPDATE users
+        SET status = 'past_due',
+            whop_membership_id = COALESCE(whop_membership_id, ?),
+            whop_member_id = COALESCE(?, whop_member_id),
+            trial_end = COALESCE(?, trial_end)
+        WHERE id = ?
+      `).run(membershipId, memberId, renewalEnd, user.id);
+      console.log(`[whop:${source}] marked ${user.email} past_due; access left unchanged`);
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    }
+
+    db.prepare(`
+      UPDATE users
+      SET status = ?,
+          access_granted = 0,
+          whop_membership_id = COALESCE(whop_membership_id, ?),
+          whop_member_id = COALESCE(?, whop_member_id),
+          trial_end = COALESCE(?, trial_end)
+      WHERE id = ?
+    `).run(mappedStatus, membershipId, memberId, renewalEnd, user.id);
+    console.log(`[whop:${source}] deactivated ${user.email} (${mappedStatus})`);
+    return db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  }
+
   if (!email) {
     console.warn(
-      `[whop:${source}] membership ${payload?.id || '(unknown)'} missing email — check Whop webhook permissions include member:email:read`
+      `[whop:${source}] membership ${membershipId || '(unknown)'} missing email — check Whop webhook permissions include member:email:read`
     );
     return null;
   }
 
-  const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
-  const accessGranted = ['trialing', 'active'].includes(mappedStatus) ? 1 : 0;
-  const membershipId = payload?.id || null;
-  const memberId = payload?.member?.id || null;
-  const renewalEnd = payload?.renewal_period_end || null;
+  const accessGranted = 1;
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
-
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  const nextTrialEnd = accessGranted
-    ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
-    : (renewalEnd || (user && user.trial_end) || null);
+  const nextTrialEnd = renewalEnd || (user && user.trial_end) || serverTrialEnd;
 
   if (!user) {
     db.prepare(`
@@ -2467,11 +2553,6 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       WHERE id = ?
     `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
-  }
-
-  if (!accessGranted) {
-    console.log(`[whop:${source}] deactivated ${email} (${mappedStatus})`);
-    return user;
   }
 
   if (options.sendLoginEmail === false) {
@@ -2714,6 +2795,19 @@ app.post('/api/whop-webhook', async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  const webhookId = String(req.headers['webhook-id'] || '').trim();
+  let recordedDelivery = false;
+  if (webhookId) {
+    const inserted = db.prepare(
+      `INSERT OR IGNORE INTO whop_webhook_deliveries (webhook_id, received_at) VALUES (?, ?)`
+    ).run(webhookId, new Date().toISOString());
+    if (inserted.changes === 0) {
+      console.log('[whop:webhook] duplicate delivery; no-op');
+      return res.json({ received: true });
+    }
+    recordedDelivery = true;
+  }
+
   try {
     const type = event?.type;
     // Some Whop API versions put the membership object at the root after unwrap
@@ -2724,10 +2818,24 @@ app.post('/api/whop-webhook', async (req, res) => {
       await activateWhopMembership(data, 'webhook');
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
+    } else if (type === 'membership.updated') {
+      await activateWhopMembership(data, 'webhook', { sendLoginEmail: false });
     } else if (type === 'payment.succeeded') {
-      const membership = data?.membership || data;
-      if (membership?.id || membership?.status || membership?.user || membership?.member) {
-        await activateWhopMembership(membership, 'webhook-payment');
+      const membership = (data && data.membership && typeof data.membership === 'object') ? data.membership : null;
+      if (membership && (membership.id || membership.status || membership.user || membership.member)) {
+        const paymentEmail = whopPayloadEmail(data) || whopPayloadEmail(membership);
+        const mergedUser = (membership.user && membership.user.email)
+          ? membership.user
+          : (data.user || (paymentEmail ? { email: paymentEmail } : null));
+        await activateWhopMembership({
+          ...membership,
+          id: membership.id || null,
+          status: membership.status || 'active',
+          plan: membership.plan || data.plan || null,
+          plan_id: membership.plan_id || data.plan_id || null,
+          user: mergedUser,
+          member: membership.member || data.member || null,
+        }, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
         if (email) {
@@ -2746,10 +2854,33 @@ app.post('/api/whop-webhook', async (req, res) => {
       await handleWhopTrialEndingSoon(data, 'webhook');
     } else if (type === 'payment.failed') {
       await handleWhopPaymentFailed(data, 'webhook');
+    } else if (type === 'refund.created' || type === 'dispute.created') {
+      const membership = (data && data.membership && typeof data.membership === 'object') ? data.membership : null;
+      const membershipId = (membership && membership.id) || data.membership_id || null;
+      if (!membershipId) {
+        console.warn(`[whop:webhook] ${type} has no membership id; access unchanged`);
+      } else {
+        const eventEmail = whopPayloadEmail(data) || whopPayloadEmail(membership);
+        await activateWhopMembership({
+          id: membershipId,
+          status: 'canceled',
+          user: (data && data.user) || (membership && membership.user) || (eventEmail ? { email: eventEmail } : null),
+          member: (data && data.member) || (membership && membership.member) || null,
+          plan: (data && data.plan) || (membership && membership.plan) || null,
+          plan_id: (data && data.plan_id) || (membership && membership.plan_id) || null,
+        }, 'webhook', { sendLoginEmail: false, skipPlanCheck: true });
+      }
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);
     }
   } catch (err) {
+    if (recordedDelivery && webhookId) {
+      try {
+        db.prepare('DELETE FROM whop_webhook_deliveries WHERE webhook_id = ?').run(webhookId);
+      } catch (deleteErr) {
+        console.error('[whop:webhook] could not release webhook-id for retry');
+      }
+    }
     console.error('Whop webhook handler error:', err);
     return res.status(500).json({ error: 'Webhook handler failed' });
   }
@@ -2767,7 +2898,7 @@ app.get('/api/whop-webhook', (req, res) => {
     configured: whopWebhookConfigured(),
     paymentProvider: paymentProvider(),
     planIdsConfigured: whopPlanIds().length,
-    tip: 'In Whop Dashboard → Developer → Webhooks use https://www.thewordincontext.org/api/whop-webhook. Paste the FULL webhook secret into Render WHOP_WEBHOOK_SECRET (ws_… or whsec_… — do not strip the prefix). Subscribe to membership.activated, membership.deactivated, payment.succeeded, payment.failed, membership.trial_ending_soon.',
+    tip: 'In Whop Dashboard → Developer → Webhooks use https://www.thewordincontext.org/api/whop-webhook. Paste the FULL webhook secret into Render WHOP_WEBHOOK_SECRET (ws_… or whsec_… — do not strip the prefix). Subscribe to membership.activated, membership.deactivated, membership.updated, payment.succeeded, payment.failed, membership.trial_ending_soon, refund.created, dispute.created.',
   });
 });
 
