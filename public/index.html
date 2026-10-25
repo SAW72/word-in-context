@@ -2329,6 +2329,7 @@
         <!-- Set password section for users who logged in via magic link (or to change password) -->
         <div id="set-password-section" style="margin-top:8px; padding-top:8px; border-top:1px solid #eee;">
           <p style="font-size:11px; margin:2px 0 4px; opacity:0.8;">Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser's password manager). Works after magic link login.</p>
+          <input type="password" id="set-password-current" placeholder="Current password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;display:none;">
           <input type="password" id="set-password-input" placeholder="New password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
           <button id="set-password-btn" style="width:100%; background:#2c3e50; color:white; padding:6px; border:none; border-radius:4px; font-size:12px;">Set / Update Password</button>
           <div id="set-password-msg" style="font-size:11px; margin-top:4px; display:none;"></div>
@@ -2504,6 +2505,19 @@
 
     function getEffectiveAuthToken() {
       return localStorage.getItem('auth_token');
+    }
+
+    function readSetPasswordToken() {
+      try { return sessionStorage.getItem('set_password_token') || ''; } catch (e) { return ''; }
+    }
+
+    function syncSetPasswordForm(hasPassword) {
+      const section = document.getElementById('set-password-section');
+      const current = document.getElementById('set-password-current');
+      const btn = document.getElementById('set-password-btn');
+      if (section) section.style.display = '';
+      if (current) current.style.display = hasPassword ? '' : 'none';
+      if (btn) btn.textContent = hasPassword ? 'Change Password' : 'Set Password';
     }
 
     function enforceAuthRequired() {
@@ -5865,14 +5879,7 @@
                     if (!data.access_granted) txt = 'Access revoked';
                     statusEl.textContent = txt;
                   }
-                  const setPwSection = document.getElementById('set-password-section');
-                  if (setPwSection) {
-                    setPwSection.style.display = data.has_password ? 'none' : '';
-                  }
-                  const setPwBtn = document.getElementById('set-password-btn');
-                  if (setPwBtn) {
-                    setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
-                  }
+                  syncSetPasswordForm(!!data.has_password);
                 })
                 .catch(() => {
                   if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
@@ -7164,14 +7171,7 @@
                   if (!data.access_granted) txt = 'Access revoked';
                   statusEl.textContent = txt;
                 }
-                const setPwSection = document.getElementById('set-password-section');
-                if (setPwSection) {
-                  setPwSection.style.display = data.has_password ? 'none' : '';
-                }
-                const setPwBtn = document.getElementById('set-password-btn');
-                if (setPwBtn) {
-                  setPwBtn.textContent = (data.has_password ? 'Change Password' : 'Set Password');
-                }
+                syncSetPasswordForm(!!data.has_password);
               })
               .catch(() => {
                 if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
@@ -7310,15 +7310,19 @@
           if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
           return;
         }
-        const token = getEffectiveAuthToken();
+        const purposeToken = readSetPasswordToken();
+        const token = purposeToken || getEffectiveAuthToken();
         if (!token) { alert('Not logged in'); return; }
+        const currentEl = document.getElementById('set-password-current');
+        const body = { password };
+        if (!purposeToken && currentEl) body.currentPassword = currentEl.value || '';
         try {
           setPwBtn.disabled = true;
           setPwBtn.textContent = 'Saving...';
           const res = await fetch('/api/set-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ password })
+            body: JSON.stringify(body)
           });
           const data = await res.json();
           if (msg) {
@@ -7327,7 +7331,10 @@
             msg.style.display = 'block';
           }
           if (data.success && input) input.value = '';
+          if (data.success && currentEl) currentEl.value = '';
+          if (data.success && data.token) localStorage.setItem('auth_token', data.token);
           if (data.success) {
+            try { sessionStorage.removeItem('set_password_token'); } catch (e) {}
             const setPwSection = document.getElementById('set-password-section');
             if (setPwSection) setPwSection.style.display = 'none';
           }
@@ -7374,6 +7381,7 @@
         }
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_email');
+        try { sessionStorage.removeItem('set_password_token'); } catch (e) {}
         document.getElementById('subscribe-modal').style.display = 'none';
         alert('Logged out. Visit the landing page to log back in.');
         window.location.href = '/';

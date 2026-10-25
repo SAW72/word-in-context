@@ -175,6 +175,7 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0`); } catch(e){}
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -228,6 +229,16 @@ const shareTranscodeLimiter = createFixedWindowLimiter({
   windowMs: process.env.SHARE_TRANSCODE_RATE_WINDOW_MS || 60 * 60 * 1000,
   max: process.env.SHARE_TRANSCODE_RATE_MAX || 6,
 });
+const setPasswordIpLimiter = createFixedWindowLimiter({
+  windowMs: process.env.SET_PASSWORD_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.SET_PASSWORD_IP_MAX || 30,
+});
+const setPasswordAccountLimiter = createFixedWindowLimiter({
+  windowMs: process.env.SET_PASSWORD_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.SET_PASSWORD_ACCOUNT_MAX || 8,
+});
+const SET_PASSWORD_PURPOSE = 'set-password';
+const POST_PAYMENT_LOGIN_COPY = "Open the login link we just emailed you. Once you're in, set a password from Account.";
 const TESTER_INVITE_TOKEN = String(process.env.TESTER_INVITE_TOKEN || '').trim();
 let transcodeInFlight = 0;
 const MAX_TRANSCODE_IN_FLIGHT = 2;
@@ -306,6 +317,30 @@ async function hashPassword(password) {
   return bcrypt.hash(String(password), 10);
 }
 
+function userTokenVersion(user) {
+  const n = Number(user && user.token_version);
+  return Number.isInteger(n) && n >= 0 ? n : 0;
+}
+
+function tokenVersionMatches(payload, user) {
+  const claimed = payload.tv == null ? 0 : Number(payload.tv);
+  if (!Number.isInteger(claimed)) return false;
+  return claimed === userTokenVersion(user);
+}
+
+function denyUserSession(user) {
+  if (!user.access_granted) {
+    return { status: 403, error: 'Account access has been revoked. Contact support.' };
+  }
+  const now = new Date();
+  const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
+  const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
+  if (!isTrialing && !isActive && user.status !== 'trialing') {
+    return { status: 403, error: 'Subscription required or trial expired.' };
+  }
+  return null;
+}
+
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -314,21 +349,20 @@ function requireAuth(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload; // { email, id? }
+    if (payload.purpose) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    req.user = payload; // { email, id?, tv }
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
-    if (!user.access_granted) {
-      return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
+    if (!tokenVersionMatches(payload, user)) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
-    const now = new Date();
-    const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
-    const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
-      return res.status(403).json({ error: 'Subscription required or trial expired.' });
-    }
+    const denied = denyUserSession(user);
+    if (denied) return res.status(denied.status).json({ error: denied.error });
     req.userRecord = user;
     next();
   } catch (e) {
@@ -644,7 +678,20 @@ async function ensureStripeCustomer(user, email) {
 }
 
 function issueUserJwt(user, expiresIn = '30d') {
-  return jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn });
+  return jwt.sign({
+    email: user.email,
+    id: user.id,
+    tv: userTokenVersion(user),
+  }, JWT_SECRET, { expiresIn });
+}
+
+function issueSetPasswordJwt(user) {
+  return jwt.sign({
+    email: user.email,
+    id: user.id,
+    tv: userTokenVersion(user),
+    purpose: SET_PASSWORD_PURPOSE,
+  }, JWT_SECRET, { expiresIn: '15m' });
 }
 
 function userHasAccess(user) {
@@ -1651,7 +1698,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
 
-    const token = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    const token = issueUserJwt(user, '30d');
     res.json({ token, email: user.email });
   } catch (err) {
     console.error('login error:', err);
@@ -1659,15 +1706,72 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// The account menu calls this after a magic link (or any real session). Checkout cannot.
-app.post('/api/set-password', requireAuth, async (req, res) => {
+// First password: the magic link's short-lived purpose token. A later change also
+// accepts the current password. A normal login token alone is not enough.
+// The body email is ignored. The account is the one named by the token.
+app.post('/api/set-password', async (req, res) => {
   try {
-    const passwordHash = await hashPassword(req.body?.password);
+    const ipLimit = setPasswordIpLimiter.check('setpw:ip:' + unspoofableClientIp(req));
+    if (!ipLimit.allowed) {
+      res.set('Retry-After', String(Math.max(1, Math.ceil(ipLimit.retryAfterMs / 1000))));
+      return res.status(429).json({ error: 'Too many password attempts from this network. Try again later.' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    let payload;
+    try {
+      payload = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    if (!payload.email || payload.role === 'admin') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizeEmail(payload.email));
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const accountLimit = setPasswordAccountLimiter.check('setpw:acct:' + user.id);
+    if (!accountLimit.allowed) {
+      res.set('Retry-After', String(Math.max(1, Math.ceil(accountLimit.retryAfterMs / 1000))));
+      return res.status(429).json({ error: 'Too many password attempts for this account. Try again later.' });
+    }
+    if (!tokenVersionMatches(payload, user)) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    const denied = denyUserSession(user);
+    if (denied) return res.status(denied.status).json({ error: denied.error });
+
+    if (payload.purpose === SET_PASSWORD_PURPOSE) {
+      // The login link proved this inbox. No current password yet.
+    } else if (payload.purpose) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    } else if (!user.password_hash) {
+      return res.status(401).json({ error: 'Open the login link from your email to set a password.' });
+    } else {
+      const current = req.body && req.body.currentPassword;
+      const matches = current && await bcrypt.compare(String(current), user.password_hash);
+      if (!matches) return res.status(401).json({ error: 'Current password required' });
+    }
+
+    const passwordHash = await hashPassword(req.body && req.body.password);
     if (!passwordHash) {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
     }
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.userRecord.id);
-    res.json({ success: true, message: 'Password saved.' });
+    db.prepare(`
+      UPDATE users
+      SET password_hash = ?, token_version = COALESCE(token_version, 0) + 1
+      WHERE id = ?
+    `).run(passwordHash, user.id);
+    const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    res.json({
+      success: true,
+      message: 'Password saved.',
+      token: issueUserJwt(updated, '30d'),
+    });
   } catch (err) {
     console.error('set-password error:', err);
     res.status(500).json({ error: 'Could not save password' });
@@ -1690,14 +1794,20 @@ app.get('/api/verify-magic', (req, res) => {
       return res.status(403).json({ error: 'Account access revoked' });
     }
 
-    // Issue JWT (7 days)
-    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    // Session JWT (7 days) plus a short-lived token that can set the first password.
+    const jwtToken = issueUserJwt(user, '7d');
+    const setPasswordToken = issueSetPasswordJwt(user);
 
     // Clean token
     db.prepare('DELETE FROM magic_tokens WHERE token = ?').run(token);
 
     // Return token for frontend to store
-    res.json({ token: jwtToken, email: user.email, status: user.status });
+    res.json({
+      token: jwtToken,
+      setPasswordToken,
+      email: user.email,
+      status: user.status,
+    });
   } catch (err) {
     console.error('verify-magic error:', err);
     res.status(500).json({ error: 'Verification failed' });
@@ -1712,7 +1822,8 @@ app.get('/api/me', requireAuth, (req, res) => {
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free
+    manual_free: !!u.manual_free,
+    has_password: !!u.password_hash,
   });
 });
 
@@ -1910,8 +2021,10 @@ function optionalUserFromAuthHeader(req) {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return null;
     const payload = jwt.verify(token, JWT_SECRET);
-    if (!payload?.email) return null;
-    return db.prepare('SELECT * FROM users WHERE email = ?').get(normalizeEmail(payload.email)) || null;
+    if (!payload?.email || payload.purpose) return null;
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizeEmail(payload.email));
+    if (!user || !tokenVersionMatches(payload, user)) return null;
+    return user;
   } catch (e) {
     return null;
   }
@@ -2460,9 +2573,9 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else {
-    // A hash on a row that cannot log in yet was typed at unverified checkout. Drop it
-    // when payment lands. A buyer who already has access keeps the password they set.
-    const nextHash = user.access_granted ? user.password_hash : null;
+    // Only an unproven checkout row (status pending) drops its hash. A cancelled,
+    // revoked, or deactivated account keeps the password it already proved.
+    const nextHash = user.status === 'pending' ? null : user.password_hash;
     db.prepare(`
       UPDATE users
       SET status = ?,
@@ -2575,7 +2688,7 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
   }
 
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
-  const nextHash = user.access_granted ? user.password_hash : null;
+  const nextHash = user.status === 'pending' ? null : user.password_hash;
   db.prepare(`
     UPDATE users
     SET status = 'trialing',
@@ -2627,14 +2740,14 @@ app.post('/api/complete-checkout', async (req, res) => {
 
       if (!user.access_granted || !['trialing', 'active', 'free'].includes(user.status)) {
         return res.status(400).json({
-          error: 'Checkout is still processing. Wait a moment, refresh, or use Log in at the top with the email + password you chose.'
+          error: POST_PAYMENT_LOGIN_COPY
         });
       }
 
       return res.json({
         success: true,
         email: user.email,
-        message: 'Trial active. Check your email for a secure login link, or use the Log in button with the password you chose.'
+        message: POST_PAYMENT_LOGIN_COPY
       });
     }
 
@@ -2654,7 +2767,7 @@ app.post('/api/complete-checkout', async (req, res) => {
     res.json({
       success: true,
       email: user.email,
-      message: 'Trial activated. Check your email for a secure login link, or use the Log in button with the password you chose.'
+      message: POST_PAYMENT_LOGIN_COPY
     });
   } catch (err) {
     console.error('complete-checkout error:', err);
@@ -2782,14 +2895,14 @@ app.get('/success', (req, res) => {
   const provider = paymentProvider() === 'whop' ? 'whop' : 'stripe';
   const paymentLabel = provider === 'whop' ? 'Whop' : 'Stripe';
   const checkoutScript = provider === 'whop'
-    ? '<script src="/success-checkout.js" data-payment-provider="whop"></script>'
-    : '<script src="/success-checkout.js" data-payment-provider="stripe"></script>';
+    ? '<script src="/success-checkout.js?v=2" data-payment-provider="whop"></script>'
+    : '<script src="/success-checkout.js?v=2" data-payment-provider="stripe"></script>';
   res.send(`
     <html><head><title>Success - The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto;">
     <h1>🎉 Payment successful!</h1>
     <p>Your ${TRIAL_DAYS}-day trial has started.</p>
     <p id="status">Finalizing your account...</p>
-    <p><a href="/">Return to home</a> and use the <strong>Log in</strong> button with the email + password you chose.</p>
+    <p><a href="/">Return to home</a>. ${POST_PAYMENT_LOGIN_COPY}</p>
     <p><a href="/app">Open the App</a></p>
     <p style="margin-top:20px;"><small>Domain: thewordincontext.org</small></p>
     <p><small>We will never sell your information. Chats stay in your browser only. Payments handled securely by ${paymentLabel}.</small></p>
@@ -2809,7 +2922,7 @@ app.get('/login', (req, res) => {
     <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
     <h2>The Word in Context</h2>
     <p>Verifying your login link...</p>
-    <script src="/login-verify.js"></script>
+    <script src="/login-verify.js?v=2"></script>
     </body></html>
   `);
 });

@@ -18,13 +18,13 @@ if (body) {
     .then(r => r.json())
     .then(data => {
       const el = document.getElementById('status');
-      if (el) el.textContent = data.message || data.error || 'Account ready. Check your email or log in with your password.';
+      if (el) el.textContent = data.message || data.error || "Open the login link we just emailed you. Once you're in, set a password from Account.";
     })
     .catch(() => {
       const el = document.getElementById('status');
-      if (el) el.textContent = 'Account ready. Use the Log in button at the top with your email + password, or request a magic link.';
+      if (el) el.textContent = "Open the login link we just emailed you. Once you're in, set a password from Account.";
     });
 } else {
   const el = document.getElementById('status');
-  if (el) el.textContent = 'Use the Log in button at the top with your email + password, or request a magic link.';
+  if (el) el.textContent = "Open the login link we just emailed you. Once you're in, set a password from Account.";
 }

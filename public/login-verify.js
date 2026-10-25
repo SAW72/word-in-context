@@ -8,6 +8,10 @@ if (!token) {
       if (data.token) {
         localStorage.setItem('auth_token', data.token);
         localStorage.setItem('user_email', data.email || '');
+        try {
+          if (data.setPasswordToken) sessionStorage.setItem('set_password_token', data.setPasswordToken);
+          else sessionStorage.removeItem('set_password_token');
+        } catch (e) {}
         window.location.href = '/app';
       } else {
         document.body.innerHTML = '<p>Login failed: ' + (data.error || 'unknown') + '<br><a href="/">Return to site</a></p>';
