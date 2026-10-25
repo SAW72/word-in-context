@@ -1744,10 +1744,6 @@ app.post('/api/set-password', async (req, res) => {
     if (!tokenVersionMatches(payload, user)) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
-    // Test-only pause so two requests can pass this read before either write.
-    if (process.env.WIC_TEST_SET_PASSWORD_GAP_MS) {
-      await new Promise((resolve) => setTimeout(resolve, Number(process.env.WIC_TEST_SET_PASSWORD_GAP_MS)));
-    }
     const denied = denyUserSession(user);
     if (denied) return res.status(denied.status).json({ error: denied.error });
 

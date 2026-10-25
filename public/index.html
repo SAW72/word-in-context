@@ -2328,7 +2328,7 @@
 
         <!-- Set password section for users who logged in via magic link (or to change password) -->
         <div id="set-password-section" style="margin-top:8px; padding-top:8px; border-top:1px solid #eee;">
-          <p style="font-size:11px; margin:2px 0 4px; opacity:0.8;">Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser's password manager). Works after magic link login.</p>
+          <p id="set-password-help" style="font-size:11px; margin:2px 0 4px; opacity:0.8;">Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser's password manager). Works after magic link login.</p>
           <input type="password" id="set-password-current" placeholder="Current password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;display:none;">
           <input type="password" id="set-password-input" placeholder="New password" style="width:100%;padding:8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
           <button id="set-password-btn" style="width:100%; background:#2c3e50; color:white; padding:6px; border:none; border-radius:4px; font-size:12px;">Set / Update Password</button>
@@ -2545,12 +2545,33 @@
       return data.error || data.message || (data.success ? 'Password saved.' : 'Failed');
     }
 
+    function needsCurrentPasswordFirst(args) {
+      return !!args.hasPassword && !String(args.currentPassword || '').length;
+    }
+
+    function setPasswordHelpText(hasPassword) {
+      if (hasPassword) {
+        return 'Change Password (min 8 characters). Enter your current password, then the new one.';
+      }
+      return 'Set a password (min 8 chars) so you can log in directly with email+password on the landing page (saves in your browser\'s password manager). Works after magic link login.';
+    }
+
+    function setPasswordModeCopy(hasPassword) {
+      const btn = document.getElementById('set-password-btn');
+      const help = document.getElementById('set-password-help');
+      if (btn) btn.textContent = hasPassword ? 'Change Password' : 'Set Password';
+      if (help) help.textContent = setPasswordHelpText(!!hasPassword);
+    }
+
     async function sendSetPasswordAttempt(fetchImpl, args) {
       let stored = args.storedToken || '';
       let dropped = false;
       if (stored && !setPasswordTokenUsable(stored, args.nowMs)) {
         stored = '';
         dropped = true;
+      }
+      if (dropped && needsCurrentPasswordFirst(args)) {
+        return { ok: false, reason: 'need-current-password', dropped: true, res: null };
       }
       const usePurpose = !!stored && setPasswordTokenUsable(stored, args.nowMs);
       const sessionToken = args.sessionToken || '';
@@ -2561,8 +2582,11 @@
       let res = await fetchImpl(bearer, body);
       if (res && res.status === 401 && usePurpose) {
         dropped = true;
-        const retryBody = { password: args.password, currentPassword: args.currentPassword || '' };
+        if (needsCurrentPasswordFirst(args)) {
+          return { ok: false, reason: 'need-current-password', dropped: true, res: res };
+        }
         if (!sessionToken) return { ok: false, reason: 'logged-out', dropped: dropped, res: res };
+        const retryBody = { password: args.password, currentPassword: args.currentPassword || '' };
         res = await fetchImpl(sessionToken, retryBody);
       }
       return { ok: true, dropped: dropped, res: res };
@@ -2589,8 +2613,8 @@
     }
 
     function syncSetPasswordForm(hasPassword) {
+      syncSetPasswordForm.hasPassword = !!hasPassword;
       const section = document.getElementById('set-password-section');
-      const btn = document.getElementById('set-password-btn');
       let stored = readSetPasswordToken();
       if (stored && !setPasswordTokenUsable(stored)) {
         clearSetPasswordToken();
@@ -2598,7 +2622,7 @@
       }
       if (section) section.style.display = '';
       setCurrentPasswordShown(currentPasswordFieldVisible(!!hasPassword, stored));
-      if (btn) btn.textContent = hasPassword ? 'Change Password' : 'Set Password';
+      setPasswordModeCopy(!!hasPassword);
     }
 
     function enforceAuthRequired() {
@@ -7389,6 +7413,7 @@
         const password = input ? input.value : '';
         if (!password || password.length < 8) {
           if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
+          setPasswordModeCopy(!!syncSetPasswordForm.hasPassword);
           return;
         }
         const currentEl = document.getElementById('set-password-current');
@@ -7401,9 +7426,22 @@
             sessionToken: getEffectiveAuthToken() || '',
             password: password,
             currentPassword: currentEl ? (currentEl.value || '') : '',
+            hasPassword: !!syncSetPasswordForm.hasPassword,
           });
           if (outcome.dropped) clearSetPasswordToken();
+          if (outcome.dropped && syncSetPasswordForm.hasPassword) {
+            setCurrentPasswordShown(true);
+            setPasswordModeCopy(true);
+          }
           if (!outcome.ok && outcome.reason === 'logged-out') { alert('Not logged in'); return; }
+          if (!outcome.ok && outcome.reason === 'need-current-password') {
+            if (msg) {
+              msg.textContent = 'Enter your current password to continue.';
+              msg.style.color = '#c0392b';
+              msg.style.display = 'block';
+            }
+            return;
+          }
           const data = outcome.res && outcome.res.data;
           if (msg) {
             msg.textContent = setPasswordFeedback(data);
@@ -7422,7 +7460,7 @@
           if (msg) { msg.textContent = 'Error setting password.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
         } finally {
           setPwBtn.disabled = false;
-          if (!savedOk) setPwBtn.textContent = 'Set / Update Password';
+          if (!savedOk) setPasswordModeCopy(!!syncSetPasswordForm.hasPassword);
         }
       });
     }
