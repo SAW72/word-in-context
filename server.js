@@ -105,6 +105,12 @@ try {
       standardHeaders: true,
       legacyHeaders: false,
     }));
+    app.use('/api/admin/signin-link', rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
     app.use('/api/tester-signup', rateLimit({
       windowMs: 15 * 60 * 1000,
       max: 10,
@@ -184,6 +190,16 @@ try {
     );
   `);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_signin_links (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      purpose TEXT NOT NULL
+    );
+  `);
+  db.exec(`
     CREATE TABLE IF NOT EXISTS shares (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -224,6 +240,10 @@ const adminLoginLockout = createAttemptLockout({
 const testerSignupLimiter = createFixedWindowLimiter({
   windowMs: process.env.TESTER_SIGNUP_RATE_WINDOW_MS || 15 * 60 * 1000,
   max: process.env.TESTER_SIGNUP_RATE_MAX || 8,
+});
+const adminSigninLinkLimiter = createFixedWindowLimiter({
+  windowMs: process.env.ADMIN_SIGNIN_LINK_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.ADMIN_SIGNIN_LINK_RATE_MAX || 20,
 });
 const shareTranscodeLimiter = createFixedWindowLimiter({
   windowMs: process.env.SHARE_TRANSCODE_RATE_WINDOW_MS || 60 * 60 * 1000,
@@ -1637,6 +1657,28 @@ app.post('/api/request-login', async (req, res) => {
   }
 });
 
+// Same refusal password login and the admin sign-in link both use.
+// Magic links keep their own check and are not changed here.
+function passwordLoginAccessError(user) {
+  const now = new Date();
+  const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
+  const effectivelyTrialing = (user.status === 'trialing') && trialValid;
+  const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
+  if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
+    return 'Account access has been revoked or trial expired.';
+  }
+  return '';
+}
+
+function hashAdminSigninToken(token) {
+  return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
+}
+
+function adminSigninLinkExpired(expiresAt, now = new Date()) {
+  const exp = new Date(expiresAt);
+  return Number.isNaN(exp.getTime()) || exp.getTime() <= now.getTime();
+}
+
 // Password login (for accounts that have a password set via admin or future flows)
 app.post('/api/login', async (req, res) => {
   try {
@@ -1654,13 +1696,9 @@ app.post('/api/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid password' });
 
-    // Access check (same as magic)
-    const now = new Date();
-    const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-    const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
-    if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
-      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
+    const accessError = passwordLoginAccessError(user);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
     }
 
     const token = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '30d' });
@@ -1697,6 +1735,57 @@ app.get('/api/verify-magic', (req, res) => {
     res.json({ token: jwtToken, email: user.email, status: user.status });
   } catch (err) {
     console.error('verify-magic error:', err);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Admin-issued sign-in link. Separate from the 15-minute magic token table.
+// The raw token is never stored. One verification function is passwordLoginAccessError.
+app.get('/api/admin-signin/redeem', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!token) return res.status(400).json({ error: 'Token required' });
+  try {
+    const tokenHash = hashAdminSigninToken(token);
+    const record = db.prepare(`
+      SELECT email, expires_at, used_at, purpose
+      FROM admin_signin_links
+      WHERE token_hash = ?
+    `).get(tokenHash);
+    if (!record || record.purpose !== 'admin_signin' || record.used_at || adminSigninLinkExpired(record.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const usedAt = new Date().toISOString();
+    const spent = db.prepare(`
+      UPDATE admin_signin_links
+      SET used_at = ?
+      WHERE token_hash = ? AND used_at IS NULL
+    `).run(usedAt, tokenHash);
+    if (spent.changes !== 1) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const fresh = db.prepare(`
+      SELECT email, expires_at FROM admin_signin_links WHERE token_hash = ?
+    `).get(tokenHash);
+    if (!fresh || adminSigninLinkExpired(fresh.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    console.log(`[admin-signin] used by ${fresh.email}`);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(fresh.email);
+    if (!user) {
+      return res.status(401).json({ error: 'No account with that email' });
+    }
+    const accessError = passwordLoginAccessError(user);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
+
+    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token: jwtToken, email: user.email, status: user.status });
+  } catch (err) {
+    console.error('[admin-signin] redeem failed');
     res.status(500).json({ error: 'Verification failed' });
   }
 });
@@ -2346,6 +2435,37 @@ function requireAdmin(req, res) {
   }
 }
 
+app.post('/api/admin/signin-link', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const limited = adminSigninLinkLimiter.check('admin-signin:' + unspoofableClientIp(req));
+  if (!limited.allowed) {
+    const retryAfterSec = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Too many sign-in links. Try again later.' });
+  }
+
+  const email = normalizeEmail(req.body && req.body.email);
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const user = db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
+  if (!user) return res.status(404).json({ error: 'No account for that email' });
+
+  // A new link does not revoke older unused links. Each one still works once until it expires.
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashAdminSigninToken(token);
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  db.prepare(`
+    INSERT INTO admin_signin_links (token_hash, email, created_at, expires_at, used_at, purpose)
+    VALUES (?, ?, ?, ?, NULL, 'admin_signin')
+  `).run(tokenHash, user.email, createdAt, expiresAt);
+
+  const url = APP_BASE_URL + '/login?admin_signin=' + token;
+  console.log('[admin] signin link created for ' + user.email + ' expires ' + expiresAt);
+  res.json({ url: url, email: user.email, expires_at: expiresAt });
+});
+
 app.get('/api/admin/users', (req, res) => {
   if (!requireAdmin(req, res)) return;
 
@@ -2797,7 +2917,7 @@ app.get('/success', (req, res) => {
 // Login page that handles magic token and stores it for the app.
 // The token is read in public/login-verify.js from the query string.
 app.get('/login', (req, res) => {
-  if (!req.query.token) {
+  if (!req.query.token && !req.query.admin_signin) {
     return res.send('<p>No token provided. <a href="/">Go to The Word in Context</a></p>');
   }
   res.send(`
@@ -3098,6 +3218,7 @@ module.exports = {
   db,
   adminLoginLockout,
   testerSignupLimiter,
+  adminSigninLinkLimiter,
   capTrialDays,
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
