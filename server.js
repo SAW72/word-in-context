@@ -52,8 +52,14 @@ const {
   isAcceptableAccountEmail,
   isManualFree,
   whopStatusFromPayload,
-  statusAfterManualFreeCleared,
+  accessAfterManualFreeCleared,
+  removeFreeBlockedReason,
+  whopTrialEndFromPayload,
+  whopEventTime,
+  whopEventSkipReason,
   ensureWhopStatusColumn,
+  ensureWhopTrialEndColumn,
+  ensureWhopEventAtColumn,
 } = require('./lib/security');
 const {
   CACHE_ONE_YEAR,
@@ -180,7 +186,10 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
-  ensureWhopStatusColumn(db);
+  // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn]]) {
+    try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -1691,6 +1700,10 @@ app.get('/api/verify-magic', (req, res) => {
     if (!user || !user.access_granted) {
       return res.status(403).json({ error: 'Account access revoked' });
     }
+    // Same access rule as password login, so a cut off user gets 403 here too, not a token.
+    if (!userHasAccess(user)) {
+      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
+    }
 
     // Issue JWT (7 days)
     const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
@@ -2378,13 +2391,19 @@ app.post('/api/admin/set-access', (req, res) => {
 
   const { email, access_granted, manual_free } = req.body;
   const before = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const clearingFree = isManualFree(before) && !manual_free;
+  const blocked = clearingFree ? removeFreeBlockedReason(before) : null;
+  if (blocked) {
+    console.log(`[admin] refused Remove free for ${before.email}: Whop ids but no whop_status yet`);
+    return res.status(409).json({ error: blocked });
+  }
   db.prepare(`
     UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
   `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
-  if (isManualFree(before) && !manual_free) {
+  if (clearingFree) {
     // Remove free: a live Whop membership keeps access, everyone else must pay. No email.
-    const status = statusAfterManualFreeCleared(before);
-    db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, before.id);
+    const { status, trialEnd } = accessAfterManualFreeCleared(before);
+    db.prepare('UPDATE users SET status = ?, trial_end = ? WHERE id = ?').run(status, trialEnd, before.id);
     console.log(`[admin] removed free forever from ${before.email}; status ${status} (whop_status ${before.whop_status || 'none'})`);
   }
   res.json({ success: true });
@@ -2462,8 +2481,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  // Whop trial end, kept apart from trial_end so manual_free rows record it too. Cleared when not trialing.
+  const whopTrialEnd = whopStatus === 'trialing' ? (whopTrialEndFromPayload(payload) || (user && user.whop_trial_end) || null) : null;
   if (isManualFree(user) && !accessGranted) {
-    db.prepare('UPDATE users SET whop_status = ? WHERE id = ?').run(whopStatus, user.id);
+    db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ? WHERE id = ?').run(whopStatus, whopTrialEnd, user.id);
     return db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
   const nextTrialEnd = accessGranted
@@ -2472,9 +2493,9 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
 
   if (!user) {
     db.prepare(`
-      INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id, whop_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId, whopStatus);
+      INSERT INTO users (email, status, trial_end, access_granted, whop_membership_id, whop_member_id, whop_status, whop_trial_end)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId, whopStatus, whopTrialEnd);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   } else if (isManualFree(user)) {
     // Free forever: apply access and membership ids, keep status and trial_end.
@@ -2483,9 +2504,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       SET access_granted = ?,
           whop_membership_id = COALESCE(?, whop_membership_id),
           whop_member_id = COALESCE(?, whop_member_id),
-          whop_status = ?
+          whop_status = ?,
+          whop_trial_end = ?
       WHERE id = ?
-    `).run(accessGranted, membershipId, memberId, whopStatus, user.id);
+    `).run(accessGranted, membershipId, memberId, whopStatus, whopTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   } else {
     db.prepare(`
@@ -2495,9 +2517,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
           whop_membership_id = COALESCE(?, whop_membership_id),
           whop_member_id = COALESCE(?, whop_member_id),
           trial_end = COALESCE(?, trial_end),
-          whop_status = ?
+          whop_status = ?,
+          whop_trial_end = ?
       WHERE id = ?
-    `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, whopStatus, user.id);
+    `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, whopStatus, whopTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
@@ -2536,8 +2559,13 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
     console.warn(`[whop:${source}] trial_ending_soon missing email`);
     return null;
   }
-  const user = db.prepare('SELECT id, manual_free FROM users WHERE email = ?').get(email);
-  if (user) db.prepare(`UPDATE users SET whop_status = 'trialing' WHERE id = ?`).run(user.id);
+  const user = db.prepare('SELECT id, manual_free, whop_status, whop_trial_end FROM users WHERE email = ?').get(email);
+  if (user) {
+    // A trial notice never downgrades a row Whop already reported active; it always records the trial end.
+    const whopStatus = user.whop_status === 'active' ? 'active' : 'trialing';
+    const whopTrialEnd = whopTrialEndFromPayload(payload) || user.whop_trial_end || null;
+    db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ? WHERE id = ?').run(whopStatus, whopTrialEnd, user.id);
+  }
   if (isManualFree(user)) return null;
 
   const manageUrl = whopPayloadManageUrl(payload);
@@ -2569,7 +2597,7 @@ async function handleWhopPaymentFailed(payload, source = 'webhook') {
 
   const manageUrl = whopPayloadManageUrl(payload);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (user) db.prepare(`UPDATE users SET whop_status = 'past_due' WHERE id = ?`).run(user.id);
+  if (user) db.prepare(`UPDATE users SET whop_status = 'past_due', whop_trial_end = NULL WHERE id = ?`).run(user.id);
   if (isManualFree(user)) return null;
   if (user) {
     db.prepare(`UPDATE users SET status = 'past_due' WHERE id = ?`).run(user.id);
@@ -2739,6 +2767,33 @@ app.post('/api/stripe-webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+const WHOP_ACTIVATION_EVENTS = new Set(['membership.activated', 'membership.went_valid', 'membership.created']);
+const WHOP_DEACTIVATION_EVENTS = new Set(['membership.deactivated', 'membership.went_invalid', 'membership.canceled']);
+const WHOP_STATE_EVENTS = new Set([...WHOP_ACTIVATION_EVENTS, ...WHOP_DEACTIVATION_EVENTS, 'payment.succeeded', 'payment.failed', 'membership.trial_ending_soon']);
+
+/**
+ * Ordering gate for Whop events that change a row (see whopEventSkipReason).
+ * Returns null when the event is not gated (other types, other plans, no email),
+ * else { email, eventAt, skip }. An applied event records eventAt in whop_event_at.
+ */
+function whopEventGate(type, event, data) {
+  if (!WHOP_STATE_EVENTS.has(type) || !data || typeof data !== 'object') return null;
+  const subject = type === 'payment.succeeded' && data.membership ? data.membership : data;
+  if (!whopMembershipIsAllowed(subject)) return null;
+  const email = whopPayloadEmail(subject);
+  if (!email) return null;
+  const membershipId = type.startsWith('payment.')
+    ? (data.membership?.id || data.membership_id || null)
+    : (data.id || null);
+  let makesLive = false;
+  if (WHOP_ACTIVATION_EVENTS.has(type) || type === 'payment.succeeded') {
+    makesLive = ['active', 'trialing'].includes(whopStatusFromPayload(subject.status));
+  }
+  const eventAt = whopEventTime(type, event, data);
+  const user = db.prepare('SELECT whop_event_at, whop_membership_id, whop_status FROM users WHERE email = ?').get(email);
+  return { email, eventAt, skip: whopEventSkipReason(user, { eventAt, membershipId, makesLive }) };
+}
+
 app.post('/api/whop-webhook', async (req, res) => {
   if (!whopWebhookConfigured()) {
     console.error('[whop:webhook] WHOP_WEBHOOK_SECRET missing — set it on Render to the secret from Whop Developer → Webhooks');
@@ -2760,7 +2815,10 @@ app.post('/api/whop-webhook', async (req, res) => {
     const data = event?.data != null ? event.data : event;
     console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
-    if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
+    const gate = whopEventGate(type, event, data);
+    if (gate && gate.skip) {
+      console.log(`[whop:webhook] ignored ${type} for ${gate.email}: ${gate.skip} (event ${gate.eventAt})`);
+    } else if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
       await activateWhopMembership(data, 'webhook');
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
@@ -2770,13 +2828,15 @@ app.post('/api/whop-webhook', async (req, res) => {
         await activateWhopMembership(membership, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
-        if (email) {
+        if (!whopMembershipIsAllowed(data)) {
+          console.warn(`[whop:webhook-payment] ignored email only payment.succeeded for plan ${whopPayloadPlanId(data)}; not in WHOP_PLAN_IDS`);
+        } else if (email) {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
           if (isManualFree(user)) {
-            db.prepare(`UPDATE users SET whop_status = 'active' WHERE id = ?`).run(user.id);
+            db.prepare(`UPDATE users SET whop_status = 'active', whop_trial_end = NULL WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] ${email} is free forever; payment.succeeded recorded whop_status only`);
           } else if (user) {
-            db.prepare(`UPDATE users SET status = 'active', access_granted = 1, whop_status = 'active' WHERE id = ?`).run(user.id);
+            db.prepare(`UPDATE users SET status = 'active', access_granted = 1, whop_status = 'active', whop_trial_end = NULL WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
           } else {
             console.warn(`[whop:webhook-payment] payment.succeeded for unknown email ${email} — no user row yet`);
@@ -2791,6 +2851,10 @@ app.post('/api/whop-webhook', async (req, res) => {
       await handleWhopPaymentFailed(data, 'webhook');
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);
+    }
+    if (gate && !gate.skip && gate.email) {
+      db.prepare('UPDATE users SET whop_event_at = ? WHERE email = ? AND (whop_event_at IS NULL OR whop_event_at < ?)')
+        .run(gate.eventAt, gate.email, gate.eventAt);
     }
   } catch (err) {
     console.error('Whop webhook handler error:', err);
