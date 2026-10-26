@@ -234,6 +234,9 @@ const adminLoginLockout = createAttemptLockout({
   windowMs: process.env.ADMIN_LOCKOUT_WINDOW_MS,
   lockMs: process.env.ADMIN_LOCKOUT_LOCK_MS,
 });
+// Wrong current password attempts on the set password route, keyed by user id. Same defaults as the
+// helper: 5 failures in 15 minutes locks that account's password change for 15 minutes.
+const setPasswordLockout = createAttemptLockout();
 const testerSignupLimiter = createFixedWindowLimiter({
   windowMs: process.env.TESTER_SIGNUP_RATE_WINDOW_MS || 15 * 60 * 1000,
   max: process.env.TESTER_SIGNUP_RATE_MAX || 8,
@@ -1700,6 +1703,53 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Set or change the signed in user's password so they can log in with email and password.
+// When a password already exists the current one is required, so a stolen session token alone
+// cannot replace it. The password is never logged or echoed; logs name the user id only.
+app.post('/api/set-password', requireAuth, async (req, res) => {
+  const user = req.userRecord;
+  const lockKey = `setpw:${user.id}`;
+  try {
+    const { password, current_password: currentPassword } = req.body || {};
+    if (user.password_hash) {
+      const locked = setPasswordLockout.isLocked(lockKey);
+      if (locked.locked) {
+        const retryAfterSec = Math.ceil(locked.retryAfterMs / 1000);
+        res.set('Retry-After', String(retryAfterSec));
+        return res.status(429).json({ error: 'Too many password attempts. Try again later.', retryAfterSec });
+      }
+    }
+    if (typeof password !== 'string' || password.length === 0) {
+      return res.status(400).json({ error: 'Enter a new password.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+    if (user.password_hash) {
+      if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
+        return res.status(400).json({ error: 'Enter your current password to change it.' });
+      }
+      const ok = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!ok) {
+        const after = setPasswordLockout.recordFailure(lockKey);
+        if (after.locked) {
+          const retryAfterSec = Math.ceil(after.retryAfterMs / 1000);
+          res.set('Retry-After', String(retryAfterSec));
+          return res.status(429).json({ error: 'Too many password attempts. Try again later.', retryAfterSec });
+        }
+        return res.status(403).json({ error: 'Current password is incorrect.' });
+      }
+    }
+    const passwordHash = await hashPassword(password);
+    db.prepare('UPDATE users SET password_hash = ? WHERE email = ?').run(passwordHash, user.email);
+    setPasswordLockout.recordSuccess(lockKey);
+    res.json({ success: true, message: 'Password saved. You can now log in with your email and password.' });
+  } catch (err) {
+    console.error(`[auth] set password failed for user ${user.id}:`, err && err.message);
+    res.status(500).json({ error: 'Could not save password' });
+  }
+});
+
 // Verify magic token and issue JWT
 app.get('/api/verify-magic', (req, res) => {
   try {
@@ -1743,7 +1793,8 @@ app.get('/api/me', requireAuth, (req, res) => {
     status: u.status,
     trial_end: u.trial_end,
     access_granted: !!u.access_granted,
-    manual_free: !!u.manual_free
+    manual_free: !!u.manual_free,
+    has_password: !!u.password_hash
   });
 });
 
