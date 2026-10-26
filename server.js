@@ -59,7 +59,7 @@ const {
   ensureWhopEventAtColumn,
   ensureTesterExpiredEmailColumn,
 } = require('./lib/security');
-const { isBillingFreeTester, notifyExpiredTester } = require('./lib/tester-expiry');
+const { isBillingFreeTester, isExpiredTester, notifyExpiredTester } = require('./lib/tester-expiry');
 const {
   CACHE_ONE_YEAR,
   applyCacheControl,
@@ -345,7 +345,11 @@ function requireAuth(req, res, next) {
     const billingGrace = user.status === 'trialing' && !isBillingFreeTester(user);
     if (!isTrialing && !isActive && !billingGrace) {
       notifyIfExpiredTester(user);
-      return res.status(403).json({ error: 'Subscription required or trial expired.' });
+      const body = { error: 'Subscription required or trial expired.' };
+      // Only the expired tester's own signed session sees this code, so the Account view can offer
+      // a subscribe link. It tells them nothing their own account does not already know.
+      if (isExpiredTester(user)) body.code = 'tester_expired';
+      return res.status(403).json(body);
     }
     req.userRecord = user;
     next();

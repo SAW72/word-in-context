@@ -2506,6 +2506,26 @@
       return localStorage.getItem('auth_token');
     }
 
+    // An expired tester's own /api/me 403 carries code tester_expired. Show that tester access ended and
+    // link to the paid plan. The password form is hidden: login stays closed for them until they subscribe.
+    function showTesterEndedAccount(emailEl, statusEl) {
+      if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
+      if (statusEl) {
+        const title = document.createElement('strong');
+        title.textContent = 'Your tester access has ended.';
+        const note = document.createElement('span');
+        note.textContent = ' Thank you for testing. To keep studying, subscribe to Pro with the same email address.';
+        const link = document.createElement('a');
+        link.id = 'tester-ended-subscribe';
+        link.href = '/#signup';
+        link.textContent = 'Subscribe to Pro';
+        link.style.cssText = 'display:block; text-align:center; background:#2c3e50; color:white; padding:10px; border-radius:6px; margin-top:10px; text-decoration:none; font-weight:600;';
+        statusEl.replaceChildren(title, note, link);
+      }
+      const setPwSection = document.getElementById('set-password-section');
+      if (setPwSection) setPwSection.style.display = 'none';
+    }
+
     function enforceAuthRequired() {
       const token = getEffectiveAuthToken();
       const input = document.getElementById('user-input');
@@ -5858,6 +5878,7 @@
               fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
                 .then(r => r.json())
                 .then(data => {
+                  if (data && data.code === 'tester_expired') { showTesterEndedAccount(emailEl, statusEl); return; }
                   if (emailEl) emailEl.textContent = data.email || 'Logged in';
                   if (statusEl) {
                     let txt = data.status || 'active';
@@ -7157,6 +7178,7 @@
             fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } })
               .then(r => r.json())
               .then(data => {
+                if (data && data.code === 'tester_expired') { showTesterEndedAccount(emailEl, statusEl); return; }
                 if (emailEl) emailEl.textContent = data.email || 'Logged in';
                 if (statusEl) {
                   let txt = data.status || 'active';
