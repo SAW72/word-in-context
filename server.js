@@ -2461,6 +2461,16 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else if (isManualFree(user)) {
+    // Free forever: apply access and membership ids, keep status and trial_end.
+    db.prepare(`
+      UPDATE users
+      SET access_granted = ?,
+          whop_membership_id = COALESCE(?, whop_membership_id),
+          whop_member_id = COALESCE(?, whop_member_id)
+      WHERE id = ?
+    `).run(accessGranted, membershipId, memberId, user.id);
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   } else {
     db.prepare(`
       UPDATE users
