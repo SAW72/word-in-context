@@ -51,6 +51,12 @@ const {
   shareQuotaKey,
   isAcceptableAccountEmail,
   isManualFree,
+  whopShadowFromEvent,
+  whopShadowUpdate,
+  removeFreeDecision,
+  ensureWhopStatusColumn,
+  ensureWhopTrialEndColumn,
+  ensureWhopEventAtColumn,
 } = require('./lib/security');
 const {
   CACHE_ONE_YEAR,
@@ -177,6 +183,10 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
+  // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn]]) {
+    try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -1687,6 +1697,10 @@ app.get('/api/verify-magic', (req, res) => {
     if (!user || !user.access_granted) {
       return res.status(403).json({ error: 'Account access revoked' });
     }
+    // Same access rule as password login, so a cut off user gets 403 here too, not a token.
+    if (!userHasAccess(user)) {
+      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
+    }
 
     // Issue JWT (7 days)
     const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
@@ -2373,9 +2387,22 @@ app.post('/api/admin/set-access', (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const { email, access_granted, manual_free } = req.body;
+  const before = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const clearingFree = isManualFree(before) && !manual_free;
+  // Remove free reads only the free forever shadow (whop_status, whop_trial_end, whop_event_at).
+  const decision = clearingFree ? removeFreeDecision(before) : null;
+  if (decision && decision.blocked) {
+    console.log(`[admin] refused Remove free for ${before.email}: whop_status ${before.whop_status || 'none'}, stripe ${before.stripe_subscription_id ? 'on record' : 'none'}`);
+    return res.status(409).json({ error: decision.blocked });
+  }
   db.prepare(`
     UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
   `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+  if (clearingFree) {
+    // Remove free: a live Whop membership keeps access, an unambiguous dead state must pay. No email.
+    db.prepare('UPDATE users SET status = ?, trial_end = ? WHERE id = ?').run(decision.status, decision.trialEnd, before.id);
+    console.log(`[admin] removed free forever from ${before.email}; status ${decision.status} (whop_status ${before.whop_status || 'none'})`);
+  }
   res.json({ success: true });
 });
 
@@ -2719,6 +2746,55 @@ app.post('/api/stripe-webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+const WHOP_SHADOW_EVENTS = new Set([
+  'membership.activated', 'membership.went_valid', 'membership.created',
+  'membership.deactivated', 'membership.went_invalid', 'membership.canceled',
+  'payment.succeeded', 'payment.failed', 'membership.trial_ending_soon',
+]);
+
+/**
+ * Email whose free forever shadow this event updates, or null (other types, other
+ * plans, no email). metadata.email is not used here: checkout metadata is not a
+ * Whop account identity, so it must not move another account's shadow.
+ */
+function whopShadowEmail(type, data) {
+  if (!WHOP_SHADOW_EVENTS.has(type) || !data || typeof data !== 'object') return null;
+  const subject = type === 'payment.succeeded' && data.membership && typeof data.membership === 'object' ? data.membership : data;
+  if (!whopMembershipIsAllowed(subject) || !whopMembershipIsAllowed(data)) return null;
+  const email = (p) => whopPayloadEmail({ ...p, metadata: undefined });
+  return email(subject) || email(data) || null;
+}
+
+/**
+ * Update the free forever shadow for one row in one synchronous transaction: read
+ * the row, decide (whopShadowUpdate), write. The read and the whop_event_at claim
+ * cannot interleave with another event. asNew: the row was created by this event,
+ * so its Whop ids came from this event, not from earlier Whop state. Returns the reason, or null.
+ */
+const applyWhopShadow = db.transaction((email, type, event, data, headerTimestamp, asNew) => {
+  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id FROM users WHERE email = ?').get(email);
+  if (!row) return null;
+  // A row this event created has no earlier Whop state, unless another event already wrote it meanwhile.
+  const before = asNew && row.whop_status == null && row.whop_event_at == null ? { id: row.id } : row;
+  const ev = whopShadowFromEvent(type, event, data, headerTimestamp, before);
+  const { patch, reason } = whopShadowUpdate(before, ev);
+  if (patch) {
+    db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ?, whop_event_at = ? WHERE id = ?')
+      .run(patch.whop_status, patch.whop_trial_end, patch.whop_event_at, row.id);
+  }
+  return reason;
+});
+
+function recordWhopShadow(email, type, event, data, headerTimestamp, asNew) {
+  try {
+    const reason = applyWhopShadow(email, type, event, data, headerTimestamp, asNew);
+    if (reason) console.log(`[whop:shadow] ${type} for ${email}: ${reason}`);
+  } catch (err) {
+    // The shadow only feeds Remove free; a failure here must not change normal account handling.
+    console.error('[whop:shadow] update failed:', err.message);
+  }
+}
+
 app.post('/api/whop-webhook', async (req, res) => {
   if (!whopWebhookConfigured()) {
     console.error('[whop:webhook] WHOP_WEBHOOK_SECRET missing — set it on Render to the secret from Whop Developer → Webhooks');
@@ -2740,6 +2816,12 @@ app.post('/api/whop-webhook', async (req, res) => {
     const data = event?.data != null ? event.data : event;
     console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
+    // Free forever shadow first, for an existing row; the handlers below never read it.
+    const headerTimestamp = normalizeWebhookHeaders(req.headers)['webhook-timestamp'];
+    const shadowEmail = whopShadowEmail(type, data);
+    const shadowRowExisted = !!shadowEmail && !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(shadowEmail);
+    if (shadowRowExisted) recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, false);
+
     if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
       await activateWhopMembership(data, 'webhook');
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
@@ -2750,9 +2832,13 @@ app.post('/api/whop-webhook', async (req, res) => {
         await activateWhopMembership(membership, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
-        if (email) {
+        if (!whopMembershipIsAllowed(data)) {
+          console.warn(`[whop:webhook-payment] ignored email only payment.succeeded for plan ${whopPayloadPlanId(data)}; not in WHOP_PLAN_IDS`);
+        } else if (email) {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-          if (user) {
+          if (isManualFree(user)) {
+            console.log(`[whop:webhook-payment] ${email} is free forever; payment.succeeded left the row unchanged`);
+          } else if (user) {
             db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
           } else {
@@ -2769,6 +2855,7 @@ app.post('/api/whop-webhook', async (req, res) => {
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);
     }
+    if (shadowEmail && !shadowRowExisted) recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, true);
   } catch (err) {
     console.error('Whop webhook handler error:', err);
     return res.status(500).json({ error: 'Webhook handler failed' });
