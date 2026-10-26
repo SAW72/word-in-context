@@ -2752,7 +2752,9 @@ app.post('/api/whop-webhook', async (req, res) => {
         const email = whopPayloadEmail(data);
         if (email) {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-          if (user) {
+          if (isManualFree(user)) {
+            console.log(`[whop:webhook-payment] ${email} is free forever; payment.succeeded left the row unchanged`);
+          } else if (user) {
             db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
           } else {
