@@ -54,6 +54,7 @@ const {
   whopShadowFromEvent,
   whopShadowUpdate,
   removeFreeDecision,
+  pastDueAccess,
   ensureWhopStatusColumn,
   ensureWhopTrialEndColumn,
   ensureWhopEventAtColumn,
@@ -340,10 +341,12 @@ function requireAuth(req, res, next) {
     const now = new Date();
     const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
     const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
+    // Past due keeps access only for a Whop retry with no Stripe ids (pastDueAccess).
+    const pastDueOk = pastDueAccess(user) === 'whop';
     // Whop and Stripe trials keep access past trial_end until their billing webhook moves them.
     // A tester has no billing that could ever move it, so its trial_end is final.
     const billingGrace = user.status === 'trialing' && !isBillingFreeTester(user);
-    if (!isTrialing && !isActive && !billingGrace) {
+    if (!isTrialing && !isActive && !billingGrace && !pastDueOk) {
       notifyIfExpiredTester(user);
       const body = { error: 'Subscription required or trial expired.' };
       // Only the expired tester's own signed session sees this code, so the Account view can offer
@@ -673,8 +676,9 @@ function userHasAccess(user) {
   const now = new Date();
   const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
   const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-  // past_due: keep access while Whop retries billing; membership.deactivated cuts access off
-  const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
+  // past_due: pastDueAccess. A Whop retry keeps access until membership.deactivated; a Stripe only
+  // row keeps its old login and magic link result; every other past_due row fails closed.
+  const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free || pastDueAccess(user) !== null;
   return !!user.access_granted && (effectivelyTrialing || hasPaidOrFree);
 }
 
@@ -1682,12 +1686,8 @@ app.post('/api/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid password' });
 
-    // Access check (same as magic)
-    const now = new Date();
-    const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-    const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-    const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
-    if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
+    // Access check: the same userHasAccess rule as the magic link.
+    if (!userHasAccess(user)) {
       notifyIfExpiredTester(user);
       return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
