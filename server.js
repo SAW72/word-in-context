@@ -633,12 +633,12 @@ function whopPayloadPlanId(payload) {
   );
 }
 
-function whopMembershipIsAllowed(payload) {
+function whopMembershipIsAllowed(payload, opts = {}) {
   const allowed = whopPlanIds();
   if (!allowed.length) return true;
   const planId = whopPayloadPlanId(payload);
-  // A missing plan id is refused only when an allowlist is configured.
-  if (!planId) return false;
+  // A missing plan id is refused only when granting and an allowlist is configured.
+  if (!planId) return !!opts.allowMissingPlan;
   return allowed.includes(planId);
 }
 
@@ -2443,13 +2443,6 @@ function whopStoredMembershipConflicts(user, membershipId) {
 }
 
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
-  if (!options.skipPlanCheck && !whopMembershipIsAllowed(payload)) {
-    console.warn(
-      `[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)} — not in WHOP_PLAN_IDS (${whopPlanIds().join(',')})`
-    );
-    return null;
-  }
-
   const email = whopPayloadEmail(payload);
   const membershipId = payload?.id || null;
   const mappedStatus = mapWhopStatusToUserStatus(payload?.status);
@@ -2461,15 +2454,22 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     return existing || null;
   }
 
+  const isGrant = mappedStatus === 'trialing' || mappedStatus === 'active';
+  if (!options.skipPlanCheck && !whopMembershipIsAllowed(payload, { allowMissingPlan: !isGrant })) {
+    console.warn(
+      `[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)} — not in WHOP_PLAN_IDS (${whopPlanIds().join(',')})`
+    );
+    return null;
+  }
+
   const memberId = payload?.member?.id || null;
   const renewalEnd = payload?.renewal_period_end || null;
-  const isGrant = mappedStatus === 'trialing' || mappedStatus === 'active';
 
   if (!isGrant) {
     let user = membershipId
       ? db.prepare('SELECT * FROM users WHERE whop_membership_id = ?').get(membershipId)
       : null;
-    if (!user && email) {
+    if (!user && email && !options.matchMembershipOnly) {
       const byEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (whopStoredMembershipConflicts(byEmail, membershipId)) {
         console.warn(
@@ -2480,6 +2480,10 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       user = byEmail;
     }
     if (!user) {
+      if (options.matchMembershipOnly) {
+        console.warn(`[whop:${source}] no stored membership match; access unchanged`);
+        return null;
+      }
       if (!email) {
         console.warn(
           `[whop:${source}] membership ${membershipId || '(unknown)'} missing email — check Whop webhook permissions include member:email:read`
@@ -2511,6 +2515,11 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       return db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     }
 
+    if (user.manual_free) {
+      console.log(`[whop:${source}] manual_free ${user.email} keeps access`);
+      return user;
+    }
+
     db.prepare(`
       UPDATE users
       SET status = ?,
@@ -2534,6 +2543,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const accessGranted = 1;
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const alreadyHadAccess = !!(user && user.access_granted);
   const nextTrialEnd = renewalEnd || (user && user.trial_end) || serverTrialEnd;
 
   if (!user) {
@@ -2555,7 +2565,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
-  if (options.sendLoginEmail === false) {
+  if (options.sendLoginEmail === false || alreadyHadAccess) {
     console.log(`[whop:${source}] activated ${email} (${mappedStatus})`);
     return user;
   }
@@ -2821,7 +2831,8 @@ app.post('/api/whop-webhook', async (req, res) => {
     } else if (type === 'membership.updated') {
       await activateWhopMembership(data, 'webhook', { sendLoginEmail: false });
     } else if (type === 'payment.succeeded') {
-      const membership = (data && data.membership && typeof data.membership === 'object') ? data.membership : null;
+      const rawMembership = data && data.membership;
+      const membership = (rawMembership && typeof rawMembership === 'object') ? rawMembership : null;
       if (membership && (membership.id || membership.status || membership.user || membership.member)) {
         const paymentEmail = whopPayloadEmail(data) || whopPayloadEmail(membership);
         const mergedUser = (membership.user && membership.user.email)
@@ -2838,16 +2849,25 @@ app.post('/api/whop-webhook', async (req, res) => {
         }, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
-        if (email) {
-          const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-          if (user) {
-            db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
-            console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
-          } else {
-            console.warn(`[whop:webhook-payment] payment.succeeded for unknown email ${email} — no user row yet`);
-          }
-        } else {
+        if (!email) {
           console.warn('[whop:webhook-payment] payment.succeeded with no email in payload');
+        } else {
+          const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+          if (!existing) {
+            console.warn(`[whop:webhook-payment] payment.succeeded for unknown email ${email} — no user row yet`);
+          } else {
+            const membershipId = (typeof rawMembership === 'string' && rawMembership.trim())
+              ? rawMembership.trim()
+              : null;
+            await activateWhopMembership({
+              id: membershipId,
+              status: 'active',
+              plan: data.plan || null,
+              plan_id: data.plan_id || null,
+              user: data.user || { email },
+              member: data.member || null,
+            }, 'webhook-payment');
+          }
         }
       }
     } else if (type === 'membership.trial_ending_soon') {
@@ -2868,7 +2888,7 @@ app.post('/api/whop-webhook', async (req, res) => {
           member: (data && data.member) || (membership && membership.member) || null,
           plan: (data && data.plan) || (membership && membership.plan) || null,
           plan_id: (data && data.plan_id) || (membership && membership.plan_id) || null,
-        }, 'webhook', { sendLoginEmail: false, skipPlanCheck: true });
+        }, 'webhook', { sendLoginEmail: false, skipPlanCheck: true, matchMembershipOnly: true });
       }
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);

@@ -1,5 +1,7 @@
 'use strict';
-// Read-only count of trialing users whose trial_end is already in the past.
+// Read-only count of users WIC_ENFORCE_TRIAL_END would newly refuse.
+// Trialing, access still granted, not manual_free, and the trial is not open:
+// trial_end missing, blank, not a date, or already past. Same Date check as requireAuth.
 // Prints two counts. Prints no emails and no ids.
 const path = require('path');
 const Database = require('better-sqlite3');
@@ -26,24 +28,40 @@ try {
   fail('could not open database read-only');
 }
 
+function textFilled(value) {
+  return value != null && String(value).trim() !== '';
+}
+
+function trialStillOpen(trialEnd, now) {
+  return !!(trialEnd && now < new Date(trialEnd));
+}
+
+function flagWouldCut(row, now) {
+  if (!row || !row.access_granted) return false;
+  if (row.manual_free) return false;
+  if (row.status === 'active' || row.status === 'free') return false;
+  if (row.status !== 'trialing') return false;
+  return !trialStillOpen(row.trial_end, now);
+}
+
 try {
-  const row = db.prepare(`
-    SELECT
-      COUNT(*) AS expired_trialing,
-      COALESCE(SUM(CASE
-        WHEN (
-          (whop_membership_id IS NOT NULL AND TRIM(whop_membership_id) != '')
-          OR (stripe_subscription_id IS NOT NULL AND TRIM(stripe_subscription_id) != '')
-          OR (stripe_customer_id IS NOT NULL AND TRIM(stripe_customer_id) != '')
-        ) THEN 1 ELSE 0 END), 0) AS with_signal
+  const now = new Date();
+  const rows = db.prepare(`
+    SELECT status, trial_end, access_granted, manual_free,
+           whop_membership_id, stripe_subscription_id, stripe_customer_id
     FROM users
-    WHERE status = 'trialing'
-      AND trial_end IS NOT NULL
-      AND TRIM(trial_end) != ''
-      AND trial_end < ?
-  `).get(new Date().toISOString());
-  const expired = Number(row && row.expired_trialing) || 0;
-  const signal = Number(row && row.with_signal) || 0;
+  `).all();
+  let expired = 0;
+  let signal = 0;
+  for (const row of rows) {
+    if (!flagWouldCut(row, now)) continue;
+    expired += 1;
+    if (
+      textFilled(row.whop_membership_id)
+      || textFilled(row.stripe_subscription_id)
+      || textFilled(row.stripe_customer_id)
+    ) signal += 1;
+  }
   process.stdout.write(`expired_trialing=${expired}\n`);
   process.stdout.write(`with_payment_or_membership_signal=${signal}\n`);
 } catch (err) {
