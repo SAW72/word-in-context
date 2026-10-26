@@ -7344,14 +7344,16 @@
           });
           const data = await res.json();
           if (msg) {
-            msg.textContent = data.message || (data.success ? 'Password saved!' : 'Failed');
+            msg.textContent = data.message || data.error || (data.success ? 'Password saved!' : 'Failed');
             msg.style.color = data.success ? 'green' : '#c0392b';
             msg.style.display = 'block';
           }
           if (data.success && input) input.value = '';
           if (data.success) {
+            // Leave the saved message on screen for a moment before the section hides,
+            // since the message sits inside the section.
             const setPwSection = document.getElementById('set-password-section');
-            if (setPwSection) setPwSection.style.display = 'none';
+            if (setPwSection) setTimeout(() => { setPwSection.style.display = 'none'; }, 3000);
           }
         } catch (e) {
           if (msg) { msg.textContent = 'Error setting password.'; msg.style.color = '#c0392b'; msg.style.display = 'block'; }
