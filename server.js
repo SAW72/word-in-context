@@ -1731,9 +1731,10 @@ app.post('/api/set-password', requireAuth, async (req, res) => {
       if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
         return res.status(400).json({ error: 'Enter your current password to change it.' });
       }
+      // Count the attempt before the await, so parallel guesses see the lock.
+      const after = setPasswordLockout.recordFailure(lockKey);
       const ok = await bcrypt.compare(currentPassword, user.password_hash);
       if (!ok) {
-        const after = setPasswordLockout.recordFailure(lockKey);
         if (after.locked) {
           const retryAfterSec = Math.ceil(after.retryAfterMs / 1000);
           res.set('Retry-After', String(retryAfterSec));
