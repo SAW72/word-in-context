@@ -57,7 +57,9 @@ const {
   ensureWhopStatusColumn,
   ensureWhopTrialEndColumn,
   ensureWhopEventAtColumn,
+  ensureTesterExpiredEmailColumn,
 } = require('./lib/security');
+const { isBillingFreeTester, notifyExpiredTester } = require('./lib/tester-expiry');
 const {
   CACHE_ONE_YEAR,
   applyCacheControl,
@@ -184,7 +186,7 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
   // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
-  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn]]) {
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn]]) {
     try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
   }
   db.exec(`
@@ -338,7 +340,11 @@ function requireAuth(req, res, next) {
     const now = new Date();
     const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
     const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
+    // Whop and Stripe trials keep access past trial_end until their billing webhook moves them.
+    // A tester has no billing that could ever move it, so its trial_end is final.
+    const billingGrace = user.status === 'trialing' && !isBillingFreeTester(user);
+    if (!isTrialing && !isActive && !billingGrace) {
+      notifyIfExpiredTester(user);
       return res.status(403).json({ error: 'Subscription required or trial expired.' });
     }
     req.userRecord = user;
@@ -1445,7 +1451,8 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 
 async function sendWhopNotificationEmail(email, { subject, html }) {
   if (resend) {
-    await resend.emails.send({
+    // Resend reports API errors in the result instead of throwing; callers that care read it.
+    return resend.emails.send({
       from: 'The Word in Context <no-reply@thewordincontext.org>',
       to: email,
       subject,
@@ -1454,6 +1461,12 @@ async function sendWhopNotificationEmail(email, { subject, html }) {
   } else {
     console.log(`[WHOP EMAIL to ${email}] ${subject}`);
   }
+}
+
+// An expired tester gets one go paid email, on whichever cut off request comes first
+// (requireAuth, password login or magic link). Never awaited, never throws, never delays the 403.
+function notifyIfExpiredTester(user) {
+  notifyExpiredTester(db, user, sendWhopNotificationEmail, { appBaseUrl: APP_BASE_URL });
 }
 
 // Helper: send magic link email (or log in dev)
@@ -1671,6 +1684,7 @@ app.post('/api/login', async (req, res) => {
     const effectivelyTrialing = (user.status === 'trialing') && trialValid;
     const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
     if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
+      notifyIfExpiredTester(user);
       return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
 
@@ -1699,6 +1713,7 @@ app.get('/api/verify-magic', (req, res) => {
     }
     // Same access rule as password login, so a cut off user gets 403 here too, not a token.
     if (!userHasAccess(user)) {
+      notifyIfExpiredTester(user);
       return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
 
