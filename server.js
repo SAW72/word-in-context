@@ -2524,6 +2524,8 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
 }
 
 async function handleWhopPaymentFailed(payload, source = 'webhook') {
+  if (!whopMembershipIsAllowed(payload)) return null;
+
   const email = whopPayloadEmail(payload);
   if (!email) {
     console.warn(`[whop:${source}] payment.failed missing email`);
