@@ -55,6 +55,8 @@ const {
   whopShadowUpdate,
   removeFreeDecision,
   pastDueAccess,
+  whopPaymentFailedMarksPastDue,
+  whopPaymentSucceededClearsPastDue,
   ensureWhopStatusColumn,
   ensureWhopTrialEndColumn,
   ensureWhopEventAtColumn,
@@ -676,7 +678,7 @@ function userHasAccess(user) {
   const now = new Date();
   const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
   const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-  // past_due: pastDueAccess. A Whop retry keeps access until membership.deactivated; a Stripe only
+  // past_due: pastDueAccess. A Whop retry keeps access for up to 7 days after its last Whop event; a Stripe only
   // row keeps its old login and magic link result; every other past_due row fails closed.
   const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free || pastDueAccess(user) !== null;
   return !!user.access_granted && (effectivelyTrialing || hasPaidOrFree);
@@ -2585,7 +2587,7 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
   return email;
 }
 
-async function handleWhopPaymentFailed(payload, source = 'webhook') {
+async function handleWhopPaymentFailed(payload, source = 'webhook', shadow = null) {
   if (!whopMembershipIsAllowed(payload)) return null;
 
   const email = whopPayloadEmail(payload);
@@ -2597,9 +2599,12 @@ async function handleWhopPaymentFailed(payload, source = 'webhook') {
   const manageUrl = whopPayloadManageUrl(payload);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (isManualFree(user)) return null;
-  if (user) {
+  // Only a renewal failure for this row's own stored membership, in order, marks it past_due.
+  if (user && whopPaymentFailedMarksPastDue(user, payload, shadow, email)) {
     db.prepare(`UPDATE users SET status = 'past_due' WHERE id = ?`).run(user.id);
-    console.log(`[whop:${source}] marked ${email} past_due (access kept until Whop deactivates membership)`);
+    console.log(`[whop:${source}] marked ${email} past_due (access kept up to 7 days while Whop retries)`);
+  } else if (user) {
+    console.log(`[whop:${source}] payment.failed left ${email} unchanged (not a renewal of its stored membership, or stale)`);
   }
 
   await sendWhopNotificationEmail(email, {
@@ -2804,14 +2809,31 @@ const applyWhopShadow = db.transaction((email, type, event, data, headerTimestam
   return reason;
 });
 
+/** Returns { email, reason } for the payment handlers, or null when the update failed. */
 function recordWhopShadow(email, type, event, data, headerTimestamp, asNew) {
   try {
     const reason = applyWhopShadow(email, type, event, data, headerTimestamp, asNew);
     if (reason) console.log(`[whop:shadow] ${type} for ${email}: ${reason}`);
+    return { email, reason };
   } catch (err) {
-    // The shadow only feeds Remove free; a failure here must not change normal account handling.
+    // A failed shadow update must not grant anything: payment events then change no status.
     console.error('[whop:shadow] update failed:', err.message);
+    return null;
   }
+}
+
+/**
+ * payment.succeeded for the row's own stored membership, after a failed payment:
+ * set status back to active. access_granted is left as it is, so an admin revoke stands.
+ * Returns true when it cleared past_due.
+ */
+function clearWhopPastDue(data, shadow) {
+  if (!shadow) return false;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(shadow.email);
+  if (!whopPaymentSucceededClearsPastDue(user, data, shadow, shadow.email)) return false;
+  db.prepare(`UPDATE users SET status = 'active' WHERE id = ? AND status = 'past_due'`).run(user.id);
+  console.log(`[whop:webhook-payment] cleared past_due for ${shadow.email} (payment.succeeded on its own membership)`);
+  return true;
 }
 
 app.post('/api/whop-webhook', async (req, res) => {
@@ -2835,16 +2857,19 @@ app.post('/api/whop-webhook', async (req, res) => {
     const data = event?.data != null ? event.data : event;
     console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
-    // Free forever shadow first, for an existing row; the handlers below never read it.
+    // Free forever shadow first, for an existing row. Its outcome (stale, other membership)
+    // gates the payment.failed and payment.succeeded status writes below.
     const headerTimestamp = normalizeWebhookHeaders(req.headers)['webhook-timestamp'];
     const shadowEmail = whopShadowEmail(type, data);
     const shadowRowExisted = !!shadowEmail && !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(shadowEmail);
-    if (shadowRowExisted) recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, false);
+    const shadow = shadowRowExisted ? recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, false) : null;
 
     if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
       await activateWhopMembership(data, 'webhook');
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
+    } else if (type === 'payment.succeeded' && clearWhopPastDue(data, shadow)) {
+      // The row's own membership paid after a failure: past_due cleared, nothing else to do.
     } else if (type === 'payment.succeeded') {
       const membership = data?.membership || data;
       if (membership?.id || membership?.status || membership?.user || membership?.member) {
@@ -2870,7 +2895,7 @@ app.post('/api/whop-webhook', async (req, res) => {
     } else if (type === 'membership.trial_ending_soon') {
       await handleWhopTrialEndingSoon(data, 'webhook');
     } else if (type === 'payment.failed') {
-      await handleWhopPaymentFailed(data, 'webhook');
+      await handleWhopPaymentFailed(data, 'webhook', shadow);
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);
     }
