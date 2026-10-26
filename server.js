@@ -50,6 +50,7 @@ const {
   unspoofableClientIp,
   shareQuotaKey,
   isAcceptableAccountEmail,
+  isManualFree,
 } = require('./lib/security');
 const {
   CACHE_ONE_YEAR,
@@ -2389,6 +2390,9 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
     const trialEnd = trialEndIsoFromDays(days);
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (isManualFree(user)) {
+      return res.json({ success: true, email: user.email, message: `${user.email} is free forever. Tester access was not applied and no email was sent.` });
+    }
     if (!user) {
       db.prepare(`
         INSERT INTO users (email, status, trial_end, access_granted, group_name)
@@ -2446,6 +2450,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (isManualFree(user) && !accessGranted) return user;
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2456,6 +2461,16 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else if (isManualFree(user)) {
+    // Free forever: apply access and membership ids, keep status and trial_end.
+    db.prepare(`
+      UPDATE users
+      SET access_granted = ?,
+          whop_membership_id = COALESCE(?, whop_membership_id),
+          whop_member_id = COALESCE(?, whop_member_id)
+      WHERE id = ?
+    `).run(accessGranted, membershipId, memberId, user.id);
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   } else {
     db.prepare(`
       UPDATE users
@@ -2474,7 +2489,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     return user;
   }
 
-  if (options.sendLoginEmail === false) {
+  if (options.sendLoginEmail === false || isManualFree(user)) {
     console.log(`[whop:${source}] activated ${email} (${mappedStatus})`);
     return user;
   }
@@ -2504,6 +2519,7 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
     console.warn(`[whop:${source}] trial_ending_soon missing email`);
     return null;
   }
+  if (isManualFree(db.prepare('SELECT manual_free FROM users WHERE email = ?').get(email))) return null;
 
   const manageUrl = whopPayloadManageUrl(payload);
   const trialEnd = formatWhopDate(payload?.renewal_period_end) || 'soon';
@@ -2534,6 +2550,7 @@ async function handleWhopPaymentFailed(payload, source = 'webhook') {
 
   const manageUrl = whopPayloadManageUrl(payload);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (isManualFree(user)) return null;
   if (user) {
     db.prepare(`UPDATE users SET status = 'past_due' WHERE id = ?`).run(user.id);
     console.log(`[whop:${source}] marked ${email} past_due (access kept until Whop deactivates membership)`);
@@ -2568,6 +2585,7 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
     console.warn(`[stripe:${source}] no local user for checkout session ${session.id} (${email})`);
     return null;
   }
+  if (isManualFree(user)) return user;
 
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
   db.prepare(`
@@ -2683,7 +2701,7 @@ app.post('/api/stripe-webhook', async (req, res) => {
       const sub = event.data.object;
       const customerId = sub.customer;
       const user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId);
-      if (user) {
+      if (user && !isManualFree(user)) {
         if (sub.status === 'trialing' && sub.trial_end) {
           db.prepare('UPDATE users SET trial_end = ? WHERE id = ?').run(new Date(sub.trial_end * 1000).toISOString(), user.id);
         }
