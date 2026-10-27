@@ -2836,7 +2836,7 @@ const applyWhopShadow = db.transaction((email, type, event, data, headerTimestam
       .run(patch.whop_status, patch.whop_trial_end, patch.whop_event_at, row.id);
   }
   // Per membership history for the late switch check, from the row as stored.
-  const times = whopMembershipTimesAfter(row.whop_membership_times, ev);
+  const times = whopMembershipTimesAfter(row.whop_membership_times, ev, before);
   if (times) db.prepare('UPDATE users SET whop_membership_times = ? WHERE id = ?').run(times, row.id);
   return reason;
 });
