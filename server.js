@@ -64,6 +64,8 @@ const {
   ensureWhopEventAtColumn,
   ensureTesterExpiredEmailColumn,
   ensureAccessRevokedAtColumn,
+  ensureWhopMembershipTimesColumn,
+  whopMembershipTimesAfter,
 } = require('./lib/security');
 const { isBillingFreeTester, isExpiredTester, notifyExpiredTester } = require('./lib/tester-expiry');
 const {
@@ -192,7 +194,7 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
   // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
-  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn], ['access_revoked_at', ensureAccessRevokedAtColumn]]) {
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn], ['access_revoked_at', ensureAccessRevokedAtColumn], ['whop_membership_times', ensureWhopMembershipTimesColumn]]) {
     try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
   }
   db.exec(`
@@ -2823,7 +2825,7 @@ function whopShadowEmail(type, data) {
  * so its Whop ids came from this event, not from earlier Whop state. Returns the reason, or null.
  */
 const applyWhopShadow = db.transaction((email, type, event, data, headerTimestamp, asNew) => {
-  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id FROM users WHERE email = ?').get(email);
+  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id, whop_membership_times FROM users WHERE email = ?').get(email);
   if (!row) return null;
   // A row this event created has no earlier Whop state, unless another event already wrote it meanwhile.
   const before = asNew && row.whop_status == null && row.whop_event_at == null ? { id: row.id } : row;
@@ -2833,6 +2835,9 @@ const applyWhopShadow = db.transaction((email, type, event, data, headerTimestam
     db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ?, whop_event_at = ? WHERE id = ?')
       .run(patch.whop_status, patch.whop_trial_end, patch.whop_event_at, row.id);
   }
+  // Per membership history for the late switch check, from the row as stored.
+  const times = whopMembershipTimesAfter(row.whop_membership_times, ev);
+  if (times) db.prepare('UPDATE users SET whop_membership_times = ? WHERE id = ?').run(times, row.id);
   return reason;
 });
 
