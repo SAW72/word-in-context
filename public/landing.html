@@ -1305,6 +1305,12 @@
       }
     }
 
+    function openLoginFromHash() {
+      if (location.hash === '#login') showLoginModal();
+    }
+    openLoginFromHash();
+    window.addEventListener('hashchange', openLoginFromHash);
+
     addPasswordToggles();
 
     const askJohnBtn = document.getElementById('btn-ask-john');

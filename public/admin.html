@@ -29,6 +29,40 @@
   .status { font-size:13px; margin:8px 0; color:#8b5e3c; }
   .user-row td { font-size:13px; }
   .small { font-size:11px; opacity:0.7; }
+  label[for="signin-link-email"] { display: block; font-size: 13px; margin: 0 0 4px; }
+  #admin-signin-link-panel {
+    border: none;
+    padding: 0;
+    background: #fff;
+    color: #2c3e50;
+    width: min(560px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    border-radius: 12px;
+  }
+  #admin-signin-link-panel::backdrop {
+    background: rgba(26, 37, 47, 0.45);
+  }
+  .admin-signin-card {
+    background: white;
+    max-width: 560px;
+    width: 100%;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  .admin-signin-card p { overflow-wrap: anywhere; }
+  .admin-signin-url {
+    word-break: break-all;
+    font-family: ui-monospace, monospace;
+    background: #faf6ef;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .signin-row-error {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: block;
+  }
 
   /* Mobile friendly admin */
   @media (max-width: 768px) {
@@ -82,6 +116,15 @@
       </tr></thead>
       <tbody id="users-tbody"></tbody>
     </table>
+
+    <div style="margin-top:16px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <h3 style="margin-top:0;">Sign-in link</h3>
+      <p class="small">For an existing account only. The link is shown once in a panel. It is not saved in this browser.</p>
+      <label for="signin-link-email">Member email</label>
+      <input type="email" id="signin-link-email" placeholder="existing user email" style="width:240px; padding:8px;">
+      <button type="button" class="btn" id="signin-link-any-btn">Sign-in link</button>
+      <div id="signin-link-status" class="status" role="status" aria-live="polite"></div>
+    </div>
 
     <div style="margin-top:24px; background:white; padding:16px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
       <h3 style="margin-top:0;">Special Tester / Congregation Invite (30+ days, invite-only)</h3>
@@ -271,6 +314,171 @@
     return actionsTd;
   }
 
+  function signinFeedbackEl(trigger) {
+    if (trigger && trigger.closest) {
+      const row = trigger.closest('tr');
+      if (row && row.querySelector) {
+        const slot = row.querySelector('[data-signin-error]');
+        if (slot) return slot;
+      }
+    }
+    return document.getElementById('signin-link-status');
+  }
+
+  function writeSigninMessage(el, text, isError) {
+    if (!el) return;
+    el.textContent = text || '';
+    if (isError) {
+      el.setAttribute('role', 'alert');
+      el.removeAttribute('aria-live');
+    } else {
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+    }
+    if (el.hasAttribute && el.hasAttribute('data-signin-error')) el.hidden = !text;
+  }
+
+  function closeAdminSigninLink() {
+    const panel = document.getElementById('admin-signin-link-panel');
+    if (!panel) return;
+    if (panel.open && panel.close) {
+      panel.close();
+      return;
+    }
+    const returnTo = panel.openerButton;
+    if (panel.parentNode) panel.parentNode.removeChild(panel);
+    if (returnTo && returnTo.focus) returnTo.focus();
+  }
+
+  function showAdminSigninLink(email, url, opener) {
+    closeAdminSigninLink();
+    const panel = document.createElement('dialog');
+    panel.id = 'admin-signin-link-panel';
+    panel.openerButton = opener || null;
+    panel.setAttribute('aria-labelledby', 'admin-signin-link-title');
+
+    const card = document.createElement('div');
+    card.className = 'admin-signin-card';
+
+    const title = document.createElement('h3');
+    title.id = 'admin-signin-link-title';
+    title.textContent = 'Sign-in link';
+
+    const who = document.createElement('p');
+    who.textContent = email || '';
+
+    const note = document.createElement('p');
+    note.textContent = 'Works once, expires in 24 hours.';
+
+    const linkEl = document.createElement('p');
+    linkEl.id = 'admin-signin-link-value';
+    linkEl.className = 'admin-signin-url';
+    linkEl.textContent = url || '';
+
+    const copyNote = document.createElement('p');
+    copyNote.id = 'admin-signin-link-copy-note';
+    copyNote.className = 'status';
+    copyNote.setAttribute('role', 'status');
+    copyNote.setAttribute('aria-live', 'polite');
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', function () { copyAdminSigninLink(); });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn gray';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', function () { closeAdminSigninLink(); });
+
+    card.appendChild(title);
+    card.appendChild(who);
+    card.appendChild(note);
+    card.appendChild(linkEl);
+    card.appendChild(copyNote);
+    card.appendChild(copyBtn);
+    card.appendChild(closeBtn);
+    panel.appendChild(card);
+    panel.addEventListener('close', function () {
+      const returnTo = panel.openerButton;
+      if (panel.parentNode) panel.parentNode.removeChild(panel);
+      if (returnTo && returnTo.focus) returnTo.focus();
+      setTimeout(function () {
+        if (returnTo && returnTo.focus) returnTo.focus();
+      }, 0);
+    });
+    document.body.appendChild(panel);
+    if (panel.showModal) panel.showModal();
+    if (copyBtn.focus) copyBtn.focus();
+  }
+
+  function copyAdminSigninLink() {
+    const linkEl = document.getElementById('admin-signin-link-value');
+    const note = document.getElementById('admin-signin-link-copy-note');
+    const value = linkEl ? linkEl.textContent : '';
+    if (!value || !navigator.clipboard || !navigator.clipboard.writeText) {
+      if (note) note.textContent = 'Select the link and copy it manually.';
+      return;
+    }
+    navigator.clipboard.writeText(value).then(function () {
+      if (note) note.textContent = 'Copied.';
+    }).catch(function () {
+      if (note) note.textContent = 'Select the link and copy it manually.';
+    });
+  }
+
+  async function requestAdminSigninLink(email, trigger) {
+    const feedback = signinFeedbackEl(trigger);
+    const clean = String(email || '').trim();
+    if (!clean) {
+      writeSigninMessage(feedback, 'Email required', true);
+      return;
+    }
+    if (trigger && trigger.disabled) return;
+    if (trigger) trigger.disabled = true;
+    writeSigninMessage(feedback, 'Creating sign-in link...', false);
+    try {
+      const r = await fetch(base + '/api/admin/signin-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminToken },
+        body: JSON.stringify({ email: clean })
+      });
+      if (r.status === 429) {
+        let tooMany = 'Too many sign-in links. Try again later.';
+        try {
+          const body = await r.json();
+          if (body && body.error) tooMany = String(body.error);
+        } catch (ignore) {}
+        writeSigninMessage(feedback, tooMany, true);
+        return;
+      }
+      let data = null;
+      try {
+        data = await r.json();
+      } catch (ignore) {
+        writeSigninMessage(feedback, 'Error creating sign-in link', true);
+        return;
+      }
+      if (!r.ok) {
+        writeSigninMessage(feedback, (data && data.error) || 'Could not create sign-in link', true);
+        return;
+      }
+      const top = document.getElementById('signin-link-status');
+      if (feedback === top) {
+        writeSigninMessage(feedback, 'Sign-in link ready. Copy it from the panel. Closing the panel removes it.', false);
+      } else {
+        writeSigninMessage(feedback, '', false);
+      }
+      showAdminSigninLink((data && data.email) || clean, (data && data.url) || '', trigger);
+    } catch (e) {
+      writeSigninMessage(feedback, 'Error creating sign-in link', true);
+    } finally {
+      if (trigger) trigger.disabled = false;
+    }
+  }
+
   function setTextParts(el, parts) {
     if (!el) return;
     el.replaceChildren();
@@ -305,6 +513,7 @@
 
         const mkBtn = (text, cls, onClick) => {
           const b = document.createElement('button');
+          b.type = 'button';
           b.className = cls || 'btn';
           b.textContent = text;
           b.onclick = (e) => { e.preventDefault(); onClick(); };
@@ -317,7 +526,14 @@
         mkBtn('Make free forever', 'btn', () => setAccess(u.email, u.access_granted ? 1 : 0, 1));
         mkBtn('Remove free', 'btn gray', () => setAccess(u.email, u.access_granted ? 1 : 0, 0));
         mkBtn('The Word in Context Special offer', 'btn', () => { if (window.sendRetention) window.sendRetention(u.email); });
+        const signinBtn = mkBtn('Sign-in link', 'btn', () => requestAdminSigninLink(u.email, signinBtn));
+        signinBtn.setAttribute('aria-label', 'Sign-in link for ' + u.email);
         mkBtn('Delete', 'btn danger', () => deleteUser(u.email));
+        const rowAlert = document.createElement('div');
+        rowAlert.className = 'status signin-row-error';
+        rowAlert.setAttribute('data-signin-error', '1');
+        rowAlert.hidden = true;
+        actionsTd.appendChild(rowAlert);
 
         tbody.appendChild(tr);
       });
@@ -859,6 +1075,14 @@
   }
 
   // Retention offer button (call manually or extend table)
+  const signinAnyBtn = document.getElementById('signin-link-any-btn');
+  if (signinAnyBtn) {
+    signinAnyBtn.addEventListener('click', function () {
+      const input = document.getElementById('signin-link-email');
+      requestAdminSigninLink(input ? input.value : '', signinAnyBtn);
+    });
+  }
+
   window.sendRetention = async function(email) {
     if (!confirm('Send The Word in Context Special (discounted $3/mo) offer to ' + email + '?')) return;
     const status = document.getElementById('admin-status');

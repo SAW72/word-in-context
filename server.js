@@ -117,6 +117,13 @@ try {
       standardHeaders: true,
       legacyHeaders: false,
     }));
+    app.use('/api/admin/signin-link', rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many sign-in links. Try again in 15 minutes.' },
+    }));
     app.use('/api/tester-signup', rateLimit({
       windowMs: 15 * 60 * 1000,
       max: 10,
@@ -200,6 +207,16 @@ try {
     );
   `);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_signin_links (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      purpose TEXT NOT NULL
+    );
+  `);
+  db.exec(`
     CREATE TABLE IF NOT EXISTS shares (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -240,6 +257,10 @@ const adminLoginLockout = createAttemptLockout({
 const testerSignupLimiter = createFixedWindowLimiter({
   windowMs: process.env.TESTER_SIGNUP_RATE_WINDOW_MS || 15 * 60 * 1000,
   max: process.env.TESTER_SIGNUP_RATE_MAX || 8,
+});
+const adminSigninLinkLimiter = createFixedWindowLimiter({
+  windowMs: process.env.ADMIN_SIGNIN_LINK_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.ADMIN_SIGNIN_LINK_RATE_MAX || 20,
 });
 const shareTranscodeLimiter = createFixedWindowLimiter({
   windowMs: process.env.SHARE_TRANSCODE_RATE_WINDOW_MS || 60 * 60 * 1000,
@@ -1474,7 +1495,7 @@ async function sendWhopNotificationEmail(email, { subject, html }) {
 }
 
 // An expired tester gets one go paid email, on whichever cut off request comes first
-// (requireAuth, password login or magic link). Never awaited, never throws, never delays the 403.
+// (requireAuth, password login, magic link, or an admin sign-in link). Never awaited, never throws, never delays the 403.
 function notifyIfExpiredTester(user) {
   notifyExpiredTester(db, user, sendWhopNotificationEmail, { appBaseUrl: APP_BASE_URL });
 }
@@ -1671,6 +1692,22 @@ app.post('/api/request-login', async (req, res) => {
   }
 });
 
+// Same refusal password login and the admin sign-in link both use.
+// The decision is userHasAccess (Whop past_due grace included). Magic links keep their own check.
+function passwordLoginAccessError(user) {
+  if (!userHasAccess(user)) return 'Account access has been revoked or trial expired.';
+  return '';
+}
+
+function hashAdminSigninToken(token) {
+  return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
+}
+
+function adminSigninLinkExpired(expiresAt, now = new Date()) {
+  const exp = new Date(expiresAt);
+  return Number.isNaN(exp.getTime()) || exp.getTime() <= now.getTime();
+}
+
 // Password login (for accounts that have a password set via admin or future flows)
 app.post('/api/login', async (req, res) => {
   try {
@@ -1688,10 +1725,10 @@ app.post('/api/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid password' });
 
-    // Access check: the same userHasAccess rule as the magic link.
-    if (!userHasAccess(user)) {
+    const accessError = passwordLoginAccessError(user);
+    if (accessError) {
       notifyIfExpiredTester(user);
-      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
+      return res.status(403).json({ error: accessError });
     }
 
     const token = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '30d' });
@@ -1733,6 +1770,67 @@ app.get('/api/verify-magic', (req, res) => {
     res.json({ token: jwtToken, email: user.email, status: user.status });
   } catch (err) {
     console.error('verify-magic error:', err);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Admin-issued sign-in link. Separate from the 15-minute magic token table.
+// The raw token is never stored. One verification function is passwordLoginAccessError.
+app.get('/api/admin-signin/redeem', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!token) return res.status(400).json({ error: 'Token required' });
+  try {
+    const tokenHash = hashAdminSigninToken(token);
+    const record = db.prepare(`
+      SELECT email, expires_at, used_at, purpose
+      FROM admin_signin_links
+      WHERE token_hash = ?
+    `).get(tokenHash);
+    if (!record || record.purpose !== 'admin_signin') {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_invalid' });
+    }
+    if (record.used_at) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_used' });
+    }
+    if (adminSigninLinkExpired(record.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_expired' });
+    }
+
+    const usedAt = new Date().toISOString();
+    const spent = db.prepare(`
+      UPDATE admin_signin_links
+      SET used_at = ?
+      WHERE token_hash = ? AND used_at IS NULL
+    `).run(usedAt, tokenHash);
+    if (spent.changes !== 1) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_used' });
+    }
+
+    const fresh = db.prepare(`
+      SELECT email, expires_at FROM admin_signin_links WHERE token_hash = ?
+    `).get(tokenHash);
+    if (!fresh) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_invalid' });
+    }
+    if (adminSigninLinkExpired(fresh.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_expired' });
+    }
+
+    console.log(`[admin-signin] used by ${fresh.email}`);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(fresh.email);
+    if (!user) {
+      return res.status(401).json({ error: 'No account with that email', code: 'no_account' });
+    }
+    const accessError = passwordLoginAccessError(user);
+    if (accessError) {
+      notifyIfExpiredTester(user);
+      return res.status(403).json({ error: accessError, code: 'no_access' });
+    }
+
+    const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token: jwtToken, email: user.email, status: user.status });
+  } catch (err) {
+    console.error('[admin-signin] redeem failed');
     res.status(500).json({ error: 'Verification failed' });
   }
 });
@@ -2382,6 +2480,37 @@ function requireAdmin(req, res) {
   }
 }
 
+app.post('/api/admin/signin-link', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const limited = adminSigninLinkLimiter.check('admin-signin:' + unspoofableClientIp(req));
+  if (!limited.allowed) {
+    const retryAfterSec = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Too many sign-in links. Try again later.' });
+  }
+
+  const email = normalizeEmail(req.body && req.body.email);
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const user = db.prepare('SELECT id, email FROM users WHERE email = ?').get(email);
+  if (!user) return res.status(404).json({ error: 'No account for that email' });
+
+  // A new link does not revoke older unused links. Each one still works once until it expires.
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashAdminSigninToken(token);
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  db.prepare(`
+    INSERT INTO admin_signin_links (token_hash, email, created_at, expires_at, used_at, purpose)
+    VALUES (?, ?, ?, ?, NULL, 'admin_signin')
+  `).run(tokenHash, user.email, createdAt, expiresAt);
+
+  const url = APP_BASE_URL + '/login?admin_signin=' + token;
+  console.log('[admin] signin link created for ' + user.email + ' expires ' + expiresAt);
+  res.json({ url: url, email: user.email, expires_at: expiresAt });
+});
+
 app.get('/api/admin/users', (req, res) => {
   if (!requireAdmin(req, res)) return;
 
@@ -2948,16 +3077,26 @@ app.get('/success', (req, res) => {
 // Login page that handles magic token and stores it for the app.
 // The token is read in public/login-verify.js from the query string.
 app.get('/login', (req, res) => {
-  if (!req.query.token) {
+  if (!req.query.token && !req.query.admin_signin) {
     return res.send('<p>No token provided. <a href="/">Go to The Word in Context</a></p>');
   }
-  res.send(`
-    <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
-    <h2>The Word in Context</h2>
-    <p>Verifying your login link...</p>
-    <script src="/login-verify.js"></script>
-    </body></html>
-  `);
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logging in — The Word in Context</title>
+<style>
+  body { margin: 0 auto; max-width: 520px; padding: 40px 20px; background: #f5e8d3; color: #2c3e50; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  h2 { color: #1a252f; font-size: 1.4rem; }
+  #login-status { margin: 0 0 12px; }
+  #login-msg { margin: 0; font-size: 1.05rem; line-height: 1.45; }
+  #login-msg:empty { display: none; }
+  a.login-next { display: inline-block; margin-top: 16px; background: #c9a227; color: #1a252f; text-decoration: none; font-weight: 600; padding: 10px 16px; border-radius: 6px; }
+</style></head><body>
+<h2>The Word in Context</h2>
+<p id="login-status" role="status" aria-live="polite">Verifying your login link...</p>
+<p id="login-msg" role="alert"></p>
+<p id="login-next"></p>
+<script src="/login-verify.js?v=3"></script>
+</body></html>`);
 });
 
 // === Main chat endpoint (secure proxy) ===
@@ -3249,6 +3388,7 @@ module.exports = {
   db,
   adminLoginLockout,
   testerSignupLimiter,
+  adminSigninLinkLimiter,
   capTrialDays,
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,
