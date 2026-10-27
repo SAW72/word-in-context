@@ -122,6 +122,7 @@ try {
       max: 20,
       standardHeaders: true,
       legacyHeaders: false,
+      message: { error: 'Too many sign-in links. Try again in 15 minutes.' },
     }));
     app.use('/api/tester-signup', rateLimit({
       windowMs: 15 * 60 * 1000,
@@ -1494,7 +1495,7 @@ async function sendWhopNotificationEmail(email, { subject, html }) {
 }
 
 // An expired tester gets one go paid email, on whichever cut off request comes first
-// (requireAuth, password login or magic link). Never awaited, never throws, never delays the 403.
+// (requireAuth, password login, magic link, or an admin sign-in link). Never awaited, never throws, never delays the 403.
 function notifyIfExpiredTester(user) {
   notifyExpiredTester(db, user, sendWhopNotificationEmail, { appBaseUrl: APP_BASE_URL });
 }
@@ -1785,8 +1786,14 @@ app.get('/api/admin-signin/redeem', (req, res) => {
       FROM admin_signin_links
       WHERE token_hash = ?
     `).get(tokenHash);
-    if (!record || record.purpose !== 'admin_signin' || record.used_at || adminSigninLinkExpired(record.expires_at)) {
-      return res.status(400).json({ error: 'Invalid or expired token' });
+    if (!record || record.purpose !== 'admin_signin') {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_invalid' });
+    }
+    if (record.used_at) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_used' });
+    }
+    if (adminSigninLinkExpired(record.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_expired' });
     }
 
     const usedAt = new Date().toISOString();
@@ -1796,25 +1803,28 @@ app.get('/api/admin-signin/redeem', (req, res) => {
       WHERE token_hash = ? AND used_at IS NULL
     `).run(usedAt, tokenHash);
     if (spent.changes !== 1) {
-      return res.status(400).json({ error: 'Invalid or expired token' });
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_used' });
     }
 
     const fresh = db.prepare(`
       SELECT email, expires_at FROM admin_signin_links WHERE token_hash = ?
     `).get(tokenHash);
-    if (!fresh || adminSigninLinkExpired(fresh.expires_at)) {
-      return res.status(400).json({ error: 'Invalid or expired token' });
+    if (!fresh) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_invalid' });
+    }
+    if (adminSigninLinkExpired(fresh.expires_at)) {
+      return res.status(400).json({ error: 'Invalid or expired token', code: 'link_expired' });
     }
 
     console.log(`[admin-signin] used by ${fresh.email}`);
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(fresh.email);
     if (!user) {
-      return res.status(401).json({ error: 'No account with that email' });
+      return res.status(401).json({ error: 'No account with that email', code: 'no_account' });
     }
     const accessError = passwordLoginAccessError(user);
     if (accessError) {
       notifyIfExpiredTester(user);
-      return res.status(403).json({ error: accessError });
+      return res.status(403).json({ error: accessError, code: 'no_access' });
     }
 
     const jwtToken = jwt.sign({ email: user.email, id: user.id }, JWT_SECRET, { expiresIn: '7d' });
@@ -3070,13 +3080,23 @@ app.get('/login', (req, res) => {
   if (!req.query.token && !req.query.admin_signin) {
     return res.send('<p>No token provided. <a href="/">Go to The Word in Context</a></p>');
   }
-  res.send(`
-    <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
-    <h2>The Word in Context</h2>
-    <p>Verifying your login link...</p>
-    <script src="/login-verify.js?v=2"></script>
-    </body></html>
-  `);
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logging in — The Word in Context</title>
+<style>
+  body { margin: 0 auto; max-width: 520px; padding: 40px 20px; background: #f5e8d3; color: #2c3e50; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  h2 { color: #1a252f; font-size: 1.4rem; }
+  #login-status { margin: 0 0 12px; }
+  #login-msg { margin: 0; font-size: 1.05rem; line-height: 1.45; }
+  #login-msg:empty { display: none; }
+  a.login-next { display: inline-block; margin-top: 16px; background: #c9a227; color: #1a252f; text-decoration: none; font-weight: 600; padding: 10px 16px; border-radius: 6px; }
+</style></head><body>
+<h2>The Word in Context</h2>
+<p id="login-status" role="status" aria-live="polite">Verifying your login link...</p>
+<p id="login-msg" role="alert"></p>
+<p id="login-next"></p>
+<script src="/login-verify.js?v=3"></script>
+</body></html>`);
 });
 
 // === Main chat endpoint (secure proxy) ===
