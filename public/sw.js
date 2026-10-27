@@ -129,7 +129,11 @@ async function navigationResponse(request) {
   try {
     const network = await fetch(request);
     const cache = await caches.open(SHELL_CACHE);
-    if (network.ok) await cache.put(request, network.clone());
+    // The admin sign-in token is in the query string. Do not keep that URL as a cache key.
+    const navUrl = new URL(request.url);
+    if (network.ok && !navUrl.searchParams.has('admin_signin')) {
+      await cache.put(request, network.clone());
+    }
     return network;
   } catch (err) {
     const cache = await caches.open(SHELL_CACHE);

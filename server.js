@@ -50,7 +50,19 @@ const {
   unspoofableClientIp,
   shareQuotaKey,
   isAcceptableAccountEmail,
+  isManualFree,
+  whopShadowFromEvent,
+  whopShadowUpdate,
+  removeFreeDecision,
+  pastDueAccess,
+  whopPaymentFailedMarksPastDue,
+  whopPaymentSucceededClearsPastDue,
+  ensureWhopStatusColumn,
+  ensureWhopTrialEndColumn,
+  ensureWhopEventAtColumn,
+  ensureTesterExpiredEmailColumn,
 } = require('./lib/security');
+const { isBillingFreeTester, isExpiredTester, notifyExpiredTester } = require('./lib/tester-expiry');
 const {
   CACHE_ONE_YEAR,
   applyCacheControl,
@@ -182,6 +194,10 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
+  // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn]]) {
+    try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS magic_tokens (
       token TEXT PRIMARY KEY,
@@ -347,8 +363,18 @@ function requireAuth(req, res, next) {
     const now = new Date();
     const isTrialing = user.status === 'trialing' && user.trial_end && now < new Date(user.trial_end);
     const isActive = user.status === 'active' || user.status === 'free' || user.manual_free;
-    if (!isTrialing && !isActive && user.status !== 'trialing') {
-      return res.status(403).json({ error: 'Subscription required or trial expired.' });
+    // Past due keeps access only for a Whop retry with no Stripe ids (pastDueAccess).
+    const pastDueOk = pastDueAccess(user) === 'whop';
+    // Whop and Stripe trials keep access past trial_end until their billing webhook moves them.
+    // A tester has no billing that could ever move it, so its trial_end is final.
+    const billingGrace = user.status === 'trialing' && !isBillingFreeTester(user);
+    if (!isTrialing && !isActive && !billingGrace && !pastDueOk) {
+      notifyIfExpiredTester(user);
+      const body = { error: 'Subscription required or trial expired.' };
+      // Only the expired tester's own signed session sees this code, so the Account view can offer
+      // a subscribe link. It tells them nothing their own account does not already know.
+      if (isExpiredTester(user)) body.code = 'tester_expired';
+      return res.status(403).json(body);
     }
     req.userRecord = user;
     next();
@@ -672,8 +698,9 @@ function userHasAccess(user) {
   const now = new Date();
   const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
   const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-  // past_due: keep access while Whop retries billing; membership.deactivated cuts access off
-  const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
+  // past_due: pastDueAccess. A Whop retry keeps access for up to 7 days after its last Whop event; a Stripe only
+  // row keeps its old login and magic link result; every other past_due row fails closed.
+  const hasPaidOrFree = ['active', 'free'].includes(user.status) || !!user.manual_free || pastDueAccess(user) !== null;
   return !!user.access_granted && (effectivelyTrialing || hasPaidOrFree);
 }
 
@@ -1454,7 +1481,8 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
 
 async function sendWhopNotificationEmail(email, { subject, html }) {
   if (resend) {
-    await resend.emails.send({
+    // Resend reports API errors in the result instead of throwing; callers that care read it.
+    return resend.emails.send({
       from: 'The Word in Context <no-reply@thewordincontext.org>',
       to: email,
       subject,
@@ -1463,6 +1491,12 @@ async function sendWhopNotificationEmail(email, { subject, html }) {
   } else {
     console.log(`[WHOP EMAIL to ${email}] ${subject}`);
   }
+}
+
+// An expired tester gets one go paid email, on whichever cut off request comes first
+// (requireAuth, password login or magic link). Never awaited, never throws, never delays the 403.
+function notifyIfExpiredTester(user) {
+  notifyExpiredTester(db, user, sendWhopNotificationEmail, { appBaseUrl: APP_BASE_URL });
 }
 
 // Helper: send magic link email (or log in dev)
@@ -1658,15 +1692,9 @@ app.post('/api/request-login', async (req, res) => {
 });
 
 // Same refusal password login and the admin sign-in link both use.
-// Magic links keep their own check and are not changed here.
+// The decision is userHasAccess (Whop past_due grace included). Magic links keep their own check.
 function passwordLoginAccessError(user) {
-  const now = new Date();
-  const trialValid = !!(user.trial_end && now < new Date(user.trial_end));
-  const effectivelyTrialing = (user.status === 'trialing') && trialValid;
-  const hasPaidOrFree = ['active', 'free', 'past_due'].includes(user.status) || !!user.manual_free;
-  if (!user.access_granted || (!effectivelyTrialing && !hasPaidOrFree)) {
-    return 'Account access has been revoked or trial expired.';
-  }
+  if (!userHasAccess(user)) return 'Account access has been revoked or trial expired.';
   return '';
 }
 
@@ -1698,6 +1726,7 @@ app.post('/api/login', async (req, res) => {
 
     const accessError = passwordLoginAccessError(user);
     if (accessError) {
+      notifyIfExpiredTester(user);
       return res.status(403).json({ error: accessError });
     }
 
@@ -1723,6 +1752,11 @@ app.get('/api/verify-magic', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(record.email);
     if (!user || !user.access_granted) {
       return res.status(403).json({ error: 'Account access revoked' });
+    }
+    // Same access rule as password login, so a cut off user gets 403 here too, not a token.
+    if (!userHasAccess(user)) {
+      notifyIfExpiredTester(user);
+      return res.status(403).json({ error: 'Account access has been revoked or trial expired.' });
     }
 
     // Issue JWT (7 days)
@@ -1779,6 +1813,7 @@ app.get('/api/admin-signin/redeem', (req, res) => {
     }
     const accessError = passwordLoginAccessError(user);
     if (accessError) {
+      notifyIfExpiredTester(user);
       return res.status(403).json({ error: accessError });
     }
 
@@ -2492,9 +2527,22 @@ app.post('/api/admin/set-access', (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const { email, access_granted, manual_free } = req.body;
+  const before = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const clearingFree = isManualFree(before) && !manual_free;
+  // Remove free reads only the free forever shadow (whop_status, whop_trial_end, whop_event_at).
+  const decision = clearingFree ? removeFreeDecision(before) : null;
+  if (decision && decision.blocked) {
+    console.log(`[admin] refused Remove free for ${before.email}: whop_status ${before.whop_status || 'none'}, stripe ${before.stripe_subscription_id ? 'on record' : 'none'}`);
+    return res.status(409).json({ error: decision.blocked });
+  }
   db.prepare(`
     UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
   `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+  if (clearingFree) {
+    // Remove free: a live Whop membership keeps access, an unambiguous dead state must pay. No email.
+    db.prepare('UPDATE users SET status = ?, trial_end = ? WHERE id = ?').run(decision.status, decision.trialEnd, before.id);
+    console.log(`[admin] removed free forever from ${before.email}; status ${decision.status} (whop_status ${before.whop_status || 'none'})`);
+  }
   res.json({ success: true });
 });
 
@@ -2509,6 +2557,9 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
     const trialEnd = trialEndIsoFromDays(days);
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (isManualFree(user)) {
+      return res.json({ success: true, email: user.email, message: `${user.email} is free forever. Tester access was not applied and no email was sent.` });
+    }
     if (!user) {
       db.prepare(`
         INSERT INTO users (email, status, trial_end, access_granted, group_name)
@@ -2566,6 +2617,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
   const serverTrialEnd = trialEndIsoFromDays(checkoutTrialDays(undefined, TRIAL_DAYS));
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (isManualFree(user) && !accessGranted) return user;
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2576,6 +2628,16 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(email, mappedStatus, nextTrialEnd, accessGranted, membershipId, memberId);
     user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  } else if (isManualFree(user)) {
+    // Free forever: apply access and membership ids, keep status and trial_end.
+    db.prepare(`
+      UPDATE users
+      SET access_granted = ?,
+          whop_membership_id = COALESCE(?, whop_membership_id),
+          whop_member_id = COALESCE(?, whop_member_id)
+      WHERE id = ?
+    `).run(accessGranted, membershipId, memberId, user.id);
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   } else {
     db.prepare(`
       UPDATE users
@@ -2594,7 +2656,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     return user;
   }
 
-  if (options.sendLoginEmail === false) {
+  if (options.sendLoginEmail === false || isManualFree(user)) {
     console.log(`[whop:${source}] activated ${email} (${mappedStatus})`);
     return user;
   }
@@ -2624,6 +2686,7 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
     console.warn(`[whop:${source}] trial_ending_soon missing email`);
     return null;
   }
+  if (isManualFree(db.prepare('SELECT manual_free FROM users WHERE email = ?').get(email))) return null;
 
   const manageUrl = whopPayloadManageUrl(payload);
   const trialEnd = formatWhopDate(payload?.renewal_period_end) || 'soon';
@@ -2643,7 +2706,9 @@ async function handleWhopTrialEndingSoon(payload, source = 'webhook') {
   return email;
 }
 
-async function handleWhopPaymentFailed(payload, source = 'webhook') {
+async function handleWhopPaymentFailed(payload, source = 'webhook', shadow = null) {
+  if (!whopMembershipIsAllowed(payload)) return null;
+
   const email = whopPayloadEmail(payload);
   if (!email) {
     console.warn(`[whop:${source}] payment.failed missing email`);
@@ -2652,9 +2717,13 @@ async function handleWhopPaymentFailed(payload, source = 'webhook') {
 
   const manageUrl = whopPayloadManageUrl(payload);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (user) {
+  if (isManualFree(user)) return null;
+  // Only a renewal failure for this row's own stored membership, in order, marks it past_due.
+  if (user && whopPaymentFailedMarksPastDue(user, payload, shadow, email)) {
     db.prepare(`UPDATE users SET status = 'past_due' WHERE id = ?`).run(user.id);
-    console.log(`[whop:${source}] marked ${email} past_due (access kept until Whop deactivates membership)`);
+    console.log(`[whop:${source}] marked ${email} past_due (access kept up to 7 days while Whop retries)`);
+  } else if (user) {
+    console.log(`[whop:${source}] payment.failed left ${email} unchanged (not a renewal of its stored membership, or stale)`);
   }
 
   await sendWhopNotificationEmail(email, {
@@ -2686,6 +2755,7 @@ async function activateStripeCheckoutSession(session, source = 'webhook') {
     console.warn(`[stripe:${source}] no local user for checkout session ${session.id} (${email})`);
     return null;
   }
+  if (isManualFree(user)) return user;
 
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
   db.prepare(`
@@ -2801,7 +2871,7 @@ app.post('/api/stripe-webhook', async (req, res) => {
       const sub = event.data.object;
       const customerId = sub.customer;
       const user = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId);
-      if (user) {
+      if (user && !isManualFree(user)) {
         if (sub.status === 'trialing' && sub.trial_end) {
           db.prepare('UPDATE users SET trial_end = ? WHERE id = ?').run(new Date(sub.trial_end * 1000).toISOString(), user.id);
         }
@@ -2818,6 +2888,72 @@ app.post('/api/stripe-webhook', async (req, res) => {
 
   res.json({ received: true });
 });
+
+const WHOP_SHADOW_EVENTS = new Set([
+  'membership.activated', 'membership.went_valid', 'membership.created',
+  'membership.deactivated', 'membership.went_invalid', 'membership.canceled',
+  'payment.succeeded', 'payment.failed', 'membership.trial_ending_soon',
+]);
+
+/**
+ * Email whose free forever shadow this event updates, or null (other types, other
+ * plans, no email). metadata.email is not used here: checkout metadata is not a
+ * Whop account identity, so it must not move another account's shadow.
+ */
+function whopShadowEmail(type, data) {
+  if (!WHOP_SHADOW_EVENTS.has(type) || !data || typeof data !== 'object') return null;
+  const subject = type === 'payment.succeeded' && data.membership && typeof data.membership === 'object' ? data.membership : data;
+  if (!whopMembershipIsAllowed(subject) || !whopMembershipIsAllowed(data)) return null;
+  const email = (p) => whopPayloadEmail({ ...p, metadata: undefined });
+  return email(subject) || email(data) || null;
+}
+
+/**
+ * Update the free forever shadow for one row in one synchronous transaction: read
+ * the row, decide (whopShadowUpdate), write. The read and the whop_event_at claim
+ * cannot interleave with another event. asNew: the row was created by this event,
+ * so its Whop ids came from this event, not from earlier Whop state. Returns the reason, or null.
+ */
+const applyWhopShadow = db.transaction((email, type, event, data, headerTimestamp, asNew) => {
+  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id FROM users WHERE email = ?').get(email);
+  if (!row) return null;
+  // A row this event created has no earlier Whop state, unless another event already wrote it meanwhile.
+  const before = asNew && row.whop_status == null && row.whop_event_at == null ? { id: row.id } : row;
+  const ev = whopShadowFromEvent(type, event, data, headerTimestamp, before);
+  const { patch, reason } = whopShadowUpdate(before, ev);
+  if (patch) {
+    db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ?, whop_event_at = ? WHERE id = ?')
+      .run(patch.whop_status, patch.whop_trial_end, patch.whop_event_at, row.id);
+  }
+  return reason;
+});
+
+/** Returns { email, reason } for the payment handlers, or null when the update failed. */
+function recordWhopShadow(email, type, event, data, headerTimestamp, asNew) {
+  try {
+    const reason = applyWhopShadow(email, type, event, data, headerTimestamp, asNew);
+    if (reason) console.log(`[whop:shadow] ${type} for ${email}: ${reason}`);
+    return { email, reason };
+  } catch (err) {
+    // A failed shadow update must not grant anything: payment events then change no status.
+    console.error('[whop:shadow] update failed:', err.message);
+    return null;
+  }
+}
+
+/**
+ * payment.succeeded for the row's own stored membership, after a failed payment:
+ * set status back to active. access_granted is left as it is, so an admin revoke stands.
+ * Returns true when it cleared past_due.
+ */
+function clearWhopPastDue(data, shadow) {
+  if (!shadow) return false;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(shadow.email);
+  if (!whopPaymentSucceededClearsPastDue(user, data, shadow, shadow.email)) return false;
+  db.prepare(`UPDATE users SET status = 'active' WHERE id = ? AND status = 'past_due'`).run(user.id);
+  console.log(`[whop:webhook-payment] cleared past_due for ${shadow.email} (payment.succeeded on its own membership)`);
+  return true;
+}
 
 app.post('/api/whop-webhook', async (req, res) => {
   if (!whopWebhookConfigured()) {
@@ -2840,19 +2976,32 @@ app.post('/api/whop-webhook', async (req, res) => {
     const data = event?.data != null ? event.data : event;
     console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
+    // Free forever shadow first, for an existing row. Its outcome (stale, other membership)
+    // gates the payment.failed and payment.succeeded status writes below.
+    const headerTimestamp = normalizeWebhookHeaders(req.headers)['webhook-timestamp'];
+    const shadowEmail = whopShadowEmail(type, data);
+    const shadowRowExisted = !!shadowEmail && !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(shadowEmail);
+    const shadow = shadowRowExisted ? recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, false) : null;
+
     if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
       await activateWhopMembership(data, 'webhook');
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
+    } else if (type === 'payment.succeeded' && clearWhopPastDue(data, shadow)) {
+      // The row's own membership paid after a failure: past_due cleared, nothing else to do.
     } else if (type === 'payment.succeeded') {
       const membership = data?.membership || data;
       if (membership?.id || membership?.status || membership?.user || membership?.member) {
         await activateWhopMembership(membership, 'webhook-payment');
       } else {
         const email = whopPayloadEmail(data);
-        if (email) {
+        if (!whopMembershipIsAllowed(data)) {
+          console.warn(`[whop:webhook-payment] ignored email only payment.succeeded for plan ${whopPayloadPlanId(data)}; not in WHOP_PLAN_IDS`);
+        } else if (email) {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-          if (user) {
+          if (isManualFree(user)) {
+            console.log(`[whop:webhook-payment] ${email} is free forever; payment.succeeded left the row unchanged`);
+          } else if (user) {
             db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
           } else {
@@ -2865,10 +3014,11 @@ app.post('/api/whop-webhook', async (req, res) => {
     } else if (type === 'membership.trial_ending_soon') {
       await handleWhopTrialEndingSoon(data, 'webhook');
     } else if (type === 'payment.failed') {
-      await handleWhopPaymentFailed(data, 'webhook');
+      await handleWhopPaymentFailed(data, 'webhook', shadow);
     } else {
       console.log(`[whop:webhook] ignored event type=${type}`);
     }
+    if (shadowEmail && !shadowRowExisted) recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, true);
   } catch (err) {
     console.error('Whop webhook handler error:', err);
     return res.status(500).json({ error: 'Webhook handler failed' });
@@ -2924,7 +3074,7 @@ app.get('/login', (req, res) => {
     <html><head><title>Logging in — The Word in Context</title></head><body style="font-family:sans-serif;padding:40px;max-width:520px;margin:0 auto;">
     <h2>The Word in Context</h2>
     <p>Verifying your login link...</p>
-    <script src="/login-verify.js"></script>
+    <script src="/login-verify.js?v=2"></script>
     </body></html>
   `);
 });
