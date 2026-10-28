@@ -775,7 +775,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 42px;
+        min-height: 44px;
         padding: 0 10px;
         font-size: 13px;
         white-space: nowrap;
@@ -850,7 +850,7 @@
       }
     }
 
-    @media (max-width: 389px) {
+    @media (max-width: 400px) {
       .logo {
         font-size: 13px;
         letter-spacing: 0;
@@ -863,8 +863,20 @@
     }
 
     @media (max-width: 340px) {
+      .logo {
+        font-size: 12px;
+      }
+      .nav-actions {
+        gap: 4px;
+      }
       .nav-actions .header-btn {
-        padding: 0 8px;
+        padding: 0 7px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      header nav {
+        column-gap: 8px;
       }
     }
   </style>
