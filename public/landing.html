@@ -748,6 +748,17 @@
         padding: 13px 16px;
         font-size: 15px;
       }
+      /* .btn above wins over .header-btn; keep Read Bible, Start free trial, and Log in on one row. */
+      .nav-actions {
+        flex-wrap: nowrap;
+        gap: 4px;
+      }
+      .nav-actions .header-btn {
+        padding: 5px 5px;
+        font-size: 11px;
+        white-space: nowrap;
+        margin: 0;
+      }
       /* Only make prominent CTAs (hero, pricing, signup) full-width stacked on tiny phones; keep header compact */
       .hero-cta .btn,
       .pricing .btn,
