@@ -57,10 +57,15 @@ const {
   pastDueAccess,
   whopPaymentFailedMarksPastDue,
   whopPaymentSucceededClearsPastDue,
+  whopGrantEventTime,
+  whopGrantRefusal,
   ensureWhopStatusColumn,
   ensureWhopTrialEndColumn,
   ensureWhopEventAtColumn,
   ensureTesterExpiredEmailColumn,
+  ensureAccessRevokedAtColumn,
+  ensureWhopMembershipTimesColumn,
+  whopMembershipTimesAfter,
 } = require('./lib/security');
 const { isBillingFreeTester, isExpiredTester, notifyExpiredTester } = require('./lib/tester-expiry');
 const {
@@ -189,7 +194,7 @@ try {
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_membership_id TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE users ADD COLUMN whop_member_id TEXT`); } catch(e){}
   // Each additive Whop column in its own try so one failure cannot skip the rest of the schema.
-  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn]]) {
+  for (const [name, ensure] of [['whop_status', ensureWhopStatusColumn], ['whop_trial_end', ensureWhopTrialEndColumn], ['whop_event_at', ensureWhopEventAtColumn], ['tester_expired_email_at', ensureTesterExpiredEmailColumn], ['access_revoked_at', ensureAccessRevokedAtColumn], ['whop_membership_times', ensureWhopMembershipTimesColumn]]) {
     try { ensure(db); } catch (err) { console.error(`DB migration ${name} failed (non-fatal):`, err.message); }
   }
   db.exec(`
@@ -2416,9 +2421,12 @@ app.post('/api/admin/set-access', (req, res) => {
     console.log(`[admin] refused Remove free for ${before.email}: whop_status ${before.whop_status || 'none'}, stripe ${before.stripe_subscription_id ? 'on record' : 'none'}`);
     return res.status(409).json({ error: decision.blocked });
   }
+  // Access off stores the revoke time in access_revoked_at; Whop grants not newer than it are refused
+  // (whopGrantRefusal). Access on clears it.
+  const granted = !!access_granted ? 1 : 0;
   db.prepare(`
-    UPDATE users SET access_granted = ?, manual_free = ? WHERE email = ?
-  `).run(!!access_granted ? 1 : 0, !!manual_free ? 1 : 0, email);
+    UPDATE users SET access_granted = ?, manual_free = ?, access_revoked_at = ? WHERE email = ?
+  `).run(granted, !!manual_free ? 1 : 0, granted ? null : new Date().toISOString(), email);
   if (clearingFree) {
     // Remove free: a live Whop membership keeps access, an unambiguous dead state must pay. No email.
     db.prepare('UPDATE users SET status = ?, trial_end = ? WHERE id = ?').run(decision.status, decision.trialEnd, before.id);
@@ -2448,7 +2456,7 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
       `).run(email, trialEnd, group);
     } else {
       db.prepare(`
-        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1, group_name = COALESCE(?, group_name)
+        UPDATE users SET status = 'trialing', trial_end = ?, access_granted = 1, access_revoked_at = NULL, group_name = COALESCE(?, group_name)
         WHERE id = ?
       `).run(trialEnd, group, user.id);
     }
@@ -2474,6 +2482,24 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   }
 });
 
+/**
+ * Gate for every Whop access grant: true when the grant may apply. Refused grants
+ * write nothing and send no email (see whopGrantRefusal for the reasons).
+ */
+function whopGrantAllowed(user, grant, email, source) {
+  const refusal = whopGrantRefusal(user, grant);
+  if (!refusal) return true;
+  const why = refusal === 'stale'
+    ? 'older than the last Whop event applied to the row'
+    : 'not newer than the admin access revoke';
+  console.log(`[whop:${source}] grant for ${email} refused (${refusal}): event ${why}; row unchanged, no email`);
+  return false;
+}
+
+/**
+ * options.grant is { eventAt, shadowReason } from the webhook for the admin revoke and
+ * ordering check; without it a grant has no usable time and never overrides a revoke.
+ */
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
   if (!whopMembershipIsAllowed(payload)) {
     console.warn(
@@ -2499,6 +2525,7 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
 
   let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (isManualFree(user) && !accessGranted) return user;
+  if (accessGranted && user && !whopGrantAllowed(user, options.grant, email, source)) return user;
   const nextTrialEnd = accessGranted
     ? (renewalEnd || (user && user.trial_end) || serverTrialEnd)
     : (renewalEnd || (user && user.trial_end) || null);
@@ -2514,21 +2541,23 @@ async function activateWhopMembership(payload, source = 'webhook', options = {})
     db.prepare(`
       UPDATE users
       SET access_granted = ?,
+          access_revoked_at = CASE WHEN ? = 1 THEN NULL ELSE access_revoked_at END,
           whop_membership_id = COALESCE(?, whop_membership_id),
           whop_member_id = COALESCE(?, whop_member_id)
       WHERE id = ?
-    `).run(accessGranted, membershipId, memberId, user.id);
+    `).run(accessGranted, accessGranted, membershipId, memberId, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   } else {
     db.prepare(`
       UPDATE users
       SET status = ?,
           access_granted = ?,
+          access_revoked_at = CASE WHEN ? = 1 THEN NULL ELSE access_revoked_at END,
           whop_membership_id = COALESCE(?, whop_membership_id),
           whop_member_id = COALESCE(?, whop_member_id),
           trial_end = COALESCE(?, trial_end)
       WHERE id = ?
-    `).run(mappedStatus, accessGranted, membershipId, memberId, nextTrialEnd, user.id);
+    `).run(mappedStatus, accessGranted, accessGranted, membershipId, memberId, nextTrialEnd, user.id);
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   }
 
@@ -2796,7 +2825,7 @@ function whopShadowEmail(type, data) {
  * so its Whop ids came from this event, not from earlier Whop state. Returns the reason, or null.
  */
 const applyWhopShadow = db.transaction((email, type, event, data, headerTimestamp, asNew) => {
-  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id FROM users WHERE email = ?').get(email);
+  const row = db.prepare('SELECT id, whop_status, whop_trial_end, whop_event_at, whop_membership_id, whop_membership_times FROM users WHERE email = ?').get(email);
   if (!row) return null;
   // A row this event created has no earlier Whop state, unless another event already wrote it meanwhile.
   const before = asNew && row.whop_status == null && row.whop_event_at == null ? { id: row.id } : row;
@@ -2806,6 +2835,9 @@ const applyWhopShadow = db.transaction((email, type, event, data, headerTimestam
     db.prepare('UPDATE users SET whop_status = ?, whop_trial_end = ?, whop_event_at = ? WHERE id = ?')
       .run(patch.whop_status, patch.whop_trial_end, patch.whop_event_at, row.id);
   }
+  // Per membership history for the late switch check, from the row as stored.
+  const times = whopMembershipTimesAfter(row.whop_membership_times, ev, before);
+  if (times) db.prepare('UPDATE users SET whop_membership_times = ? WHERE id = ?').run(times, row.id);
   return reason;
 });
 
@@ -2863,9 +2895,11 @@ app.post('/api/whop-webhook', async (req, res) => {
     const shadowEmail = whopShadowEmail(type, data);
     const shadowRowExisted = !!shadowEmail && !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(shadowEmail);
     const shadow = shadowRowExisted ? recordWhopShadow(shadowEmail, type, event, data, headerTimestamp, false) : null;
+    // Every grant below is checked against an admin revoke and the shadow order (whopGrantAllowed).
+    const grant = { eventAt: whopGrantEventTime(event, data, headerTimestamp), shadowReason: shadow ? shadow.reason : null };
 
     if (type === 'membership.activated' || type === 'membership.went_valid' || type === 'membership.created') {
-      await activateWhopMembership(data, 'webhook');
+      await activateWhopMembership(data, 'webhook', { grant });
     } else if (type === 'membership.deactivated' || type === 'membership.went_invalid' || type === 'membership.canceled') {
       await activateWhopMembership({ ...data, status: 'canceled' }, 'webhook', { sendLoginEmail: false });
     } else if (type === 'payment.succeeded' && clearWhopPastDue(data, shadow)) {
@@ -2873,7 +2907,7 @@ app.post('/api/whop-webhook', async (req, res) => {
     } else if (type === 'payment.succeeded') {
       const membership = data?.membership || data;
       if (membership?.id || membership?.status || membership?.user || membership?.member) {
-        await activateWhopMembership(membership, 'webhook-payment');
+        await activateWhopMembership(membership, 'webhook-payment', { grant });
       } else {
         const email = whopPayloadEmail(data);
         if (!whopMembershipIsAllowed(data)) {
@@ -2882,9 +2916,11 @@ app.post('/api/whop-webhook', async (req, res) => {
           const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
           if (isManualFree(user)) {
             console.log(`[whop:webhook-payment] ${email} is free forever; payment.succeeded left the row unchanged`);
-          } else if (user) {
-            db.prepare(`UPDATE users SET status = 'active', access_granted = 1 WHERE id = ?`).run(user.id);
+          } else if (user && whopGrantAllowed(user, grant, email, 'webhook-payment')) {
+            db.prepare(`UPDATE users SET status = 'active', access_granted = 1, access_revoked_at = NULL WHERE id = ?`).run(user.id);
             console.log(`[whop:webhook-payment] marked ${email} active from payment.succeeded`);
+          } else if (user) {
+            // Refused by whopGrantAllowed, which logged why.
           } else {
             console.warn(`[whop:webhook-payment] payment.succeeded for unknown email ${email} — no user row yet`);
           }
