@@ -850,7 +850,7 @@
       }
     }
 
-    @media (max-width: 360px) {
+    @media (max-width: 389px) {
       .logo {
         font-size: 13px;
         letter-spacing: 0;
@@ -861,13 +861,19 @@
         display: none;
       }
     }
+
+    @media (max-width: 340px) {
+      .nav-actions .header-btn {
+        padding: 0 8px;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="container">
       <nav>
-        <a href="/" class="logo"><span class="logo-long">📖 The Word in Context </span><span class="logo-short">📖 The Word</span><span class="cross" aria-hidden="true"></span></a>
+        <a href="/" class="logo"><span class="logo-long"><span aria-hidden="true">📖</span> The Word in Context </span><span class="logo-short"><span aria-hidden="true">📖</span> The Word</span><span class="cross" aria-hidden="true"></span></a>
         <div class="nav-actions">
           <a href="#features" class="nav-link">Features</a>
           <a href="#pricing" class="nav-link">Pricing</a>
