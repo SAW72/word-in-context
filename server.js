@@ -1201,7 +1201,7 @@ function landingHtmlWithOgTags() {
   })};window.__WIC_ASSET_V__=${JSON.stringify(ASSET_VERSION)};</script>`;
   const ogTags = `
   <meta property="og:title" content="The Word in Context">
-  <meta property="og:description" content="Voice-first offline Bible study with AI — understand Scripture in its original context.">
+  <meta property="og:description" content="Voice-first offline Bible study with AI. Understand Scripture in its original context.">
   <meta property="og:url" content="${SHARE_SITE_URL}/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="The Word in Context">
@@ -1210,7 +1210,7 @@ function landingHtmlWithOgTags() {
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The Word in Context — voice-first Bible study">
+  <meta property="og:image:alt" content="The Word in Context, voice-first Bible study">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="The Word in Context">
   <meta name="twitter:description" content="Voice-first offline Bible study with AI">
