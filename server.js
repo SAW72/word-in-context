@@ -1257,6 +1257,21 @@ app.get('/read', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'reader.html'));
 });
 
+// Pretty /read/<book>/<chapter>[/<verse>] URLs 302 to the hash route; book hyphens become spaces.
+app.get(/^\/read\/([A-Za-z0-9 .%-]{1,40})\/(\d{1,3})(?:\/(\d{1,3}))?\/?$/, (req, res) => {
+  let book = req.params[0] || '';
+  try {
+    book = decodeURIComponent(book);
+  } catch (err) {
+    book = String(req.params[0] || '');
+  }
+  book = book.replace(/-/g, ' ');
+  let location = '/read#/' + encodeURIComponent(book) + '/' + req.params[1];
+  if (req.params[2]) location += '/' + req.params[2];
+  res.set('X-Robots-Tag', 'noindex, follow');
+  res.status(302).set('Location', location).end();
+});
+
 // Pre-generated Bible audio (MP3s produced by scripts/generate-bible-audio.mjs)
 const AUDIO_DIR = process.env.AUDIO_STORAGE_PATH
   ? path.dirname(process.env.AUDIO_STORAGE_PATH)

@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-68';
+const CACHE_VERSION = 'wic-pwa-69';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -17,7 +17,7 @@ const SHELL_URLS = [
   `/audio-engine.js?v=3`,
   `/voice-picker.js?v=2`,
   `/study-core.js?v=2`,
-  `/bible-core.js?v=3`,
+  `/bible-core.js?v=4`,
   '/admin',
   '/index.html',
   '/landing.html',

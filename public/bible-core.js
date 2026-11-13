@@ -340,7 +340,9 @@
     const hash = (location.hash || '').replace(/^#\/?/, '');
     const parts = hash.split('/').filter(Boolean);
     if (parts.length >= 2) {
-      const book = findBook(parts[0]);
+      let bookSlug = parts[0];
+      try { bookSlug = decodeURIComponent(parts[0]); } catch (_) { bookSlug = parts[0]; }
+      const book = findBook(bookSlug);
       const chapter = parseInt(parts[1], 10);
       const verse = parts[2] ? parseInt(parts[2], 10) : null;
       if (book && chapter >= 1 && chapter <= book.chapters) {
