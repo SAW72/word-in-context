@@ -1,0 +1,582 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		24B2F1A46AC3D43E14B85B6F /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2016878D44EAA9692D059F /* SceneDelegate.swift */; };
+		2F47D4A5131A69606E66F882 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 42299223C1270749CDB36540 /* PrivacyInfo.xcprivacy */; };
+		329F214F8DACB89E57F129C3 /* scripture-refs.js in Resources */ = {isa = PBXBuildFile; fileRef = C40AA88C05E1CC13E0F2C5C0 /* scripture-refs.js */; };
+		37B103549C9F579A3B2539AA /* DailyVerses.json in Resources */ = {isa = PBXBuildFile; fileRef = E96A12468F5A3628044E7D7B /* DailyVerses.json */; };
+		3C659AF974AB079F1E6DDF5C /* Capacitor in Frameworks */ = {isa = PBXBuildFile; productRef = 80602E623894E9C006FCAB43 /* Capacitor */; };
+		414549497127236CFF2E1D16 /* Cordova in Frameworks */ = {isa = PBXBuildFile; productRef = 7C1DBFB56CFDF2A5113780F4 /* Cordova */; };
+		42AD7B556072177A585B9B4C /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B624E0DE7BF907D4CE2F199 /* MainTabBarController.swift */; };
+		51958F5672E0E3153C0B754E /* DailyVerseScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E804F0FA27DF7C03734B56 /* DailyVerseScheduler.swift */; };
+		5478715A0BC0CFD5116076BC /* scripture-refs.json in Resources */ = {isa = PBXBuildFile; fileRef = 58218E35C157A292DAFA9E68 /* scripture-refs.json */; };
+		57C2E2EE17E2DBE0BC54D2AE /* TwicConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 931E693CB48A939789343CA6 /* TwicConfig.swift */; };
+		5858BA5C34D915BD521FD082 /* StudyWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698DBBA84D15954613C6E258 /* StudyWebViewController.swift */; };
+		61E54774ACC78A1E2DD2836E /* TwicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA82CE2E6A7D0511B78B1CB /* TwicTests.swift */; };
+		66B3856076333E949081B9E0 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 68ED4E8FE0185474B6E8E85B /* capacitor.config.json */; };
+		7EF9524369DEB31948B80069 /* ReferenceParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F243E38A182738B93D234FD6 /* ReferenceParser.swift */; };
+		8F7F0816676AE8E784D978ED /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9420949282AB92AA28A975D3 /* AppDelegate.swift */; };
+		96DFDA6B47DA1F1B21A8FB2E /* PurchaseGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8D9882A0B2B4F503EDBE7E /* PurchaseGuard.swift */; };
+		A63062EDB93D90BB882D66A9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 76989E05CECAD7B8B3C424A7 /* Assets.xcassets */; };
+		A79C456F8D9110929D429686 /* Speech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DDEFC90F453B9C3A494518 /* Speech.swift */; };
+		ADAA120B189D9D0530502F5E /* ReaderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E778F4F476CD307C550E2C95 /* ReaderViewController.swift */; };
+		B4901742B78BF8C7AE4A5B8E /* Bible in Resources */ = {isa = PBXBuildFile; fileRef = D2F0D1DA7CE9C0AAD8B715C7 /* Bible */; };
+		B8A32F53E34914BC75FE8D14 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED103B90F6E5500CD39D9442 /* SettingsViewController.swift */; };
+		BC9191B6F7952427DC11356B /* bible-verses.json in Resources */ = {isa = PBXBuildFile; fileRef = DE441E111A0DEB6666BFE3F9 /* bible-verses.json */; };
+		D42CF501B8A1DD2F377AF08B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 4CD648EB22208AF4347378BB /* public */; };
+		ECA47AFB7F5071D994959C6A /* BibleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4229BB642DB68D241224EECD /* BibleStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		50987F7C0358E8796C874672 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6B590BF25178DC7D824D09CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6D4C7B72801E32493D12C2D3;
+			remoteInfo = Twic;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0C4D966670214AEB8A5A17DB /* Twic.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Twic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B624E0DE7BF907D4CE2F199 /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
+		42299223C1270749CDB36540 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		4229BB642DB68D241224EECD /* BibleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BibleStore.swift; sourceTree = "<group>"; };
+		4CD648EB22208AF4347378BB /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; name = public; path = App/public; sourceTree = SOURCE_ROOT; };
+		51DDEFC90F453B9C3A494518 /* Speech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speech.swift; sourceTree = "<group>"; };
+		564DB7E612C9856CB15BCD43 /* capacitor-swift-pm */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "capacitor-swift-pm"; path = "../vendor/capacitor-swift-pm"; sourceTree = SOURCE_ROOT; };
+		58218E35C157A292DAFA9E68 /* scripture-refs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "scripture-refs.json"; sourceTree = "<group>"; };
+		68ED4E8FE0185474B6E8E85B /* capacitor.config.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
+		698DBBA84D15954613C6E258 /* StudyWebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyWebViewController.swift; sourceTree = "<group>"; };
+		70FBD15B60B003AAE2FE5530 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		76989E05CECAD7B8B3C424A7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7BA82CE2E6A7D0511B78B1CB /* TwicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwicTests.swift; sourceTree = "<group>"; };
+		8B8D9882A0B2B4F503EDBE7E /* PurchaseGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseGuard.swift; sourceTree = "<group>"; };
+		931E693CB48A939789343CA6 /* TwicConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwicConfig.swift; sourceTree = "<group>"; };
+		9420949282AB92AA28A975D3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C40AA88C05E1CC13E0F2C5C0 /* scripture-refs.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "scripture-refs.js"; sourceTree = "<group>"; };
+		D2F0D1DA7CE9C0AAD8B715C7 /* Bible */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Bible; path = App/Bible; sourceTree = SOURCE_ROOT; };
+		D33AD67FE76C050F6897A6D4 /* TwicTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TwicTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE441E111A0DEB6666BFE3F9 /* bible-verses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "bible-verses.json"; sourceTree = "<group>"; };
+		E3E804F0FA27DF7C03734B56 /* DailyVerseScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyVerseScheduler.swift; sourceTree = "<group>"; };
+		E778F4F476CD307C550E2C95 /* ReaderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewController.swift; sourceTree = "<group>"; };
+		E96A12468F5A3628044E7D7B /* DailyVerses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = DailyVerses.json; sourceTree = "<group>"; };
+		ED103B90F6E5500CD39D9442 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		ED2016878D44EAA9692D059F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		F243E38A182738B93D234FD6 /* ReferenceParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceParser.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		045E0E525B96A6EEDD84416F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C659AF974AB079F1E6DDF5C /* Capacitor in Frameworks */,
+				414549497127236CFF2E1D16 /* Cordova in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0EFF61A072B5E33FD36EF8C0 /* lib */ = {
+			isa = PBXGroup;
+			children = (
+				C40AA88C05E1CC13E0F2C5C0 /* scripture-refs.js */,
+			);
+			name = lib;
+			path = ../../lib;
+			sourceTree = "<group>";
+		};
+		4102E3E068508DD683953C7D = {
+			isa = PBXGroup;
+			children = (
+				D2F0D1DA7CE9C0AAD8B715C7 /* Bible */,
+				4CD648EB22208AF4347378BB /* public */,
+				443E9F32F0EC65EEBF466F3B /* App */,
+				D659F710FB089168A0F644D3 /* fixtures */,
+				0EFF61A072B5E33FD36EF8C0 /* lib */,
+				A09E2501204CB86B4B2B6562 /* Packages */,
+				BCE3FFEBF4DE9D5396300A0D /* TwicTests */,
+				E9C3DB3EC6D7655028A9C0D3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		443E9F32F0EC65EEBF466F3B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				9420949282AB92AA28A975D3 /* AppDelegate.swift */,
+				76989E05CECAD7B8B3C424A7 /* Assets.xcassets */,
+				4229BB642DB68D241224EECD /* BibleStore.swift */,
+				68ED4E8FE0185474B6E8E85B /* capacitor.config.json */,
+				E96A12468F5A3628044E7D7B /* DailyVerses.json */,
+				E3E804F0FA27DF7C03734B56 /* DailyVerseScheduler.swift */,
+				70FBD15B60B003AAE2FE5530 /* Info.plist */,
+				2B624E0DE7BF907D4CE2F199 /* MainTabBarController.swift */,
+				42299223C1270749CDB36540 /* PrivacyInfo.xcprivacy */,
+				8B8D9882A0B2B4F503EDBE7E /* PurchaseGuard.swift */,
+				E778F4F476CD307C550E2C95 /* ReaderViewController.swift */,
+				F243E38A182738B93D234FD6 /* ReferenceParser.swift */,
+				ED2016878D44EAA9692D059F /* SceneDelegate.swift */,
+				ED103B90F6E5500CD39D9442 /* SettingsViewController.swift */,
+				51DDEFC90F453B9C3A494518 /* Speech.swift */,
+				698DBBA84D15954613C6E258 /* StudyWebViewController.swift */,
+				931E693CB48A939789343CA6 /* TwicConfig.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A09E2501204CB86B4B2B6562 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				564DB7E612C9856CB15BCD43 /* capacitor-swift-pm */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		BCE3FFEBF4DE9D5396300A0D /* TwicTests */ = {
+			isa = PBXGroup;
+			children = (
+				7BA82CE2E6A7D0511B78B1CB /* TwicTests.swift */,
+			);
+			path = TwicTests;
+			sourceTree = "<group>";
+		};
+		D659F710FB089168A0F644D3 /* fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				DE441E111A0DEB6666BFE3F9 /* bible-verses.json */,
+				58218E35C157A292DAFA9E68 /* scripture-refs.json */,
+			);
+			name = fixtures;
+			path = ../fixtures;
+			sourceTree = "<group>";
+		};
+		E9C3DB3EC6D7655028A9C0D3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0C4D966670214AEB8A5A17DB /* Twic.app */,
+				D33AD67FE76C050F6897A6D4 /* TwicTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6D4C7B72801E32493D12C2D3 /* Twic */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 15C0902F76999A6E7B6C84B6 /* Build configuration list for PBXNativeTarget "Twic" */;
+			buildPhases = (
+				D5039A392B8631E87F5A9185 /* Sources */,
+				091C35CA4E42C8F9747133ED /* Resources */,
+				045E0E525B96A6EEDD84416F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Twic;
+			packageProductDependencies = (
+				80602E623894E9C006FCAB43 /* Capacitor */,
+				7C1DBFB56CFDF2A5113780F4 /* Cordova */,
+			);
+			productName = Twic;
+			productReference = 0C4D966670214AEB8A5A17DB /* Twic.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D113DB384457231CBA66D158 /* TwicTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D6FBAE79E4D5F2AB31A16AC1 /* Build configuration list for PBXNativeTarget "TwicTests" */;
+			buildPhases = (
+				F591F9CF5162232E194B107F /* Sources */,
+				19266E2E671F6FC068EDA992 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2D251C86720C2CA31D725090 /* PBXTargetDependency */,
+			);
+			name = TwicTests;
+			packageProductDependencies = (
+			);
+			productName = TwicTests;
+			productReference = D33AD67FE76C050F6897A6D4 /* TwicTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6B590BF25178DC7D824D09CE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6D4C7B72801E32493D12C2D3 = {
+						DevelopmentTeam = YY8Q4336XS;
+						ProvisioningStyle = Automatic;
+					};
+					D113DB384457231CBA66D158 = {
+						DevelopmentTeam = YY8Q4336XS;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4102E3E068508DD683953C7D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				322E646E46D18F64C93ABAB7 /* XCLocalSwiftPackageReference "../vendor/capacitor-swift-pm" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E9C3DB3EC6D7655028A9C0D3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6D4C7B72801E32493D12C2D3 /* Twic */,
+				D113DB384457231CBA66D158 /* TwicTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		091C35CA4E42C8F9747133ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A63062EDB93D90BB882D66A9 /* Assets.xcassets in Resources */,
+				B4901742B78BF8C7AE4A5B8E /* Bible in Resources */,
+				37B103549C9F579A3B2539AA /* DailyVerses.json in Resources */,
+				2F47D4A5131A69606E66F882 /* PrivacyInfo.xcprivacy in Resources */,
+				66B3856076333E949081B9E0 /* capacitor.config.json in Resources */,
+				D42CF501B8A1DD2F377AF08B /* public in Resources */,
+				329F214F8DACB89E57F129C3 /* scripture-refs.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		19266E2E671F6FC068EDA992 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC9191B6F7952427DC11356B /* bible-verses.json in Resources */,
+				5478715A0BC0CFD5116076BC /* scripture-refs.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D5039A392B8631E87F5A9185 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8F7F0816676AE8E784D978ED /* AppDelegate.swift in Sources */,
+				ECA47AFB7F5071D994959C6A /* BibleStore.swift in Sources */,
+				51958F5672E0E3153C0B754E /* DailyVerseScheduler.swift in Sources */,
+				42AD7B556072177A585B9B4C /* MainTabBarController.swift in Sources */,
+				96DFDA6B47DA1F1B21A8FB2E /* PurchaseGuard.swift in Sources */,
+				ADAA120B189D9D0530502F5E /* ReaderViewController.swift in Sources */,
+				7EF9524369DEB31948B80069 /* ReferenceParser.swift in Sources */,
+				24B2F1A46AC3D43E14B85B6F /* SceneDelegate.swift in Sources */,
+				B8A32F53E34914BC75FE8D14 /* SettingsViewController.swift in Sources */,
+				A79C456F8D9110929D429686 /* Speech.swift in Sources */,
+				5858BA5C34D915BD521FD082 /* StudyWebViewController.swift in Sources */,
+				57C2E2EE17E2DBE0BC54D2AE /* TwicConfig.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F591F9CF5162232E194B107F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61E54774ACC78A1E2DD2836E /* TwicTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2D251C86720C2CA31D725090 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6D4C7B72801E32493D12C2D3 /* Twic */;
+			targetProxy = 50987F7C0358E8796C874672 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3427D9AB43EF3EC6050C42A2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.stewardoftheking.twic.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Twic.app/Twic";
+			};
+			name = Debug;
+		};
+		4EBD95F0DBA244A3F84B5E37 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.stewardoftheking.twic;
+				PRODUCT_MODULE_NAME = Twic;
+				PRODUCT_NAME = Twic;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		5C9EF0E6AF4F9491454DE177 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YY8Q4336XS;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		84856D06195DDE18A1097024 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.stewardoftheking.twic;
+				PRODUCT_MODULE_NAME = Twic;
+				PRODUCT_NAME = Twic;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E8D70E9177013882719212AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.stewardoftheking.twic.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Twic.app/Twic";
+			};
+			name = Release;
+		};
+		F61063B78755D98B1B9C3697 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YY8Q4336XS;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		15C0902F76999A6E7B6C84B6 /* Build configuration list for PBXNativeTarget "Twic" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84856D06195DDE18A1097024 /* Debug */,
+				4EBD95F0DBA244A3F84B5E37 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B3FD05C59F197F398A0B04AB /* Build configuration list for PBXProject "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F61063B78755D98B1B9C3697 /* Debug */,
+				5C9EF0E6AF4F9491454DE177 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D6FBAE79E4D5F2AB31A16AC1 /* Build configuration list for PBXNativeTarget "TwicTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3427D9AB43EF3EC6050C42A2 /* Debug */,
+				E8D70E9177013882719212AC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		322E646E46D18F64C93ABAB7 /* XCLocalSwiftPackageReference "../vendor/capacitor-swift-pm" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../vendor/capacitor-swift-pm";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7C1DBFB56CFDF2A5113780F4 /* Cordova */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Cordova;
+		};
+		80602E623894E9C006FCAB43 /* Capacitor */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Capacitor;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 6B590BF25178DC7D824D09CE /* Project object */;
+}

@@ -1,0 +1,40 @@
+{
+  "source": "helloao complete.json flattened with lib/bible-fetch.js flattenVerseContent",
+  "verses": [
+    {
+      "reference": "John 3:16",
+      "translation": "BSB",
+      "text": "For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life."
+    },
+    {
+      "reference": "Genesis 1:1",
+      "translation": "BSB",
+      "text": "In the beginning God created the heavens and the earth."
+    },
+    {
+      "reference": "Psalm 23:1",
+      "translation": "eng_kjv",
+      "text": "The LORD is my shepherd; I shall not want."
+    },
+    {
+      "reference": "John 1:1",
+      "translation": "eng_ylt",
+      "text": "In the beginning was the Word, and the Word was with God, and the Word was God;"
+    },
+    {
+      "reference": "Romans 8:28",
+      "translation": "ENGWEBP",
+      "text": "We know that all things work together for good for those who love God, for those who are called according to his purpose."
+    },
+    {
+      "reference": "Matthew 17:21",
+      "translation": "eng_asv",
+      "text": null
+    },
+    {
+      "reference": "Micah 6:8",
+      "translation": "eng_dby",
+      "text": "He hath shewn thee, O man, what is good: and what doth Jehovah require of thee, but to do justly, and to love goodness, and to walk humbly with thy God?"
+    }
+  ]
+}
