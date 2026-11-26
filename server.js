@@ -1237,8 +1237,19 @@ app.use((req, res, next) => {
 
 let landingHtmlWithOg = null;
 let landingHtmlMtime = 0;
+let landingPageIosHtml = null;
+let landingPageIosMtime = 0;
+let landingFileIosHtml = null;
+let landingFileIosMtime = 0;
+let johnPopupIosJs = null;
+let johnPopupIosMtime = 0;
+
+function landingFilePath() {
+  return path.join(__dirname, 'public', 'landing.html');
+}
+
 function landingHtmlWithOgTags() {
-  const landingPath = path.join(__dirname, 'public', 'landing.html');
+  const landingPath = landingFilePath();
   const mtime = fs.statSync(landingPath).mtimeMs;
   if (landingHtmlWithOg && landingHtmlMtime === mtime) return landingHtmlWithOg;
   landingHtmlMtime = mtime;
@@ -1296,7 +1307,18 @@ app.get('/robots.txt', (req, res) => {
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
 app.get('/', (req, res) => {
-  res.type('html').send(landingHtmlWithOgTags());
+  res.vary('User-Agent');
+  res.type('html');
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(landingHtmlWithOgTags());
+    return;
+  }
+  const mtime = fs.statSync(landingFilePath()).mtimeMs;
+  if (landingPageIosHtml == null || landingPageIosMtime !== mtime) {
+    landingPageIosMtime = mtime;
+    landingPageIosHtml = renderTwicIOSPage(landingHtmlWithOgTags());
+  }
+  res.send(landingPageIosHtml);
 });
 
 // Serve the full chat app at /app (so landing can promote signups).
@@ -1333,6 +1355,40 @@ app.get('/app', (req, res) => {
 // Before express.static, so the static handler cannot skip the iOS variant.
 app.get('/index.html', (req, res) => {
   sendStudyIndexHtml(req, res);
+});
+
+// Before express.static. Browsers get the file bytes. TwicIOS gets the commerce-free variant.
+// Cache-Control still comes from the global applyCacheControl middleware.
+app.get('/landing.html', (req, res) => {
+  res.vary('User-Agent');
+  res.type('html');
+  const filePath = landingFilePath();
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  if (landingFileIosHtml == null || landingFileIosMtime !== mtime) {
+    landingFileIosMtime = mtime;
+    landingFileIosHtml = Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8');
+  }
+  res.send(landingFileIosHtml);
+});
+
+app.get('/john-popup.js', (req, res) => {
+  res.vary('User-Agent');
+  res.type('js');
+  const filePath = path.join(__dirname, 'public', 'john-popup.js');
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  if (johnPopupIosJs == null || johnPopupIosMtime !== mtime) {
+    johnPopupIosMtime = mtime;
+    johnPopupIosJs = Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8');
+  }
+  res.send(johnPopupIosJs);
 });
 
 // Dedicated Bible reader — free full Bible, premium typography & audio
@@ -1853,24 +1909,30 @@ app.get('/api/me', requireAuth, (req, res) => {
 const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
 const DELETE_ACCOUNT_TTL_MS = 5 * 60 * 1000;
 
+const DELETE_SHARE_SENTENCE = 'Share links you already published stay up, and they do not identify you.';
 const DELETE_NOTICE_CANCEL = {
   title: 'Delete your account',
-  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. We will also cancel your plan so it does not renew. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com before you delete. We keep only your bare Whop membership number so a renewal cannot re-create your account.',
+  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. We will also cancel your plan so it does not renew. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com before you delete. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
   successLine: 'Your account is deleted and your plan is canceled. You will not be charged for it again.',
 };
 const DELETE_NOTICE_MANUAL_WHOP = {
   title: 'Delete your account',
-  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, sign in at whop.com with the email you paid with, open Profile, then Orders, choose The Word in Context, and select Cancel membership. You can do this before or after you delete. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com. We keep only your bare Whop membership number so a renewal cannot re-create your account.',
+  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, sign in at whop.com with the email you paid with, open Profile, then Orders, choose The Word in Context, and select Cancel membership. You can do this before or after you delete. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
   successLine: 'Your account is deleted. Your plan on Whop is still active until you cancel it there.',
 };
 const DELETE_NOTICE_MANUAL_STRIPE = {
   title: 'Delete your account',
-  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, use the cancel link in your billing emails, or email hello@stewardoftheking.com. You can do this before or after you delete. Deleting does not refund the current billing period.',
+  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, use the cancel link in your billing emails, or email hello@stewardoftheking.com. You can do this before or after you delete. Deleting does not refund the current billing period. ' + DELETE_SHARE_SENTENCE,
   successLine: 'Your account is deleted. Your paid plan is still active until you cancel it.',
+};
+const DELETE_NOTICE_MANUAL_BOTH = {
+  title: 'Delete your account',
+  body: 'We could not cancel your paid plans for you. Deleting your account does not stop billing. To stop Whop charges, sign in at whop.com with the email you paid with, open Profile, then Orders, choose The Word in Context, and select Cancel membership. To stop Stripe charges, use the cancel link in your billing emails, or email hello@stewardoftheking.com. You can do this before or after you delete. Deleting does not refund the current billing period. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted. Your paid plans are still active until you cancel them.',
 };
 const DELETE_NOTICE_NONE = {
   title: 'Delete your account',
-  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. You do not have a paid plan, so there is nothing to cancel.',
+  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. You do not have a paid plan, so there is nothing to cancel. ' + DELETE_SHARE_SENTENCE,
   successLine: 'Your account is deleted.',
 };
 
@@ -1903,15 +1965,20 @@ function accountDeletionBilling(row) {
   const whopId = nonBlankId(row && row.whop_membership_id);
   const stripeSub = nonBlankId(row && row.stripe_subscription_id);
   const key = nonBlankId(process.env.WHOP_API_KEY);
+  // Stripe is never canceled here. A Stripe id is always manual, even when Whop is also set.
+  if (stripeSub) return 'manual';
   if (whopId && key) return 'will_cancel';
-  if (whopId || stripeSub) return 'manual';
+  if (whopId) return 'manual';
   return 'none';
 }
 
 function accountDeletionNotice(billing, row) {
   if (billing === 'will_cancel') return DELETE_NOTICE_CANCEL;
   if (billing === 'none') return DELETE_NOTICE_NONE;
-  if (nonBlankId(row && row.whop_membership_id)) return DELETE_NOTICE_MANUAL_WHOP;
+  const whopId = nonBlankId(row && row.whop_membership_id);
+  const stripeSub = nonBlankId(row && row.stripe_subscription_id);
+  if (whopId && stripeSub) return DELETE_NOTICE_MANUAL_BOTH;
+  if (whopId) return DELETE_NOTICE_MANUAL_WHOP;
   return DELETE_NOTICE_MANUAL_STRIPE;
 }
 
@@ -1976,7 +2043,7 @@ async function cancelWhopMembership(membershipId) {
         'Content-Type': 'application/json',
         'Idempotency-Key': `twic-delete-${id}`,
       },
-      body: JSON.stringify({ cancellation_mode: 'immediate' }),
+      body: '{}',
       signal: ac.signal,
       redirect: 'manual',
     });
@@ -2005,25 +2072,54 @@ const purgeDeletedAccount = db.transaction((userRow) => {
   db.prepare('DELETE FROM users WHERE id = ?').run(userRow.id);
 });
 
+function issueDeleteConfirmToken(user) {
+  const confirmToken = crypto.randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + DELETE_ACCOUNT_TTL_MS).toISOString();
+  const tokenHash = hashDeleteToken(confirmToken);
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM account_delete_tokens WHERE user_id = ? AND used = 0').run(user.id);
+    db.prepare(`
+      INSERT INTO account_delete_tokens (token_hash, user_id, email, expires_at, used)
+      VALUES (?, ?, ?, ?, 0)
+    `).run(tokenHash, user.id, user.email, expiresAt);
+  });
+  tx();
+  return { confirmToken, expiresAt };
+}
+
+function sendManualHold(res, user) {
+  const issued = issueDeleteConfirmToken(user);
+  return res.status(409).json({
+    ok: false,
+    billing: 'manual',
+    needsDeleteAnyway: true,
+    confirmToken: issued.confirmToken,
+    phrase: DELETE_ACCOUNT_PHRASE,
+    expiresAt: issued.expiresAt,
+    notice: accountDeletionNotice('manual', user),
+  });
+}
+
+function finishAccountDelete(res, user, billing, canceled) {
+  purgeDeletedAccount(user);
+  removeBetaSignup(user.email);
+  return res.json({
+    ok: true,
+    billing,
+    canceled,
+    notice: accountDeletionNotice(billing, user),
+  });
+}
+
 app.post('/api/account/delete/start', accountDeleteGate, (req, res) => {
   try {
     const user = req.userRecord;
-    const confirmToken = crypto.randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + DELETE_ACCOUNT_TTL_MS).toISOString();
     const billing = accountDeletionBilling(user);
-    const tokenHash = hashDeleteToken(confirmToken);
-    const tx = db.transaction(() => {
-      db.prepare('DELETE FROM account_delete_tokens WHERE user_id = ? AND used = 0').run(user.id);
-      db.prepare(`
-        INSERT INTO account_delete_tokens (token_hash, user_id, email, expires_at, used)
-        VALUES (?, ?, ?, ?, 0)
-      `).run(tokenHash, user.id, user.email, expiresAt);
-    });
-    tx();
+    const issued = issueDeleteConfirmToken(user);
     res.json({
-      confirmToken,
+      confirmToken: issued.confirmToken,
       phrase: DELETE_ACCOUNT_PHRASE,
-      expiresAt,
+      expiresAt: issued.expiresAt,
       billing,
       notice: accountDeletionNotice(billing, user),
     });
@@ -2060,23 +2156,16 @@ app.post('/api/account/delete/confirm', accountDeleteGate, async (req, res) => {
       return res.status(400).json({ error: 'Confirmation expired or already used. Start again.' });
     }
 
-    let billing = accountDeletionBilling(user);
-    let canceled = false;
-    if (billing === 'will_cancel') {
+    const deleteAnyway = !!(req.body && req.body.deleteAnyway === true);
+    const billing = accountDeletionBilling(user);
+    if (billing === 'will_cancel' && !deleteAnyway) {
       const ok = await cancelWhopMembership(user.whop_membership_id);
-      if (ok) canceled = true;
-      else billing = 'manual';
+      if (!ok) return sendManualHold(res, user);
+      return finishAccountDelete(res, user, 'will_cancel', true);
     }
-
-    purgeDeletedAccount(user);
-    removeBetaSignup(user.email);
-
-    res.json({
-      ok: true,
-      billing,
-      canceled,
-      notice: accountDeletionNotice(billing, user),
-    });
+    if (billing === 'manual' && !deleteAnyway) return sendManualHold(res, user);
+    if (billing === 'none') return finishAccountDelete(res, user, 'none', false);
+    return finishAccountDelete(res, user, 'manual', false);
   } catch (err) {
     const key = nonBlankId(process.env.WHOP_API_KEY);
     const msg = String(err && err.message || '');

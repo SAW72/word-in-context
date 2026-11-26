@@ -139,6 +139,19 @@ html.ios.standalone-app #pwa-offline-badge.visible{padding-top:calc(6px + var(--
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
+      if (/twicios/i.test(navigator.userAgent)) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          regs.forEach((reg) => { reg.unregister(); });
+        }).catch(() => {});
+        if (typeof caches !== 'undefined' && caches.keys) {
+          caches.keys().then((keys) => {
+            keys.forEach((name) => {
+              if (String(name).indexOf('wic-pwa-') === 0) caches.delete(name);
+            });
+          }).catch(() => {});
+        }
+        return;
+      }
       navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
         console.warn('[PWA] service worker registration failed:', err);
       });

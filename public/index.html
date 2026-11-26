@@ -2027,7 +2027,12 @@
 
         <!-- Signup required banner (shown when not logged in). -->
         <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
+          <!-- twic-ios-omit:start -->
           <strong>Sign up to chat with John.</strong>
+          <!-- twic-ios-alt:
+          <strong>Log in to chat with John.</strong>
+          -->
+          <!-- twic-ios-omit:end -->
           <!-- twic-ios-omit:start -->
           Start a <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">7-day free trial</a> or
           <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">14-day tester account</a> (invite required, no card).
@@ -2385,7 +2390,7 @@
           Logged in! Redirecting...
         </div>
         <p style="font-size:11px; margin-top:8px; opacity:0.7;">
-          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a> (or sign up on landing).
+          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a><!-- twic-ios-omit:start --> (or sign up on landing)<!-- twic-ios-omit:end -->.
         </p>
       </div>
 
@@ -2585,13 +2590,23 @@
       }
       if (input) {
         input.disabled = true;
+        /* twic-ios-omit:start */
         input.placeholder = 'Sign up or log in to chat with John';
+        /* twic-ios-alt:
+        input.placeholder = 'Log in to chat with John';
+        */
+        /* twic-ios-omit:end */
       }
       if (send) send.disabled = true;
       if (mic) {
         mic.disabled = true;
         mic.style.opacity = '0.35';
+        /* twic-ios-omit:start */
         mic.title = 'Sign up required';
+        /* twic-ios-alt:
+        mic.title = 'Log in required';
+        */
+        /* twic-ios-omit:end */
       }
       if (banner) banner.style.display = 'block';
       if (statusEl) statusEl.style.display = 'none';
@@ -7433,6 +7448,7 @@
       if (panel) {
         panel.style.display = 'none';
         delete panel.dataset.token;
+        delete panel.dataset.deleteAnyway;
       }
       const title = document.getElementById('delete-account-title');
       const body = document.getElementById('delete-account-body');
@@ -7512,6 +7528,8 @@
           if (confirmBtn) confirmBtn.textContent = data.billing === 'manual' ? 'Delete anyway' : 'Delete account';
           if (panel) {
             panel.dataset.token = data.confirmToken || '';
+            if (data.billing === 'manual') panel.dataset.deleteAnyway = '1';
+            else delete panel.dataset.deleteAnyway;
             panel.style.display = 'block';
           }
           showDeleteAccountMessage('');
@@ -7551,11 +7569,33 @@
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({
               confirmToken: panel.dataset.token || '',
-              phrase: phraseEl ? phraseEl.value : ''
+              phrase: phraseEl ? phraseEl.value : '',
+              deleteAnyway: panel.dataset.deleteAnyway === '1'
             })
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
+          if (res.status === 409 && data && data.needsDeleteAnyway) {
+            const title = document.getElementById('delete-account-title');
+            const bodyEl = document.getElementById('delete-account-body');
+            const notice = data.notice || {};
+            if (title) title.textContent = notice.title || '';
+            if (bodyEl) bodyEl.textContent = notice.body || '';
+            panel.dataset.token = data.confirmToken || '';
+            panel.dataset.deleteAnyway = '1';
+            panel.style.display = 'block';
+            deleteAccountConfirmBtn.textContent = 'Delete anyway';
+            const cancelBtn = document.getElementById('delete-account-cancel-btn');
+            if (cancelBtn) {
+              cancelBtn.style.display = '';
+              cancelBtn.textContent = 'Keep my account';
+            }
+            if (phraseEl) phraseEl.style.display = '';
+            const label = document.getElementById('delete-account-phrase-label');
+            if (label && data.phrase) label.textContent = 'Type ' + data.phrase + ' to confirm';
+            showDeleteAccountMessage('');
+            return;
+          }
+          if (!res.ok || !data.ok) {
             showDeleteAccountMessage((data && data.error) || 'Could not delete the account.');
             return;
           }
@@ -7589,8 +7629,14 @@
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_email');
         document.getElementById('subscribe-modal').style.display = 'none';
+        /* twic-ios-omit:start */
         alert('Logged out. Visit the landing page to log back in.');
         window.location.href = '/';
+        /* twic-ios-alt:
+        alert('Logged out.');
+        window.location.assign('/app');
+        */
+        /* twic-ios-omit:end */
       });
     }
 
@@ -8344,7 +8390,7 @@
 
     init();
   </script>
-  <script src="/john-popup.js?v=7" defer></script>
+  <script src="/john-popup.js?v=8" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>
 </html>
