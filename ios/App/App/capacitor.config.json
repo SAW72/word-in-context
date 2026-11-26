@@ -1,0 +1,20 @@
+{
+	"appId": "com.stewardoftheking.twic",
+	"appName": "The Word",
+	"webDir": "public",
+	"appendUserAgent": "TwicIOS/1.0",
+	"ios": {
+		"contentInset": "automatic",
+		"preferredContentMode": "mobile",
+		"limitsNavigationsToAppBoundDomains": false
+	},
+	"server": {
+		"url": "https://thewordincontext.org/app",
+		"errorPath": "index.html",
+		"allowNavigation": [
+			"thewordincontext.org",
+			"*.thewordincontext.org"
+		]
+	},
+	"packageClassList": []
+}

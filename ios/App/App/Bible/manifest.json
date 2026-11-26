@@ -1,0 +1,93 @@
+{
+  "generatedFrom": "https://bible.helloao.org/api/<id>/complete.json",
+  "default": "BSB",
+  "onlineOnly": [
+    "eng_net"
+  ],
+  "translations": [
+    {
+      "id": "BSB",
+      "short": "BSB",
+      "name": "Berean Standard Bible",
+      "license": "Public domain (dedicated by Bible Hub / Berean Bible, April 2023)",
+      "source": "https://berean.bible/",
+      "file": "BSB.json.zlib",
+      "books": 66,
+      "verses": 31086,
+      "sourceSha256": "77d03d7113a0cc0e2cf328a7d9fb95631cd42cb18decd867c3822badee15d1a6",
+      "fileSha256": "8bf3c1c2d7e447b8041f6842e0a817b95650cbcfe64a47e3998749f323ee6c42",
+      "jsonBytes": 4099131,
+      "fileBytes": 1274593
+    },
+    {
+      "id": "eng_kjv",
+      "short": "KJV",
+      "name": "King James Version",
+      "license": "Public domain outside the UK (eBible.org KJV 2006 edition)",
+      "source": "https://ebible.org/Scriptures/details.php?id=eng-kjv2006",
+      "file": "eng_kjv.json.zlib",
+      "books": 66,
+      "verses": 31102,
+      "sourceSha256": "7dc43da7a0e93c66889ae78d3c5771d7e5731534c2bfe37c74c2c485136af262",
+      "fileSha256": "16d8b6c2b38b2435ca326fd7aa10d8c7b083ddaec9a170cef382180149d524e1",
+      "jsonBytes": 4364192,
+      "fileBytes": 1276301
+    },
+    {
+      "id": "eng_asv",
+      "short": "ASV",
+      "name": "American Standard Version (1901)",
+      "license": "Public domain",
+      "source": "https://ebible.org/Scriptures/details.php?id=eng-asv",
+      "file": "eng_asv.json.zlib",
+      "books": 66,
+      "verses": 31086,
+      "sourceSha256": "02497491bcf588d616225d33b34b8b5ca8d20b5f95e6a62634aa0c28e5e6ac2b",
+      "fileSha256": "b45fdfe876dffaf2363c5f9b8333d68546d0fc2bdcb2c17885170c78ce672766",
+      "jsonBytes": 4358736,
+      "fileBytes": 1271149
+    },
+    {
+      "id": "eng_ylt",
+      "short": "YLT",
+      "name": "Young's Literal Translation",
+      "license": "Public domain",
+      "source": "https://ebible.org/Scriptures/details.php?id=engylt",
+      "file": "eng_ylt.json.zlib",
+      "books": 66,
+      "verses": 31102,
+      "sourceSha256": "75267d89bd7576b1bd3fe167eb1f2194ebb2f573f07f11ee250880333f1f1977",
+      "fileSha256": "0d634f72cda0df028027c4e030a73c8e63fe0f2319b95e67a50e2e9046805016",
+      "jsonBytes": 4386801,
+      "fileBytes": 1277210
+    },
+    {
+      "id": "eng_dby",
+      "short": "DBY",
+      "name": "Darby Translation",
+      "license": "Public domain",
+      "source": "https://ebible.org/Scriptures/details.php?id=engDBY",
+      "file": "eng_dby.json.zlib",
+      "books": 66,
+      "verses": 31099,
+      "sourceSha256": "7e751680110ed95e5ed1d24c31a730345532e438f1ab48c76cf894e67841791c",
+      "fileSha256": "b0b3aa2cc7ee6f793390a0f2eed17b0d3c13732a95aecc35c6a16f4d1c96d89f",
+      "jsonBytes": 4316253,
+      "fileBytes": 1279681
+    },
+    {
+      "id": "ENGWEBP",
+      "short": "WEB",
+      "name": "World English Bible",
+      "license": "Public domain (World English Bible is not copyrighted)",
+      "source": "https://ebible.org/Scriptures/details.php?id=engwebp",
+      "file": "ENGWEBP.json.zlib",
+      "books": 66,
+      "verses": 31098,
+      "sourceSha256": "43577d2d64ad722c04c0b5591e12cf5193c64a5b6dc13a28089ff797a16140d6",
+      "fileSha256": "2f0c768e61c9e4af065e92e994281e1049297103ac068dcd3d650025844fa575",
+      "jsonBytes": 4244688,
+      "fileBytes": 1260182
+    }
+  ]
+}
