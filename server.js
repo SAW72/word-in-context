@@ -68,6 +68,7 @@ const {
   applyCacheControl,
 } = require('./lib/http-cache');
 const { seoNoindexHeaders } = require('./lib/seo-headers');
+const { isTwicIOS, renderTwicIOSPage } = require('./lib/twic-ios-page');
 let ffmpegStaticPath = null;
 try {
   ffmpegStaticPath = require('ffmpeg-static');
@@ -214,6 +215,19 @@ try {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_delete_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS deleted_whop_memberships (
+      membership_id TEXT PRIMARY KEY,
+      deleted_at TEXT NOT NULL
+    );
+  `);
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   console.log(`[DB] Schema ready at ${dbPath}. Current users: ${userCount}`);
 } catch (err) {
@@ -244,6 +258,10 @@ const testerSignupLimiter = createFixedWindowLimiter({
 const shareTranscodeLimiter = createFixedWindowLimiter({
   windowMs: process.env.SHARE_TRANSCODE_RATE_WINDOW_MS || 60 * 60 * 1000,
   max: process.env.SHARE_TRANSCODE_RATE_MAX || 6,
+});
+const accountDeleteLimiter = createFixedWindowLimiter({
+  windowMs: process.env.ACCOUNT_DELETE_RATE_WINDOW_MS || 15 * 60 * 1000,
+  max: process.env.ACCOUNT_DELETE_RATE_MAX || 10,
 });
 const TESTER_INVITE_TOKEN = String(process.env.TESTER_INVITE_TOKEN || '').trim();
 let transcodeInFlight = 0;
@@ -337,6 +355,10 @@ function requireAuth(req, res, next) {
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
+    // An old JWT from a deleted account must stay dead if the same email signs up again.
+    if (payload.id != null && payload.id !== '' && String(payload.id) !== String(user.id)) {
+      return res.status(401).json({ error: 'User not found' });
+    }
     if (!user.access_granted) {
       return res.status(403).json({ error: 'Account access has been revoked. Contact support.' });
     }
@@ -361,6 +383,37 @@ function requireAuth(req, res, next) {
   } catch (e) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+// Account deletion for the signed-in member. Unlike requireAuth, a canceled or
+// expired row may still delete. Admin JWTs and tokens with no email may not.
+// This repo has no operator/admin user email (no ADMIN_EMAIL or similar).
+function requireAccountOwner(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const token = authHeader.split(' ')[1];
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+  const email = String(payload && payload.email || '').trim();
+  if (!payload || payload.role === 'admin' || !email) {
+    return res.status(403).json({ error: 'This account cannot be deleted from the app.' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email);
+  if (!user) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+  if (payload.id != null && payload.id !== '' && String(payload.id) !== String(user.id)) {
+    return res.status(401).json({ error: 'User not found' });
+  }
+  req.user = payload;
+  req.userRecord = user;
+  next();
 }
 
 function peekAdminAuth(req) {
@@ -1184,8 +1237,50 @@ app.use((req, res, next) => {
 
 let landingHtmlWithOg = null;
 let landingHtmlMtime = 0;
+let landingPageIosHtml = null;
+let landingPageIosMtime = 0;
+let landingFileIosHtml = null;
+let landingFileIosMtime = 0;
+let johnPopupIosJs = null;
+let johnPopupIosMtime = 0;
+const legalIosCache = new Map();
+
+function setUaVariantHeaders(res) {
+  const previous = String(res.get('Cache-Control') || '');
+  res.set('Cache-Control', 'private, no-store');
+  res.vary('User-Agent');
+  if (/public|max-age|s-maxage/i.test(previous)) {
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
+  }
+}
+
+function sendMarkedHtml(req, res, fileName) {
+  setUaVariantHeaders(res);
+  res.type('html');
+  const filePath = path.join(__dirname, 'public', fileName);
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  let cached = legalIosCache.get(fileName);
+  if (!cached || cached.mtime !== mtime) {
+    cached = {
+      mtime,
+      body: Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8'),
+    };
+    legalIosCache.set(fileName, cached);
+  }
+  res.send(cached.body);
+}
+
+function landingFilePath() {
+  return path.join(__dirname, 'public', 'landing.html');
+}
+
 function landingHtmlWithOgTags() {
-  const landingPath = path.join(__dirname, 'public', 'landing.html');
+  const landingPath = landingFilePath();
   const mtime = fs.statSync(landingPath).mtimeMs;
   if (landingHtmlWithOg && landingHtmlMtime === mtime) return landingHtmlWithOg;
   landingHtmlMtime = mtime;
@@ -1221,12 +1316,21 @@ function landingHtmlWithOgTags() {
 
 app.get('/copyright', (req, res) => res.redirect(301, '/attributions.html'));
 
+// Before express.static, so the static handler cannot serve the web file to TwicIOS.
 app.get('/privacy', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+  sendMarkedHtml(req, res, 'privacy.html');
+});
+
+app.get('/privacy.html', (req, res) => {
+  sendMarkedHtml(req, res, 'privacy.html');
 });
 
 app.get('/terms', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'terms.html'));
+  sendMarkedHtml(req, res, 'terms.html');
+});
+
+app.get('/terms.html', (req, res) => {
+  sendMarkedHtml(req, res, 'terms.html');
 });
 
 
@@ -1243,13 +1347,88 @@ app.get('/robots.txt', (req, res) => {
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
 app.get('/', (req, res) => {
-  res.type('html').send(landingHtmlWithOgTags());
+  setUaVariantHeaders(res);
+  res.type('html');
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(landingHtmlWithOgTags());
+    return;
+  }
+  const mtime = fs.statSync(landingFilePath()).mtimeMs;
+  if (landingPageIosHtml == null || landingPageIosMtime !== mtime) {
+    landingPageIosMtime = mtime;
+    landingPageIosHtml = renderTwicIOSPage(landingHtmlWithOgTags());
+  }
+  res.send(landingPageIosHtml);
 });
 
-// Serve the full chat app at /app (so landing can promote signups)
+// Serve the full chat app at /app (so landing can promote signups).
+// Browsers get the file bytes unchanged. TwicIOS gets the commerce-free variant.
+let studyIndexIosHtml = null;
+let studyIndexIosMtime = 0;
+
+function studyIndexFilePath() {
+  return path.join(__dirname, 'public', 'index.html');
+}
+
+function studyIndexHtmlForUa(ua) {
+  const filePath = studyIndexFilePath();
+  if (!isTwicIOS(ua)) return fs.readFileSync(filePath);
+  const mtime = fs.statSync(filePath).mtimeMs;
+  if (studyIndexIosHtml == null || studyIndexIosMtime !== mtime) {
+    studyIndexIosMtime = mtime;
+    studyIndexIosHtml = Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8');
+  }
+  return studyIndexIosHtml;
+}
+
+function sendStudyIndexHtml(req, res) {
+  setUaVariantHeaders(res);
+  res.type('html');
+  res.send(studyIndexHtmlForUa(req.headers['user-agent']));
+}
+
 app.get('/app', (req, res) => {
   res.set('X-Robots-Tag', 'noindex, follow');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  sendStudyIndexHtml(req, res);
+});
+
+// Before express.static, so the static handler cannot skip the iOS variant.
+app.get('/index.html', (req, res) => {
+  sendStudyIndexHtml(req, res);
+});
+
+// Before express.static. Browsers get the file bytes. TwicIOS gets the commerce-free variant.
+// private, no-store is set here, after the global cache middleware, because the body varies by User-Agent.
+app.get('/landing.html', (req, res) => {
+  setUaVariantHeaders(res);
+  res.type('html');
+  const filePath = landingFilePath();
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  if (landingFileIosHtml == null || landingFileIosMtime !== mtime) {
+    landingFileIosMtime = mtime;
+    landingFileIosHtml = Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8');
+  }
+  res.send(landingFileIosHtml);
+});
+
+app.get('/john-popup.js', (req, res) => {
+  setUaVariantHeaders(res);
+  res.type('js');
+  const filePath = path.join(__dirname, 'public', 'john-popup.js');
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  if (johnPopupIosJs == null || johnPopupIosMtime !== mtime) {
+    johnPopupIosMtime = mtime;
+    johnPopupIosJs = Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8');
+  }
+  res.send(johnPopupIosJs);
 });
 
 // Dedicated Bible reader — free full Bible, premium typography & audio
@@ -1437,7 +1616,9 @@ app.get('/favicon.ico', (req, res) => {
 
 // === Simple beta tester signup (stores emails for launch) ===
 // For production: replace with real email service (Mailchimp, ConvertKit, or Supabase)
-const betasFile = path.join(__dirname, 'betas.json');
+function betasFilePath() {
+  return process.env.WIC_BETAS_PATH || path.join(__dirname, 'betas.json');
+}
 
 app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
   try {
@@ -1448,6 +1629,7 @@ app.post('/api/beta-signup', express.json({ limit: '10kb' }), (req, res) => {
     }
 
     let betas = [];
+    const betasFile = betasFilePath();
     if (fs.existsSync(betasFile)) {
       try { betas = JSON.parse(fs.readFileSync(betasFile, 'utf8') || '[]'); } catch {}
     }
@@ -1762,6 +1944,275 @@ app.get('/api/me', requireAuth, (req, res) => {
     access_granted: !!u.access_granted,
     manual_free: !!u.manual_free
   });
+});
+
+const DELETE_ACCOUNT_PHRASE = 'DELETE MY ACCOUNT';
+const DELETE_ACCOUNT_TTL_MS = 5 * 60 * 1000;
+
+const DELETE_SHARE_SENTENCE = 'Share links you already published stay up, and they do not identify you.';
+const DELETE_NOTICE_CANCEL = {
+  title: 'Delete your account',
+  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. We will also cancel your plan so it does not renew. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com before you delete. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted and your plan is canceled. You will not be charged for it again.',
+};
+const DELETE_NOTICE_MANUAL_WHOP = {
+  title: 'Delete your account',
+  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, sign in at whop.com with the email you paid with, open Profile, then Orders, choose The Word in Context, and select Cancel membership. You can do this before or after you delete. Deleting does not refund the current billing period. If you have a billing question, email hello@stewardoftheking.com. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted. Your plan on Whop is still active until you cancel it there.',
+};
+const DELETE_NOTICE_MANUAL_STRIPE = {
+  title: 'Delete your account',
+  body: 'We could not cancel your paid plan for you. Deleting your account does not stop billing. To stop future charges, use the cancel link in your billing emails, or email hello@stewardoftheking.com. You can do this before or after you delete. Deleting does not refund the current billing period. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted. Your paid plan is still active until you cancel it.',
+};
+const DELETE_NOTICE_MANUAL_BOTH = {
+  title: 'Delete your account',
+  body: 'We could not cancel your paid plans for you. Deleting your account does not stop billing. To stop Whop charges, sign in at whop.com with the email you paid with, open Profile, then Orders, choose The Word in Context, and select Cancel membership. To stop Stripe charges, use the cancel link in your billing emails, or email hello@stewardoftheking.com. You can do this before or after you delete. Deleting does not refund the current billing period. We keep only your bare Whop membership number so a renewal cannot re-create your account. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted. Your paid plans are still active until you cancel them.',
+};
+const DELETE_NOTICE_NONE = {
+  title: 'Delete your account',
+  body: 'This permanently deletes your The Word in Context account and its data. This cannot be undone. You do not have a paid plan, so there is nothing to cancel. ' + DELETE_SHARE_SENTENCE,
+  successLine: 'Your account is deleted.',
+};
+
+function accountDeleteOriginAllowed(req) {
+  const origin = req.headers.origin;
+  if (origin == null || origin === '') return true;
+  let url;
+  try {
+    url = new URL(String(origin));
+  } catch (err) {
+    return false;
+  }
+  const hostHeader = String(req.headers.host || '').toLowerCase();
+  if (hostHeader && url.host.toLowerCase() === hostHeader) return true;
+  const bases = [APP_BASE_URL, SHARE_SITE_URL, 'https://www.thewordincontext.org'];
+  for (const base of bases) {
+    try {
+      if (url.origin === new URL(base).origin) return true;
+    } catch (err) {}
+  }
+  if (url.protocol === 'http:' && url.hostname === 'localhost') return true;
+  return false;
+}
+
+function nonBlankId(value) {
+  return String(value || '').trim();
+}
+
+function accountDeletionBilling(row) {
+  const whopId = nonBlankId(row && row.whop_membership_id);
+  const stripeSub = nonBlankId(row && row.stripe_subscription_id);
+  const key = nonBlankId(process.env.WHOP_API_KEY);
+  // Stripe is never canceled here. A Stripe id is always manual, even when Whop is also set.
+  if (stripeSub) return 'manual';
+  if (whopId && key) return 'will_cancel';
+  if (whopId) return 'manual';
+  return 'none';
+}
+
+function accountDeletionNotice(billing, row) {
+  if (billing === 'will_cancel') return DELETE_NOTICE_CANCEL;
+  if (billing === 'none') return DELETE_NOTICE_NONE;
+  const whopId = nonBlankId(row && row.whop_membership_id);
+  const stripeSub = nonBlankId(row && row.stripe_subscription_id);
+  if (whopId && stripeSub) return DELETE_NOTICE_MANUAL_BOTH;
+  if (whopId) return DELETE_NOTICE_MANUAL_WHOP;
+  return DELETE_NOTICE_MANUAL_STRIPE;
+}
+
+function hashDeleteToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function accountDeleteGate(req, res, next) {
+  const limited = accountDeleteLimiter.check(`account-delete:${getClientIp(req)}`);
+  if (!limited.allowed) {
+    const retryAfterSec = Math.max(1, Math.ceil(limited.retryAfterMs / 1000));
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+  }
+  if (!accountDeleteOriginAllowed(req)) {
+    return res.status(403).json({ error: 'Cross-origin request refused.' });
+  }
+  return requireAccountOwner(req, res, next);
+}
+
+function removeBetaSignup(email) {
+  const file = betasFilePath();
+  try {
+    if (!fs.existsSync(file)) return;
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8') || 'null');
+    const target = normalizeEmail(email);
+    if (Array.isArray(parsed)) {
+      const next = parsed.filter((entry) => normalizeEmail(entry && entry.email) !== target);
+      if (next.length !== parsed.length) fs.writeFileSync(file, JSON.stringify(next, null, 2));
+      return;
+    }
+    if (parsed && typeof parsed === 'object') {
+      let changed = false;
+      for (const key of Object.keys(parsed)) {
+        const entry = parsed[key];
+        if (normalizeEmail(key) === target || normalizeEmail(entry && entry.email) === target) {
+          delete parsed[key];
+          changed = true;
+        }
+      }
+      if (changed) fs.writeFileSync(file, JSON.stringify(parsed, null, 2));
+    }
+  } catch (err) {
+    console.error('[account-delete] could not update beta signup file');
+  }
+}
+
+async function cancelWhopMembership(membershipId) {
+  const id = nonBlankId(membershipId);
+  const key = nonBlankId(process.env.WHOP_API_KEY);
+  if (!id || !key) return false;
+  const base = String(process.env.WHOP_API_BASE_URL || 'https://api.whop.com').replace(/\/$/, '');
+  const url = `${base}/api/v1/memberships/${encodeURIComponent(id)}/cancel`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 10000);
+  let status = 'error';
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': `twic-delete-${id}`,
+      },
+      body: '{}',
+      signal: ac.signal,
+      redirect: 'manual',
+    });
+    status = resp.status;
+    try { await resp.arrayBuffer(); } catch (err) {}
+    return resp.status >= 200 && resp.status < 300;
+  } catch (err) {
+    status = 'error';
+    return false;
+  } finally {
+    clearTimeout(timer);
+    console.log(`[account-delete] whop cancel membership ${id} status ${status}`);
+  }
+}
+
+const purgeDeletedAccount = db.transaction((userRow) => {
+  const membershipId = nonBlankId(userRow.whop_membership_id);
+  if (membershipId) {
+    db.prepare(`
+      INSERT OR IGNORE INTO deleted_whop_memberships (membership_id, deleted_at)
+      VALUES (?, ?)
+    `).run(membershipId, new Date().toISOString());
+  }
+  db.prepare('DELETE FROM magic_tokens WHERE lower(email) = lower(?)').run(userRow.email);
+  db.prepare('DELETE FROM account_delete_tokens WHERE user_id = ? OR lower(email) = lower(?)').run(userRow.id, userRow.email);
+  db.prepare('DELETE FROM users WHERE id = ?').run(userRow.id);
+});
+
+function issueDeleteConfirmToken(user) {
+  const confirmToken = crypto.randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + DELETE_ACCOUNT_TTL_MS).toISOString();
+  const tokenHash = hashDeleteToken(confirmToken);
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM account_delete_tokens WHERE user_id = ? AND used = 0').run(user.id);
+    db.prepare(`
+      INSERT INTO account_delete_tokens (token_hash, user_id, email, expires_at, used)
+      VALUES (?, ?, ?, ?, 0)
+    `).run(tokenHash, user.id, user.email, expiresAt);
+  });
+  tx();
+  return { confirmToken, expiresAt };
+}
+
+function sendManualHold(res, user) {
+  const issued = issueDeleteConfirmToken(user);
+  return res.status(409).json({
+    ok: false,
+    billing: 'manual',
+    needsDeleteAnyway: true,
+    confirmToken: issued.confirmToken,
+    phrase: DELETE_ACCOUNT_PHRASE,
+    expiresAt: issued.expiresAt,
+    notice: accountDeletionNotice('manual', user),
+  });
+}
+
+function finishAccountDelete(res, user, billing, canceled) {
+  purgeDeletedAccount(user);
+  removeBetaSignup(user.email);
+  return res.json({
+    ok: true,
+    billing,
+    canceled,
+    notice: accountDeletionNotice(billing, user),
+  });
+}
+
+app.post('/api/account/delete/start', accountDeleteGate, (req, res) => {
+  try {
+    const user = req.userRecord;
+    const billing = accountDeletionBilling(user);
+    const issued = issueDeleteConfirmToken(user);
+    res.json({
+      confirmToken: issued.confirmToken,
+      phrase: DELETE_ACCOUNT_PHRASE,
+      expiresAt: issued.expiresAt,
+      billing,
+      notice: accountDeletionNotice(billing, user),
+    });
+  } catch (err) {
+    console.error('[account-delete] start failed');
+    res.status(500).json({ error: 'Could not start account deletion.' });
+  }
+});
+
+app.post('/api/account/delete/confirm', accountDeleteGate, async (req, res) => {
+  const user = req.userRecord;
+  try {
+    const phrase = String(req.body && req.body.phrase || '');
+    const confirmToken = String(req.body && req.body.confirmToken || '');
+    const tokenHash = hashDeleteToken(confirmToken);
+    const nowIso = new Date().toISOString();
+    const rec = db.prepare('SELECT * FROM account_delete_tokens WHERE token_hash = ?').get(tokenHash);
+    const tokenOk = !!(rec
+      && String(rec.user_id) === String(user.id)
+      && !rec.used
+      && String(rec.expires_at) > nowIso);
+    if (!tokenOk) {
+      return res.status(400).json({ error: 'Confirmation expired or already used. Start again.' });
+    }
+    if (phrase.trim() !== DELETE_ACCOUNT_PHRASE) {
+      return res.status(400).json({ error: 'Type DELETE MY ACCOUNT to confirm.' });
+    }
+    const marked = db.prepare(`
+      UPDATE account_delete_tokens
+      SET used = 1
+      WHERE token_hash = ? AND user_id = ? AND used = 0 AND expires_at > ?
+    `).run(tokenHash, user.id, nowIso);
+    if (!marked.changes) {
+      return res.status(400).json({ error: 'Confirmation expired or already used. Start again.' });
+    }
+
+    const deleteAnyway = !!(req.body && req.body.deleteAnyway === true);
+    const billing = accountDeletionBilling(user);
+    if (billing === 'will_cancel' && !deleteAnyway) {
+      const ok = await cancelWhopMembership(user.whop_membership_id);
+      if (!ok) return sendManualHold(res, user);
+      return finishAccountDelete(res, user, 'will_cancel', true);
+    }
+    if (billing === 'manual' && !deleteAnyway) return sendManualHold(res, user);
+    if (billing === 'none') return finishAccountDelete(res, user, 'none', false);
+    return finishAccountDelete(res, user, 'manual', false);
+  } catch (err) {
+    const key = nonBlankId(process.env.WHOP_API_KEY);
+    const msg = String(err && err.message || '');
+    if (key && msg.includes(key)) console.error('[account-delete] confirm failed');
+    else console.error('[account-delete] confirm failed:', msg);
+    res.status(500).json({ error: 'Could not delete the account. Start again.' });
+  }
 });
 
 // Public config for client (demo limit, trial length, etc.). No secrets.
@@ -2489,7 +2940,34 @@ app.post('/api/admin/create-special-tester', async (req, res) => {
   }
 });
 
+function whopMembershipIdFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const direct = payload.membership && typeof payload.membership === 'object' ? payload.membership.id : '';
+  if (direct) return String(direct).trim();
+  const nested = payload.data && payload.data.membership && typeof payload.data.membership === 'object'
+    ? payload.data.membership.id
+    : '';
+  if (nested) return String(nested).trim();
+  if (payload.id) return String(payload.id).trim();
+  return '';
+}
+
+function isDeletedWhopMembership(membershipId) {
+  const id = String(membershipId || '').trim();
+  if (!id) return false;
+  try {
+    return !!db.prepare('SELECT 1 AS ok FROM deleted_whop_memberships WHERE membership_id = ?').get(id);
+  } catch (err) {
+    return false;
+  }
+}
+
 async function activateWhopMembership(payload, source = 'webhook', options = {}) {
+  const tombstoneId = whopMembershipIdFromPayload(payload);
+  if (tombstoneId && isDeletedWhopMembership(tombstoneId)) {
+    console.log(`[whop:tombstone] ignored ${source} for deleted membership ${tombstoneId}`);
+    return null;
+  }
   if (!whopMembershipIsAllowed(payload)) {
     console.warn(
       `[whop:${source}] ignored membership for plan ${whopPayloadPlanId(payload)} — not in WHOP_PLAN_IDS (${whopPlanIds().join(',')})`
@@ -2870,6 +3348,11 @@ app.post('/api/whop-webhook', async (req, res) => {
     const type = event?.type;
     // Some Whop API versions put the membership object at the root after unwrap
     const data = event?.data != null ? event.data : event;
+    const tombstoneId = whopMembershipIdFromPayload(data);
+    if (tombstoneId && isDeletedWhopMembership(tombstoneId)) {
+      console.log(`[whop:tombstone] ignored ${type || '(none)'} for deleted membership ${tombstoneId}`);
+      return res.json({ received: true });
+    }
     console.log(`[whop:webhook] received type=${type || '(none)'} plan=${whopPayloadPlanId(data) || 'n/a'} email=${whopPayloadEmail(data) || 'n/a'}`);
 
     // Free forever shadow first, for an existing row. Its outcome (stale, other membership)
@@ -3264,6 +3747,7 @@ module.exports = {
   db,
   adminLoginLockout,
   testerSignupLimiter,
+  accountDeleteLimiter,
   capTrialDays,
   trialEndIsoFromDays,
   UPSERT_TRIAL_USER_SQL,

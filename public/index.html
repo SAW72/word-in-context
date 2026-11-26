@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Voice-first Bible study with AI — chat with John, explore Greek and Hebrew Scripture in context. The Word in Context.">
+  <meta name="description" content="Voice-first Bible study with AI: chat with John, explore Greek and Hebrew Scripture in context. The Word in Context.">
   <link rel="canonical" href="https://www.thewordincontext.org/app">
   <meta name="robots" content="noindex,follow">
   <meta name="theme-color" content="#2c3e50">
@@ -1115,6 +1115,7 @@
       color: white; font-size: 13px; padding: 4px 9px; border-radius: 6px;
       cursor: pointer;
     }
+    /* twic-ios-omit:start */
     .settings-subscription-box {
       background: var(--settings-sub-bg);
       border: 1px solid var(--settings-sub-border);
@@ -1140,6 +1141,7 @@
       color: var(--settings-dim);
       margin: 6px 0 0;
     }
+    /* twic-ios-omit:end */
     .settings-muted-note {
       font-size: 12px;
       color: var(--settings-muted);
@@ -2008,7 +2010,7 @@
 
       <div class="chat-panel" id="chat-panel" role="tabpanel">
         <div class="ai-disclaimer" role="note" aria-label="AI disclaimer">
-          <strong>AI study tool</strong> — not a pastor, not divine guidance. Test every answer against Scripture.
+          <strong>AI study tool</strong>, not a pastor, not divine guidance. Test every answer against Scripture.
           <span style="opacity:0.85;"> • <a href="/attributions.html" style="color:inherit;">Copyright &amp; attributions</a></span>
         </div>
         <div class="policy-note">
@@ -2025,9 +2027,16 @@
 
         <!-- Signup required banner (shown when not logged in). -->
         <div id="demo-banner" style="display:none; background:#fff3cd; color:#664d03; padding:8px 14px; font-size:13px; text-align:center; border-bottom:1px solid #ffe69c;">
+          <!-- twic-ios-omit:start -->
           <strong>Sign up to chat with John.</strong>
+          <!-- twic-ios-alt:
+          <strong>Log in to chat with John.</strong>
+          -->
+          <!-- twic-ios-omit:end -->
+          <!-- twic-ios-omit:start -->
           Start a <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">7-day free trial</a> or
           <a href="/#signup" style="color:#664d03;font-weight:600;text-decoration:underline;">14-day tester account</a> (invite required, no card).
+          <!-- twic-ios-omit:end -->
           Already signed up? Click <strong>Log in</strong> in the header. The <a href="/read" style="color:#664d03;font-weight:600;">Bible reader</a> is always free.
         </div>
 
@@ -2038,7 +2047,7 @@
              and correct if needed (e.g. by speaking clearly or rephrasing). -->
         <div class="chat-bottom">
           <div id="live-transcript-container" style="display:none; margin: 0; padding: 8px 14px; background: #f5f0e6; border-top: 1px solid #e8d9c2; border-bottom: 1px solid #c9a227; font-size: 14px;">
-            <div id="live-transcript-hint" style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening — you said:</div>
+            <div id="live-transcript-hint" style="font-size: 11px; color: #5c4630; margin-bottom: 2px; font-weight: 600;">Listening: you said:</div>
             <div id="live-transcript" style="color: #2c3e50; min-height: 18px; word-break: break-word;"></div>
           </div>
           <div class="input-area">
@@ -2088,7 +2097,7 @@
               <option value="BSB">Loading translations…</option>
             </select>
           </div>
-          <div class="library-meta" id="library-meta">Berean Standard Bible — cached for offline reading</div>
+          <div class="library-meta" id="library-meta">Berean Standard Bible, cached for offline reading</div>
           <input type="search" class="library-search" id="library-search" placeholder="Search books..." aria-label="Search Bible books" style="margin-bottom:12px;">
           <div id="library-books-view"></div>
           <div id="library-chapters-view" style="display:none;"></div>
@@ -2103,6 +2112,7 @@
     <div class="modal-content" style="max-width: 420px;">
       <h3 style="margin-bottom:8px;">Settings</h3>
 
+      <!-- twic-ios-omit:start -->
       <!-- Subscription section -->
       <div class="settings-subscription-box">
         <div class="settings-section-title">Subscription</div>
@@ -2114,14 +2124,15 @@
           Full access to the app, live Bible sources, and all features. Manage via the Account button.
         </p>
       </div>
+      <!-- twic-ios-omit:end -->
 
       <p class="settings-muted-note">
-        <strong>Chat</strong> speaks AI replies with <strong>device voices</strong> below. <strong>BSB Audio</strong> and <strong>Studio</strong> voices are for the <a href="/read" style="color:#c9a227;">Bible reader</a> — listed here so you see the same options as Read.
+        <strong>Chat</strong> speaks AI replies with <strong>device voices</strong> below. <strong>BSB Audio</strong> and <strong>Studio</strong> voices are for the <a href="/read" style="color:#c9a227;">Bible reader</a>, listed here so you see the same options as Read.
       </p>
 
       <label for="voice-select" style="font-size:13px;display:block;margin-bottom:4px;">Narration voice (Chat)
         <span class="settings-voice-hint">
-          <strong>Your saved voice</strong> · <strong>Premium Neural</strong> · <strong>John (Narrator)</strong> — same groups as the Read app.<br>
+          <strong>Your saved voice</strong> · <strong>Premium Neural</strong> · <strong>John (Narrator)</strong>, same groups as the Read app.<br>
           <strong>iPhone:</strong> try <strong>Daniel</strong> or <strong>Karen</strong> under John (Narrator).<br>
           <strong>Mac:</strong> use <strong>Chrome</strong> for Enhanced voices.<br>
           <strong>Zoom:</strong> turn off Hands-free, use headphones, tap 🔊 on replies.
@@ -2137,7 +2148,7 @@
       <div style="margin-bottom:8px;">
         <div class="settings-voice-tester-label">
           Test any voice (click 🔊). Click ✏️ on a row to give it your own name (great for the numbered internal voices).
-          Numbered ones are real macOS voices — listen to discover male/female.
+          Numbered ones are real macOS voices. Listen to discover male/female.
         </div>
         <div id="voice-preview-list" class="voice-preview-list"></div>
       </div>
@@ -2164,7 +2175,7 @@
           <span>Require wake word for hands-free (recommended to reduce noise)</span>
         </label>
         <label for="wake-word-input" style="font-size:13px;display:block;margin-bottom:4px;">Wake word
-          <span class="settings-wake-hint">Default is <strong>John</strong>. Pick a preset or type your own — your choice is saved on this device.</span>
+          <span class="settings-wake-hint">Default is <strong>John</strong>. Pick a preset or type your own. Your choice is saved on this device.</span>
           <div id="wake-word-presets" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
             <button type="button" class="wake-preset-btn" data-wake="John">John (default)</button>
             <button type="button" class="wake-preset-btn" data-wake="assistant">assistant</button>
@@ -2194,10 +2205,10 @@
       <!-- Default English translation for Bible grounding -->
       <label for="default-trans-select" style="font-size:13px;display:block;margin-bottom:4px; margin-top:8px;">Default English Translation (used for live literal text & citations in replies)
         <select id="default-trans-select" style="width:100%;padding:8px;margin-top:4px;margin-bottom:12px;font-size:14px;">
-          <option value="BSB" selected>BSB — Berean Standard Bible (default)</option>
-          <option value="eng_asv">ASV — American Standard Version (1901)</option>
-          <option value="eng_ylt">YLT — Young\'s Literal Translation</option>
-          <option value="ENGWEBP">WEB — World English Bible</option>
+          <option value="BSB" selected>BSB: Berean Standard Bible (default)</option>
+          <option value="eng_asv">ASV: American Standard Version (1901)</option>
+          <option value="eng_ylt">YLT: Young\'s Literal Translation</option>
+          <option value="ENGWEBP">WEB: World English Bible</option>
         </select>
       </label>
 
@@ -2207,22 +2218,24 @@
         <div class="settings-section-title">What works in this web app</div>
 
         <p>
-          <strong>iPhone — basic voices only</strong><br>
-          Safari, Chrome, and Edge all expose the same compact iOS system voices in web apps — not Enhanced, Premium, or third-party voices. Tap <strong>Unlock all voices</strong> if the list is empty, then pick <strong>Daniel</strong> (British male) or <strong>Karen</strong> (Australian female).
+          <strong>iPhone: basic voices only</strong><br>
+          Safari, Chrome, and Edge all expose the same compact iOS system voices in web apps, not Enhanced, Premium, or third-party voices. Tap <strong>Unlock all voices</strong> if the list is empty, then pick <strong>Daniel</strong> (British male) or <strong>Karen</strong> (Australian female).
         </p>
         <p>
-          <strong>Mac — use Chrome</strong><br>
+          <strong>Mac: use Chrome</strong><br>
           Chrome exposes Enhanced voices downloaded in System Settings → Accessibility → Spoken Content → Voices. Tap <strong>Reload system voices</strong> after downloading.
         </p>
       </div>
 
       <!-- Advanced custom local TTS UI removed (was clutter; the custom_tts_url localStorage key is still respected in code for power users if needed) -->
 
+      <!-- twic-ios-omit:start -->
       <!-- Future realtime teaser (higher price tier, planned later) -->
       <div class="settings-future-box">
         <strong>Future:</strong> Realtime conversational voice (full-duplex, very low latency, like talking naturally).
         We may offer this as a higher-priced tier later once the app is stable with more users.
       </div>
+      <!-- twic-ios-omit:end -->
 
       <label for="dark-mode-toggle" class="voice-setting-checkbox" style="margin-top:8px;">
         <input type="checkbox" id="dark-mode-toggle">
@@ -2243,13 +2256,18 @@
 
       <div class="sources-modal-body">
         <p><strong>Live verse text is fetched when a resolvable reference is found</strong> (including chapter-only asks such as Psalm 136 or John 1). Topical answers may still use the model; use the Sources line under a reply to verify what was fetched.</p>
+        <!-- twic-ios-omit:start -->
         <p class="sources-modal-muted">AI chat requires a free account (7-day trial or invite-only 14-day tester access). The Bible reader at /read is always free.</p>
+        <!-- twic-ios-alt:
+        <p class="sources-modal-muted">AI chat requires an account. The Bible reader at /read is always free.</p>
+        -->
+        <!-- twic-ios-omit:end -->
 
         <h4>Bible Scripture Text (English + Original Languages)</h4>
         <ul>
-          <li><strong>Live from the network</strong> — not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
+          <li><strong>Live from the network</strong>: not written into the code or baked into the model. All text (English and originals) is fetched on-demand from the public Free Use Bible API at <a href="https://bible.helloao.org" target="_blank" style="color:#c9a227;">https://bible.helloao.org</a>.</li>
           <li>When you mention a reference (e.g. "Galatians 6", "John 1:1-5", or ask about a Greek/Hebrew word), the server detects it and fetches the exact verses.</li>
-          <li><strong>English grounding</strong>: Berean Standard Bible (BSB) is the default. User-selectable in Settings: BSB, KJV, NET, Darby, ASV, YLT, or WEB — all fetched live from bible.helloao.org only.</li>
+          <li><strong>English grounding</strong>: Berean Standard Bible (BSB) is the default. User-selectable in Settings: BSB, KJV, NET, Darby, ASV, YLT, or WEB, all fetched live from bible.helloao.org only.</li>
           <li><strong>Greek New Testament</strong>: SBL Greek New Testament is fetched by default with English when a New Testament reference resolves. Byzantine Greek NT or Textus Receptus are fetched only when you name them (for example “the TR” or “Byzantine”).</li>
           <li><strong>Hebrew Old Testament</strong>: Westminster Leningrad Codex (WLC / hbo_wlc) is fetched by default for Old Testament references. John cites that edition when a live Hebrew block was loaded.</li>
           <li>After the AI replies, the server scans the reply for any scripture the model referenced and fetches accurate live text (English + original where available) for the sources panel.</li>
@@ -2257,15 +2275,15 @@
         </ul>
 
         <h4>What "Context" Means in This App</h4>
-        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word — and of reading each passage as the product of a real author writing at a real time in the history of revelation, not as floating words with no writer or date. It includes:</p>
+        <p style="margin:0 0 6px;">"Context" is the disciplined practice of letting The Word interpret The Word, and of reading each passage as the product of a real author writing at a real time in the history of revelation, not as floating words with no writer or date. It includes:</p>
         <ul>
           <li><strong>Author &amp; composition</strong>: Who wrote this book (as The Word claims, or by historic church attribution), to whom, and approximately when relative to other books. You cannot treat Matthew, Mark, Luke, and Paul as if they all wrote at the same moment.</li>
           <li><strong>Writing order</strong>: Earlier books and later books stand in a real sequence. Default for the Gospels in this app: Matthew first, then Mark, then Luke, then John (Acts with Luke). Letters and Prophets likewise sit in a progressive timeline of revelation.</li>
-          <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book — how the words function in the author's flow of argument or story.</li>
+          <li><strong>Literary context</strong>: The immediate sentence, paragraph, chapter, and book: how the words function in the author's flow of argument or story.</li>
           <li><strong>Grammatical &amp; syntactic context</strong>: In the original Greek or Hebrew, verb tense, voice, mood, word order, case, and sentence structure often carry nuances that translations can only approximate.</li>
-          <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, then in the wider canon — not from later extra-biblical writings.</li>
-          <li><strong>Historical context of the biblical text</strong>: language, audience, genre, and setting recovered from the passage and the rest of Scripture — not from Josephus, Philo, church fathers, the Talmud, or other extra-biblical writings.</li>
-          <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story — always respecting who wrote each witness and in what order.</li>
+          <li><strong>Lexical context</strong>: How the same Greek or Hebrew word is used by this author elsewhere, in the same book, then in the wider canon, not from later extra-biblical writings.</li>
+          <li><strong>Historical context of the biblical text</strong>: language, audience, genre, and setting recovered from the passage and the rest of Scripture, not from Josephus, Philo, church fathers, the Talmud, or other extra-biblical writings.</li>
+          <li><strong>Canonical context</strong>: How the passage relates to the rest of Scripture and the overall redemptive story, always respecting who wrote each witness and in what order.</li>
         </ul>
 
         <h4>How to Understand Greek &amp; Hebrew in Context (the Process)</h4>
@@ -2276,8 +2294,8 @@
           <li>Identify significant words or constructions and study their usage in the original language (the app surfaces these when you ask about a specific term).</li>
           <li>Analyze the grammar: Who is acting? What is the tense, aspect, or emphasis? How does the sentence structure shape meaning?</li>
           <li>Consider genre (narrative, poetry, epistle, prophecy, etc.) because different genres use language differently.</li>
-          <li>Compare the same words, themes, or constructions elsewhere in the author's writings first, then the wider canon — noting which books were written earlier or later.</li>
-          <li>Only after the text has spoken in its original context do we move to application or theology — always letting the particulars of the Greek or Hebrew, the author, and composition order guide us.</li>
+          <li>Compare the same words, themes, or constructions elsewhere in the author's writings first, then the wider canon, noting which books were written earlier or later.</li>
+          <li>Only after the text has spoken in its original context do we move to application or theology, always letting the particulars of the Greek or Hebrew, the author, and composition order guide us.</li>
         </ol>
         <p class="sources-modal-dim">The system prompt given to Grok explicitly requires this contextual, original-language-first approach for every reference to The Word.</p>
 
@@ -2291,12 +2309,12 @@
         <h4>AI Model</h4>
         <ul>
           <li>Responses generated by <strong>Grok 4.3</strong> (model: grok-4.3).</li>
-          <li>Calls go through a secure server-side proxy — your xAI API key never leaves the server and is never exposed to the browser.</li>
+          <li>Calls go through a secure server-side proxy. Your xAI API key never leaves the server and is never exposed to the browser.</li>
         </ul>
 
         <h4>Voice (Text-to-Speech)</h4>
         <ul>
-          <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> basic system voices only (any browser) — try Daniel or Karen. <strong>Mac:</strong> Chrome for Enhanced voices from Spoken Content. No app filter.</li>
+          <li><strong>Browser voices only</strong> (window.speechSynthesis). <strong>iPhone:</strong> basic system voices only (any browser). Try Daniel or Karen. <strong>Mac:</strong> Chrome for Enhanced voices from Spoken Content. No app filter.</li>
           <li>No server TTS, no xAI voices, no cloud voices for speech output. All speaking (manual replies, auto-speak, hands-free, preview tests) uses only your device's own voices.</li>
         </ul>
 
@@ -2316,7 +2334,7 @@
     </div>
   </div>
 
-  <!-- Account / Login Modal (Whop subscriptions + trial system) -->
+  <!-- Account and login modal -->
   <div class="modal" id="subscribe-modal">
     <div class="modal-content" style="max-width: 420px; text-align: left;">
       <h3 style="margin-bottom:4px;">Account</h3>
@@ -2336,6 +2354,17 @@
 
         <button id="request-login-from-account-btn" style="width:100%; background:#777; color:white; padding:8px; border:none; border-radius:6px; margin-top:6px; font-size:12px;">Request login link (for other device/browser)</button>
         <button id="logout-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; margin-top:10px;">Log out</button>
+        <button id="delete-account-btn" type="button" style="width:100%; background:transparent; color:#8a3b3b; padding:8px; border:1px solid #e0cfcf; border-radius:6px; margin-top:8px; font-size:12px; cursor:pointer;">Delete account</button>
+        <div id="delete-account-panel" style="display:none; margin-top:10px; padding-top:8px; border-top:1px solid #eee;">
+          <p id="delete-account-title" style="font-size:13px; font-weight:600; margin:0 0 6px;"></p>
+          <p id="delete-account-body" style="font-size:12px; margin:0 0 8px; white-space:pre-wrap;"></p>
+          <label id="delete-account-phrase-label" for="delete-account-phrase" style="font-size:11px; display:block; margin-bottom:4px;"></label>
+          <input type="text" id="delete-account-phrase" autocomplete="off" spellcheck="false" style="width:100%; padding:8px; margin-bottom:6px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box;">
+          <button id="delete-account-confirm-btn" type="button" style="width:100%; background:#8a3b3b; color:white; padding:8px; border:none; border-radius:6px; font-size:12px; cursor:pointer;">Delete account</button>
+          <button id="delete-account-cancel-btn" type="button" style="width:100%; background:#777; color:white; padding:8px; border:none; border-radius:6px; margin-top:6px; font-size:12px; cursor:pointer;">Keep my account</button>
+          <p id="delete-account-msg" style="font-size:12px; margin-top:8px; display:none;"></p>
+        </div>
+        <!-- twic-ios-omit:start -->
         <p style="font-size:11px; margin-top:12px; opacity:0.7;">
           Free trial (length set by TRIAL_DAYS env, default 7) or active subscription required. We will never sell your information. 
           Payment handled securely by Whop. Your chats stay only in this browser.
@@ -2343,11 +2372,17 @@
         <p style="font-size:11px; opacity:0.6; margin-top:8px;">
           Manage or cancel anytime via Whop billing (link in your subscription emails).
         </p>
+        <!-- twic-ios-omit:end -->
       </div>
 
       <!-- Login form for unauthenticated users (password login for saved credentials) -->
       <div id="login-section" style="display:none;">
+        <!-- twic-ios-omit:start -->
         <p style="font-size:13px; margin-bottom:8px;">Log in to your existing tester (14-day) or trial account (password saved by browser). The tester sign-up/login form on the landing page also works for login.</p>
+        <!-- twic-ios-alt:
+        <p style="font-size:13px; margin-bottom:8px;">Log in with the email and password for your existing account. Your browser can save the password.</p>
+        -->
+        <!-- twic-ios-omit:end -->
         <input type="email" id="modal-login-email" placeholder="Your email" autocomplete="username" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
         <input type="password" id="modal-login-password" placeholder="Your password" autocomplete="current-password" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;">
         <button id="modal-send-login-btn" style="width:100%; background:#555; color:white; padding:10px; border:none; border-radius:6px; cursor:pointer;">Log in with password</button>
@@ -2355,7 +2390,7 @@
           Logged in! Redirecting...
         </div>
         <p style="font-size:11px; margin-top:8px; opacity:0.7;">
-          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a> (or sign up on landing).
+          No password set or forgot? <a href="#" id="modal-use-magic-link" style="color:inherit; text-decoration:underline;">Send magic link instead</a><!-- twic-ios-omit:start --> (or sign up on landing)<!-- twic-ios-omit:end -->.
         </p>
       </div>
 
@@ -2458,7 +2493,7 @@
     // Audio capture for cheap high-accuracy xAI STT (only used on hands-free commits).
     // Browser SpeechRecognition gives us fast interim + wake word; xAI STT gives far better
     // Bible ref accuracy ("John one" → "John 1", "first John one" → "1 John 1", "Romans five" etc.).
-    // Cost is negligible ($0.10–0.20 per hour of actual user speaking time).
+    // Cost is negligible for an hour of actual user speaking time.
     let mediaStream = null;
     let mediaRecorder = null;
     let audioChunks = [];
@@ -2506,13 +2541,14 @@
       return localStorage.getItem('auth_token');
     }
 
-    // An expired tester's own /api/me 403 carries code tester_expired. Show that tester access ended and
-    // link to the paid plan. The password form is hidden: login stays closed for them until they subscribe.
+    // An expired tester's own /api/me 403 carries code tester_expired. Show that tester access ended.
+    // The password form is hidden.
     function showTesterEndedAccount(emailEl, statusEl) {
       if (emailEl) emailEl.textContent = localStorage.getItem('user_email') || 'Logged in';
       if (statusEl) {
         const title = document.createElement('strong');
         title.textContent = 'Your tester access has ended.';
+        /* twic-ios-omit:start */
         const note = document.createElement('span');
         note.textContent = ' 7-day free trial, then $4.99 every 30 days or $39.99 every 365 days until you cancel. Cancel anytime in your Whop account.';
         const link = document.createElement('a');
@@ -2521,6 +2557,10 @@
         link.textContent = 'Start my 7-day free trial';
         link.style.cssText = 'display:block; text-align:center; background:#2c3e50; color:white; padding:10px; border-radius:6px; margin-top:10px; text-decoration:none; font-weight:600;';
         statusEl.replaceChildren(title, note, link);
+        /* twic-ios-alt:
+        statusEl.replaceChildren(title);
+        */
+        /* twic-ios-omit:end */
       }
       const setPwSection = document.getElementById('set-password-section');
       if (setPwSection) setPwSection.style.display = 'none';
@@ -2550,13 +2590,23 @@
       }
       if (input) {
         input.disabled = true;
+        /* twic-ios-omit:start */
         input.placeholder = 'Sign up or log in to chat with John';
+        /* twic-ios-alt:
+        input.placeholder = 'Log in to chat with John';
+        */
+        /* twic-ios-omit:end */
       }
       if (send) send.disabled = true;
       if (mic) {
         mic.disabled = true;
         mic.style.opacity = '0.35';
+        /* twic-ios-omit:start */
         mic.title = 'Sign up required';
+        /* twic-ios-alt:
+        mic.title = 'Log in required';
+        */
+        /* twic-ios-omit:end */
       }
       if (banner) banner.style.display = 'block';
       if (statusEl) statusEl.style.display = 'none';
@@ -2567,7 +2617,12 @@
       const div = document.createElement('div');
       div.className = 'demo-signup-prompt';
       div.style.cssText = 'margin:12px 0; padding:10px 14px; background:#f8f1e3; border:1px solid #c9a227; border-radius:8px; font-size:13px;';
+      /* twic-ios-omit:start */
       div.innerHTML = `Chat with John requires a free account. <a href="/#signup" style="color:#2c3e50;font-weight:600;">Start your ${TRIAL_DAYS}-day trial</a> or create a 14-day tester account with an invite code (no card). Already signed up? Click <strong>Log in</strong> above.`;
+      /* twic-ios-alt:
+      div.textContent = 'Chat with John requires an account. Already signed up? Click Log in above.';
+      */
+      /* twic-ios-omit:end */
       messagesContainer.appendChild(div);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
@@ -2676,7 +2731,7 @@
       if (isIOSDevice()) {
         html += '<br><span class="settings-diag-hint"><strong>iPhone:</strong> basic system voices only (any browser). Try <strong>Daniel</strong> or <strong>Karen</strong>.</span>';
       } else if (isSafariBrowser()) {
-        html += '<br><span class="settings-diag-safari"><strong>Safari:</strong> limited voice list — use <strong>Chrome</strong> on Mac.</span>';
+        html += '<br><span class="settings-diag-safari"><strong>Safari:</strong> limited voice list. Use <strong>Chrome</strong> on Mac.</span>';
       } else {
         html += '<br><span class="settings-diag-hint"><strong>Mac:</strong> <strong>Chrome</strong> recommended for Enhanced voices.</span>';
       }
@@ -3119,7 +3174,7 @@
       const name = trans.englishName || trans.name || trans.id;
       const books = trans.numberOfBooks || 0;
       const suffix = books && books < 66 ? ` (${books} books)` : '';
-      return `${short} — ${name}${suffix}`;
+      return `${short}: ${name}${suffix}`;
     }
 
     function populateLibraryTransSelectElement(selectEl, langCode, selectedId) {
@@ -3136,7 +3191,7 @@
             const label = formatLibraryTransOptionLabel(t);
             return `<option value="${t.id}">${label.replace(/</g, '&lt;')}</option>`;
           }).join('')
-        : '<option value="BSB">English — Berean Standard Bible</option>';
+        : '<option value="BSB">English: Berean Standard Bible</option>';
       selectEl.value = translations.some((t) => t.id === nextId) ? nextId : (translations[0]?.id || 'BSB');
       return selectEl.value;
     }
@@ -3206,8 +3261,8 @@
       meta.classList.toggle('offline', offline);
       const langPrefix = info.languageName ? `${info.languageName} · ` : '';
       meta.textContent = offline
-        ? `${langPrefix}${info.name} — reading from offline cache when available`
-        : `${langPrefix}${info.name} — cached for offline reading`;
+        ? `${langPrefix}${info.name}, reading from offline cache when available`
+        : `${langPrefix}${info.name}, cached for offline reading`;
     }
 
     async function refreshLibraryLanguageUI(selectedId) {
@@ -3571,7 +3626,7 @@
 
     function formatLexWordLine(w) {
       const note = w.note ? ` ${w.note}` : '';
-      return `• ${w.translit} — ${w.gloss}.${note}`.trim();
+      return `• ${w.translit}: ${w.gloss}.${note}`.trim();
     }
 
     function buildContextNarrative(opts) {
@@ -3593,10 +3648,10 @@
         narrative += ` In ${langName}, the major words are ${terms}.`;
         const lead = opts.lexWords.slice(0, 3).map((w) => {
           const detail = w.note ? ` ${w.note}` : '';
-          return `${w.translit} means "${w.gloss}"${detail ? ' —' + detail : ''}`;
+          return `${w.translit} means "${w.gloss}"${detail ? ':' + detail : ''}`;
         }).join('; ');
         narrative += ` So in English: ${lead}.`;
-        narrative += ` Together these ${langName} terms show what this verse is saying within its immediate passage — not an outside interpretation, but the sense carried by the original words in their literary setting.`;
+        narrative += ` Together these ${langName} terms show what this verse is saying within its immediate passage, not an outside interpretation, but the sense carried by the original words in their literary setting.`;
       } else if (opts.originalText) {
         narrative += ` The original ${langName} text is shown above; surrounding verses help place this line in the flow of the chapter.`;
       }
@@ -3613,10 +3668,10 @@
         lines.push(`${langName} (${opts.originalLabel}): ${opts.originalText}`);
       }
       if (opts.prev) {
-        lines.push(`Before: ${opts.prev.ref} — "${opts.prev.text}"`);
+        lines.push(`Before: ${opts.prev.ref} - "${opts.prev.text}"`);
       }
       if (opts.next) {
-        lines.push(`After: ${opts.next.ref} — "${opts.next.text}"`);
+        lines.push(`After: ${opts.next.ref} - "${opts.next.text}"`);
       }
       if (opts.lexWords.length) {
         lines.push('');
@@ -4098,7 +4153,7 @@
       const trans = (source.translation || '').trim();
       const text = (source.text || '').trim();
       if (!text) return `${ref} (${trans})`;
-      return `"${text}" — ${ref} (${trans})`;
+      return `"${text}" - ${ref} (${trans})`;
     }
 
     function formatConversationShareText(question, reply) {
@@ -4113,7 +4168,7 @@
     function appendShareLink(bodyText, sharePageUrl) {
       const link = productionShareUrl(sharePageUrl || SITE_SHARE_URL);
       // Plain text only (no HTML) so paste into Messages/SMS shows readable verses + link.
-      return `${String(bodyText || '').trim()}\n\n— The Word in Context\n${link}`;
+      return `${String(bodyText || '').trim()}\n\n- The Word in Context\n${link}`;
     }
 
     async function createShareRecord(payload) {
@@ -4360,7 +4415,7 @@
       panel.className = 'modal-content';
       panel.innerHTML = `
         <h3>Share on Facebook</h3>
-        <p class="fb-share-note">Facebook won't type your message for you — only a link preview. Your full text is copied below; paste it into the post after you open Facebook.</p>
+        <p class="fb-share-note">Facebook won't type your message for you. Only a link preview. Your full text is copied below; paste it into the post after you open Facebook.</p>
         <div class="fb-share-status" id="fb-share-status">Copying…</div>
         <textarea class="fb-share-text" id="fb-share-text" readonly aria-label="Message to share"></textarea>
         <ol class="fb-share-steps">
@@ -5188,7 +5243,7 @@
       if (/^\d+/.test(fullName) || /^voice\s*\d+/i.test(fullName) || lower.includes('voice ')) {
         const cleaned = fullName.replace(/^\d+\s*/, '').replace(/^voice\s*/i, '').trim();
         const base = (cleaned || fullName).trim();
-        return base + ' (macOS Internal Voice — use 🔊 to hear)';
+        return base + ' (macOS Internal Voice: use 🔊 to hear)';
       }
 
       // Default for regular system voices: append (System) so the user knows it's a local voice
@@ -5200,7 +5255,7 @@
       return name
         .replace(/\s*\(Enhanced\)/gi, '')
         .replace(/\s*\(System Voice\)/gi, '')
-        .replace(/\s*\(macOS Internal Voice — use 🔊 to hear\)/gi, '')
+        .replace(/\s*\(macOS Internal Voice(?::|\u2014) use 🔊 to hear\)/gi, '')
         .replace(/\s*\(Piper Neural\)/gi, '')
         .replace(/\s*\(iOS\)/gi, '')
         .replace(/\s*\(System\)/gi, '')
@@ -5450,7 +5505,7 @@
 
       if (!voices || voices.length === 0) {
         if (modalOpen && voiceSelect.options.length === 0) {
-          voiceSelect.innerHTML = '<option value="">(No voices yet — tap Unlock all voices)</option>';
+          voiceSelect.innerHTML = '<option value="">(No voices yet. Tap Unlock all voices)</option>';
         }
         updateVoiceDiagnostics();
         return;
@@ -5882,7 +5937,9 @@
                   if (emailEl) emailEl.textContent = data.email || 'Logged in';
                   if (statusEl) {
                     let txt = data.status || 'active';
+                    /* twic-ios-omit:start */
                     if (data.trial_end) txt += ' (trial ends ' + new Date(data.trial_end).toLocaleDateString() + ')';
+                    /* twic-ios-omit:end */
                     if (!data.access_granted) txt = 'Access revoked';
                     statusEl.textContent = txt;
                   }
@@ -5946,7 +6003,7 @@
         isAwaitingResponse = false;
         const isRate = /429|rate limit|too many requests/i.test(err.message || '');
         const niceMsg = isRate 
-          ? "xAI is rate limiting right now (tier RPM/TPM cap). Using local fallback if speaking. Try again soon — limits grow with usage."
+          ? "xAI is rate limiting right now (tier RPM/TPM cap). Using local fallback if speaking. Try again soon. Limits grow with usage."
           : "Connection error: " + err.message;
         addMessage(niceMsg, false);
         conversation.pop();
@@ -6589,7 +6646,7 @@
       if (waitingForWakeWord(heardText)) {
         hint.textContent = 'Say “' + getWakeWordDisplay() + '”, then your question';
       } else {
-        hint.textContent = 'Listening — you said:';
+        hint.textContent = 'Listening: you said:';
       }
     }
 
@@ -7167,6 +7224,7 @@
           }
 
           if (token) {
+            resetDeleteAccountPanel();
             if (accountInfo) accountInfo.style.display = '';
             if (loginSection) loginSection.style.display = 'none';
             const setPwSection = document.getElementById('set-password-section');
@@ -7182,7 +7240,9 @@
                 if (emailEl) emailEl.textContent = data.email || 'Logged in';
                 if (statusEl) {
                   let txt = data.status || 'active';
+                  /* twic-ios-omit:start */
                   if (data.trial_end) txt += ' (trial ends ' + new Date(data.trial_end).toLocaleDateString() + ')';
+                  /* twic-ios-omit:end */
                   if (!data.access_granted) txt = 'Access revoked';
                   statusEl.textContent = txt;
                 }
@@ -7265,7 +7325,7 @@
             const errText = (data && data.error) || 'Login failed.';
             if (/no password set|no account with that email/i.test(errText)) {
               if (successDiv) {
-                successDiv.textContent = 'No password on file — sending magic link instead...';
+                successDiv.textContent = 'No password on file. Sending magic link instead...';
                 successDiv.style.display = 'block';
               }
               try {
@@ -7383,22 +7443,200 @@
       }
     });
 
-    // Logout (or for demo visitors, acts as trial signup CTA when Account opened in demo)
+    function resetDeleteAccountPanel() {
+      const panel = document.getElementById('delete-account-panel');
+      if (panel) {
+        panel.style.display = 'none';
+        delete panel.dataset.token;
+        delete panel.dataset.deleteAnyway;
+      }
+      const title = document.getElementById('delete-account-title');
+      const body = document.getElementById('delete-account-body');
+      const msg = document.getElementById('delete-account-msg');
+      const phrase = document.getElementById('delete-account-phrase');
+      const label = document.getElementById('delete-account-phrase-label');
+      const confirmBtn = document.getElementById('delete-account-confirm-btn');
+      const cancelBtn = document.getElementById('delete-account-cancel-btn');
+      if (title) title.textContent = '';
+      if (body) body.textContent = '';
+      if (msg) { msg.textContent = ''; msg.style.display = 'none'; }
+      if (phrase) { phrase.value = ''; phrase.style.display = ''; }
+      if (label) { label.textContent = ''; label.style.display = ''; }
+      if (confirmBtn) { confirmBtn.style.display = ''; confirmBtn.disabled = false; confirmBtn.textContent = 'Delete account'; }
+      if (cancelBtn) { cancelBtn.style.display = ''; cancelBtn.textContent = 'Keep my account'; }
+    }
+
+    function showDeleteAccountMessage(text) {
+      const msg = document.getElementById('delete-account-msg');
+      if (!msg) return;
+      msg.textContent = text || '';
+      msg.style.display = text ? 'block' : 'none';
+    }
+
+    function returnToLoggedOutAccount(successLine) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_email');
+      const upgrade = document.getElementById('upgrade-btn');
+      if (upgrade) upgrade.textContent = 'Log in';
+      enforceAuthRequired();
+      const accountInfo = document.getElementById('account-info');
+      const loginSection = document.getElementById('login-section');
+      if (accountInfo) accountInfo.style.display = 'none';
+      if (loginSection) loginSection.style.display = '';
+      const modal = document.getElementById('subscribe-modal');
+      const modalTitle = modal && modal.querySelector('h3');
+      if (modalTitle) modalTitle.textContent = 'Log in';
+      const successDiv = document.getElementById('modal-login-success');
+      if (successDiv) {
+        successDiv.textContent = successLine || '';
+        successDiv.style.display = successLine ? 'block' : 'none';
+        successDiv.style.color = '#2c3e50';
+      }
+      resetDeleteAccountPanel();
+    }
+
+    const deleteAccountBtn = document.getElementById('delete-account-btn');
+    if (deleteAccountBtn) {
+      deleteAccountBtn.addEventListener('click', async () => {
+        const token = getEffectiveAuthToken();
+        if (!token) return;
+        deleteAccountBtn.disabled = true;
+        try {
+          const res = await fetch('/api/account/delete/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: '{}'
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showDeleteAccountMessage((data && data.error) || 'Could not start account deletion.');
+            const panel = document.getElementById('delete-account-panel');
+            if (panel) panel.style.display = 'block';
+            return;
+          }
+          const panel = document.getElementById('delete-account-panel');
+          const title = document.getElementById('delete-account-title');
+          const body = document.getElementById('delete-account-body');
+          const label = document.getElementById('delete-account-phrase-label');
+          const phrase = document.getElementById('delete-account-phrase');
+          const confirmBtn = document.getElementById('delete-account-confirm-btn');
+          const notice = data.notice || {};
+          if (title) title.textContent = notice.title || '';
+          if (body) body.textContent = notice.body || '';
+          if (label) label.textContent = data.phrase ? ('Type ' + data.phrase + ' to confirm') : '';
+          if (phrase) phrase.value = '';
+          if (confirmBtn) confirmBtn.textContent = data.billing === 'manual' ? 'Delete anyway' : 'Delete account';
+          if (panel) {
+            panel.dataset.token = data.confirmToken || '';
+            if (data.billing === 'manual') panel.dataset.deleteAnyway = '1';
+            else delete panel.dataset.deleteAnyway;
+            panel.style.display = 'block';
+          }
+          showDeleteAccountMessage('');
+        } catch (err) {
+          showDeleteAccountMessage('Could not start account deletion.');
+          const panel = document.getElementById('delete-account-panel');
+          if (panel) panel.style.display = 'block';
+        } finally {
+          deleteAccountBtn.disabled = false;
+        }
+      });
+    }
+
+    const deleteAccountCancelBtn = document.getElementById('delete-account-cancel-btn');
+    if (deleteAccountCancelBtn) {
+      deleteAccountCancelBtn.addEventListener('click', () => {
+        if (!getEffectiveAuthToken()) {
+          const modal = document.getElementById('subscribe-modal');
+          if (modal) modal.style.display = 'none';
+          return;
+        }
+        resetDeleteAccountPanel();
+      });
+    }
+
+    const deleteAccountConfirmBtn = document.getElementById('delete-account-confirm-btn');
+    if (deleteAccountConfirmBtn) {
+      deleteAccountConfirmBtn.addEventListener('click', async () => {
+        const token = getEffectiveAuthToken();
+        const panel = document.getElementById('delete-account-panel');
+        const phraseEl = document.getElementById('delete-account-phrase');
+        if (!token || !panel) return;
+        deleteAccountConfirmBtn.disabled = true;
+        try {
+          const res = await fetch('/api/account/delete/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({
+              confirmToken: panel.dataset.token || '',
+              phrase: phraseEl ? phraseEl.value : '',
+              deleteAnyway: panel.dataset.deleteAnyway === '1'
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 409 && data && data.needsDeleteAnyway) {
+            const title = document.getElementById('delete-account-title');
+            const bodyEl = document.getElementById('delete-account-body');
+            const notice = data.notice || {};
+            if (title) title.textContent = notice.title || '';
+            if (bodyEl) bodyEl.textContent = notice.body || '';
+            panel.dataset.token = data.confirmToken || '';
+            panel.dataset.deleteAnyway = '1';
+            panel.style.display = 'block';
+            deleteAccountConfirmBtn.textContent = 'Delete anyway';
+            const cancelBtn = document.getElementById('delete-account-cancel-btn');
+            if (cancelBtn) {
+              cancelBtn.style.display = '';
+              cancelBtn.textContent = 'Keep my account';
+            }
+            if (phraseEl) phraseEl.style.display = '';
+            const label = document.getElementById('delete-account-phrase-label');
+            if (label && data.phrase) label.textContent = 'Type ' + data.phrase + ' to confirm';
+            showDeleteAccountMessage('');
+            return;
+          }
+          if (!res.ok || !data.ok) {
+            showDeleteAccountMessage((data && data.error) || 'Could not delete the account.');
+            return;
+          }
+          const successLine = data.notice && data.notice.successLine;
+          returnToLoggedOutAccount(successLine || '');
+        } catch (err) {
+          showDeleteAccountMessage('Could not delete the account.');
+        } finally {
+          deleteAccountConfirmBtn.disabled = false;
+        }
+      });
+    }
+
+    // Logout. A visitor with no session just closes the account window on the iOS app.
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         const tokenNow = getEffectiveAuthToken();
         if (!tokenNow) {
+          /* twic-ios-omit:start */
           // Demo visitor clicking the repurposed button
           document.getElementById('subscribe-modal').style.display = 'none';
           window.location.href = '/#signup';
           return;
+          /* twic-ios-alt:
+          document.getElementById('subscribe-modal').style.display = 'none';
+          return;
+          */
+          /* twic-ios-omit:end */
         }
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_email');
         document.getElementById('subscribe-modal').style.display = 'none';
+        /* twic-ios-omit:start */
         alert('Logged out. Visit the landing page to log back in.');
         window.location.href = '/';
+        /* twic-ios-alt:
+        alert('Logged out.');
+        window.location.assign('/app');
+        */
+        /* twic-ios-omit:end */
       });
     }
 
@@ -7948,7 +8186,7 @@
     }
 
     function showWelcomeMessage() {
-      const welcome = `Hi — I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
+      const welcome = `Hi, I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
 
       const welcomeEl = addMessage(welcome, false);
       const speakWelcome = document.createElement("button");
@@ -7997,7 +8235,7 @@
       initWakeWordPresets();
       syncWakeWordSettingsUI();
       addPasswordToggles();
-      // Re-apply after dynamic modals (account, subscribe, login, etc.) may inject new password fields
+      // Re-apply after dynamic modals (account and login) may inject new password fields
       setTimeout(addPasswordToggles, 100);
       setTimeout(addPasswordToggles, 400);
 
@@ -8087,7 +8325,7 @@
       const currentChat = getCurrentChat();
       const isEmptyNew = !currentChat || (currentChat.messages || []).length === 0;
       if (isEmptyNew) {
-        const welcome = `Hi — I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
+        const welcome = `Hi, I'm John, an AI study tool, not a pastor. Test every answer against Scripture. Try John 1:14 or Psalm 136:1, or say John plus your question.`;
 
         const welcomeEl = addMessage(welcome, false);
         const speakWelcome = document.createElement("button");
@@ -8114,7 +8352,7 @@
         });
       }
 
-      // Load dynamic config (trial days, site URL) from server
+      // Load dynamic config (plan length and site URL) from server
       fetch('/api/config').then(r => r.json()).then(cfg => {
         if (cfg && typeof cfg.trialDays === 'number' && cfg.trialDays > 0) {
           TRIAL_DAYS = cfg.trialDays;
@@ -8152,7 +8390,7 @@
 
     init();
   </script>
-  <script src="/john-popup.js?v=7" defer></script>
+  <script src="/john-popup.js?v=8" defer></script>
   <script src="/pwa.js?v=2" defer></script>
 </body>
 </html>

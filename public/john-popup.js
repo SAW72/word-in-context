@@ -5,15 +5,22 @@
   'use strict';
 
   const WELCOME = {
-    demo: `Hi — I'm John, an AI study tool. Test every answer against Scripture. Try John 1:14 or Psalm 136:1 so I can load live Greek or Hebrew. After your free preview, start a trial for unlimited study.`,
-    help: `Hi — ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
-    sources: `Hi — ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
+    demo: `Hi, I'm John, an AI study tool. Test every answer against Scripture. Try John 1:14 or Psalm 136:1 so I can load live Greek or Hebrew. ` +
+      /* twic-ios-omit:start */
+      `After your free preview, start a trial for unlimited study.`
+      /* twic-ios-alt:
+      `After your free preview, log in from Account to chat with John.`
+      */
+      /* twic-ios-omit:end */
+      ,
+    help: `Hi, ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
+    sources: `Hi, ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
   };
 
   const POPUP_TITLES = {
     demo: '🎙️ Ask AI, John',
     help: '💬 Ask AI, John',
-    sources: '📚 Ask AI, John — Sources'
+    sources: '📚 Ask AI, John: Sources'
   };
 
   let demoLimit = 1;
@@ -361,8 +368,13 @@
         <div class="john-popup-status" id="john-popup-status"></div>
         <div class="john-popup-signup-cta" id="john-popup-signup-cta">
           <span id="john-popup-signup-text">Ready for unlimited study with John?</span>
+          <!-- twic-ios-omit:start -->
           <a href="/#signup" id="john-popup-signup-primary">Start 7-day free trial</a>
           <a href="/#signup" class="secondary" id="john-popup-signup-tester">Or 14-day tester (invite required)</a>
+          <!-- twic-ios-alt:
+          <a href="/app" id="john-popup-signup-primary">Log in from Account to chat with John.</a>
+          -->
+          <!-- twic-ios-omit:end -->
         </div>
         <div class="john-popup-input-row">
           <button type="button" class="john-popup-mic" id="john-popup-mic" aria-label="Speak your question">🎤</button>
@@ -613,7 +625,10 @@
       el.style.color = '#c9a227';
       setSignupCtaVisible(false);
     } else {
-      el.textContent = 'Free preview used — sign up for unlimited access' + loggedInHint;
+      el.textContent = /* twic-ios-omit:start */ 'Free preview used. Sign up for unlimited access' /* twic-ios-alt:
+      'Free preview used. Log in from Account to chat with John.'
+      */
+      /* twic-ios-omit:end */ + loggedInHint;
       el.style.color = '#c94e4e';
       setSignupCtaVisible(true);
     }
@@ -644,14 +659,20 @@
   }
 
   function showSignupRequired() {
-    appendMessage('The full app requires a free account. Start a 7-day trial or invite-only 14-day tester access on the landing page, then log in.', 'assistant');
+    appendMessage(/* twic-ios-omit:start */ 'The full app requires a free account. Start a 7-day trial or invite-only 14-day tester access on the landing page, then log in.' /* twic-ios-alt:
+    'Log in from Account to chat with John.'
+    */
+    /* twic-ios-omit:end */, 'assistant');
     setInputEnabled(false);
     setSignupCtaVisible(true);
     updateDemoStatus();
   }
 
   function showTeaserExhausted() {
-    appendMessage('That was your free preview for today. Start a 7-day free trial or create a 14-day tester account with an invite (no card) for unlimited hands-free study with John.', 'assistant');
+    appendMessage(/* twic-ios-omit:start */ 'That was your free preview for today. Start a 7-day free trial or create a 14-day tester account with an invite (no card) for unlimited hands-free study with John.' /* twic-ios-alt:
+    'Log in from Account to chat with John.'
+    */
+    /* twic-ios-omit:end */, 'assistant');
     setInputEnabled(false);
     setSignupCtaVisible(true);
     updateDemoStatus();

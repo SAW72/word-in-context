@@ -1,5 +1,5 @@
 /* Word in Context — service worker (app shell + Bible JSON offline cache) */
-const CACHE_VERSION = 'wic-pwa-69';
+const CACHE_VERSION = 'wic-pwa-71';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const BIBLE_CACHE = `${CACHE_VERSION}-bible`;
 
@@ -18,15 +18,13 @@ const SHELL_URLS = [
   `/voice-picker.js?v=2`,
   `/study-core.js?v=2`,
   `/bible-core.js?v=4`,
-  '/admin',
   '/index.html',
   '/landing.html',
   '/instructions.html',
-  '/admin.html',
   `/manifest.webmanifest?v=${ASSET_V}`,
   `/pwa.js?v=${ASSET_V}`,
   `/pwa.css?v=${ASSET_V}`,
-  `/john-popup.js?v=${ASSET_V}`,
+  '/john-popup.js?v=8',
   `/auth-api.js?v=${ASSET_V}`,
   `/icons/icon.svg?v=${ASSET_V}`,
   `/icons/icon-192.png?v=${ASSET_V}`,
@@ -74,6 +72,10 @@ async function cacheUrls(cache, urls) {
 }
 
 self.addEventListener('install', (event) => {
+  if (/twicios/i.test(self.navigator.userAgent)) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   event.waitUntil((async () => {
     const shell = await caches.open(SHELL_CACHE);
     await cacheUrls(shell, SHELL_URLS);
@@ -140,14 +142,12 @@ async function navigationResponse(request) {
     if (path.startsWith('/app')) {
       return (await cache.match('/app')) || (await cache.match('/index.html'));
     }
-    if (path.startsWith('/admin')) {
-      return (await cache.match('/admin')) || (await cache.match('/admin.html'));
-    }
     return (await cache.match(path)) || (await cache.match('/app')) || (await cache.match('/index.html'));
   }
 }
 
 self.addEventListener('fetch', (event) => {
+  if (/twicios/i.test(self.navigator.userAgent)) return;
   const { request } = event;
   if (request.method !== 'GET') return;
 
