@@ -1243,6 +1243,37 @@ let landingFileIosHtml = null;
 let landingFileIosMtime = 0;
 let johnPopupIosJs = null;
 let johnPopupIosMtime = 0;
+const legalIosCache = new Map();
+
+function setUaVariantHeaders(res) {
+  const previous = String(res.get('Cache-Control') || '');
+  res.set('Cache-Control', 'private, no-store');
+  res.vary('User-Agent');
+  if (/public|max-age|s-maxage/i.test(previous)) {
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
+  }
+}
+
+function sendMarkedHtml(req, res, fileName) {
+  setUaVariantHeaders(res);
+  res.type('html');
+  const filePath = path.join(__dirname, 'public', fileName);
+  if (!isTwicIOS(req.headers['user-agent'])) {
+    res.send(fs.readFileSync(filePath));
+    return;
+  }
+  const mtime = fs.statSync(filePath).mtimeMs;
+  let cached = legalIosCache.get(fileName);
+  if (!cached || cached.mtime !== mtime) {
+    cached = {
+      mtime,
+      body: Buffer.from(renderTwicIOSPage(fs.readFileSync(filePath, 'utf8')), 'utf8'),
+    };
+    legalIosCache.set(fileName, cached);
+  }
+  res.send(cached.body);
+}
 
 function landingFilePath() {
   return path.join(__dirname, 'public', 'landing.html');
@@ -1285,12 +1316,21 @@ function landingHtmlWithOgTags() {
 
 app.get('/copyright', (req, res) => res.redirect(301, '/attributions.html'));
 
+// Before express.static, so the static handler cannot serve the web file to TwicIOS.
 app.get('/privacy', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+  sendMarkedHtml(req, res, 'privacy.html');
+});
+
+app.get('/privacy.html', (req, res) => {
+  sendMarkedHtml(req, res, 'privacy.html');
 });
 
 app.get('/terms', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'terms.html'));
+  sendMarkedHtml(req, res, 'terms.html');
+});
+
+app.get('/terms.html', (req, res) => {
+  sendMarkedHtml(req, res, 'terms.html');
 });
 
 
@@ -1307,7 +1347,7 @@ app.get('/robots.txt', (req, res) => {
 // Serve beautiful public marketing landing page at root
 // For closed beta: you can add simple password or email whitelist here before full auth.
 app.get('/', (req, res) => {
-  res.vary('User-Agent');
+  setUaVariantHeaders(res);
   res.type('html');
   if (!isTwicIOS(req.headers['user-agent'])) {
     res.send(landingHtmlWithOgTags());
@@ -1342,7 +1382,7 @@ function studyIndexHtmlForUa(ua) {
 }
 
 function sendStudyIndexHtml(req, res) {
-  res.vary('User-Agent');
+  setUaVariantHeaders(res);
   res.type('html');
   res.send(studyIndexHtmlForUa(req.headers['user-agent']));
 }
@@ -1358,9 +1398,9 @@ app.get('/index.html', (req, res) => {
 });
 
 // Before express.static. Browsers get the file bytes. TwicIOS gets the commerce-free variant.
-// Cache-Control still comes from the global applyCacheControl middleware.
+// private, no-store is set here, after the global cache middleware, because the body varies by User-Agent.
 app.get('/landing.html', (req, res) => {
-  res.vary('User-Agent');
+  setUaVariantHeaders(res);
   res.type('html');
   const filePath = landingFilePath();
   if (!isTwicIOS(req.headers['user-agent'])) {
@@ -1376,7 +1416,7 @@ app.get('/landing.html', (req, res) => {
 });
 
 app.get('/john-popup.js', (req, res) => {
-  res.vary('User-Agent');
+  setUaVariantHeaders(res);
   res.type('js');
   const filePath = path.join(__dirname, 'public', 'john-popup.js');
   if (!isTwicIOS(req.headers['user-agent'])) {
