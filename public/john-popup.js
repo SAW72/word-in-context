@@ -5,15 +5,15 @@
   'use strict';
 
   const WELCOME = {
-    demo: `Hi — I'm John, an AI study tool. Test every answer against Scripture. Try John 1:14 or Psalm 136:1 so I can load live Greek or Hebrew. After your free preview, start a trial for unlimited study.`,
-    help: `Hi — ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
-    sources: `Hi — ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
+    demo: `Hi, I'm John, an AI study tool. Test every answer against Scripture. Try John 1:14 or Psalm 136:1 so I can load live Greek or Hebrew. After your free preview, start a trial for unlimited study.`,
+    help: `Hi, ask AI, John. Need help using the app? Ask about voices, hands-free mode, the Library, Settings, installing the PWA, and more. Type or tap the microphone.`,
+    sources: `Hi, ask AI, John. Ask about Sources & Data Attribution: bible.helloao.org, English translations (BSB, ASV, YLT, WEB), SBL Greek NT, Westminster Leningrad Codex Hebrew, how live citations work, Grok 4.3, browser voices, or how to verify verses. Type or tap the microphone.`
   };
 
   const POPUP_TITLES = {
     demo: '🎙️ Ask AI, John',
     help: '💬 Ask AI, John',
-    sources: '📚 Ask AI, John — Sources'
+    sources: '📚 Ask AI, John: Sources'
   };
 
   let demoLimit = 1;
@@ -613,7 +613,7 @@
       el.style.color = '#c9a227';
       setSignupCtaVisible(false);
     } else {
-      el.textContent = 'Free preview used — sign up for unlimited access' + loggedInHint;
+      el.textContent = 'Free preview used. Sign up for unlimited access' + loggedInHint;
       el.style.color = '#c94e4e';
       setSignupCtaVisible(true);
     }

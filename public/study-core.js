@@ -267,7 +267,7 @@
       narrative += ` In ${langName}, the major words are ${terms}.`;
       const lead = opts.lexWords.slice(0, 3).map((w) => {
         const detail = w.note ? ` ${w.note}` : '';
-        return `${w.translit} means "${w.gloss}"${detail ? ' —' + detail : ''}`;
+        return `${w.translit} means "${w.gloss}"${detail ? ':' + detail : ''}`;
       }).join('; ');
       narrative += ` So in English: ${lead}.`;
       narrative += ` Together these ${langName} terms show what this verse is saying within its immediate passage.`;

@@ -45,6 +45,7 @@ services:
       # Add these ONLY in the Render dashboard (Environment tab) and mark as Secret:
       #   XAI_API_KEY
       #   WHOP_WEBHOOK_SECRET
+      #   WHOP_API_KEY        (cancels a Whop membership when the member deletes their account)
       #   RESEND_API_KEY
       #   FROM_EMAIL   (e.g. The Word in Context <onboarding@resend.dev> while domain pending)
       #   JWT_SECRET          (required, unique, >= 32 chars — no defaults in production)
